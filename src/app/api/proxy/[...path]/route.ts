@@ -1,42 +1,38 @@
+// src/app/api/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_BASE = process.env.BACKEND_BASE || "http://localhost:4000";
-const TEST_UID = process.env.NEXT_PUBLIC_TEST_UID || "11111111-1111-1111-1111-111111111111";
+type RouteParams = { path: string[] };
 
-async function handle(req: NextRequest, pathParts: string[]) {
-  const target = `${BACKEND_BASE}/${pathParts.join("/")}${req.nextUrl.search}`;
+export async function GET(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
+  const params = await ctx.params;
+  return proxy(req, params);
+}
+export async function POST(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
+  const params = await ctx.params;
+  return proxy(req, params);
+}
+export async function DELETE(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
+  const params = await ctx.params;
+  return proxy(req, params);
+}
 
-  // Build forward request
-  const init: RequestInit = {
+async function proxy(req: NextRequest, params: RouteParams) {
+  const backend = process.env.BACKEND_BASE!;
+  const url = new URL(req.url);
+  const target = `${backend}/${params.path.join("/")}${url.search}`;
+
+  const headers = new Headers(req.headers);
+  headers.set("x-user-id", process.env.NEXT_PUBLIC_TEST_UID || "");
+
+  const res = await fetch(target, {
     method: req.method,
-    headers: {
-      // inject user header server-side
-      "x-user-id": TEST_UID,
-      // forward common headers if present
-      "content-type": req.headers.get("content-type") || undefined,
-      authorization: req.headers.get("authorization") || undefined,
-    },
-    body: req.method === "GET" || req.method === "HEAD" ? undefined : Buffer.from(await req.arrayBuffer()),
+    headers,
+    body: req.body as any,
     redirect: "manual",
-  };
+  });
 
-  const res = await fetch(target, init);
-  const buf = Buffer.from(await res.arrayBuffer());
+  const buf = await res.arrayBuffer();
   const out = new NextResponse(buf, { status: res.status });
-
-  // pass through content-type if available
-  const ct = res.headers.get("content-type");
-  if (ct) out.headers.set("content-type", ct);
-
+  res.headers.forEach((v, k) => out.headers.set(k, v));
   return out;
-}
-
-export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
-  return handle(req, params.path);
-}
-export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
-  return handle(req, params.path);
-}
-export async function DELETE(req: NextRequest, { params }: { params: { path: string[] } }) {
-  return handle(req, params.path);
 }

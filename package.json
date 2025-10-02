@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "echo \"No tests yet\""
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
