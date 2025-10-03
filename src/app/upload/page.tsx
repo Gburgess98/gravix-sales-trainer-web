@@ -1,137 +1,73 @@
-'use client';
-
-import { useState } from 'react';
-
-// 👇 Read your API base from env (set NEXT_PUBLIC_API_BASE on Vercel to your tunnel URL)
-// Fallback to localhost for local dev.
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
-
-// TODO: replace these once Supabase Auth is fully wired on the web.
-// in src/app/upload/page.tsx
-const TEMP_USER_ID = "11111111-1111-1111-8111-111111111111";
-const TEMP_USER_EMAIL = 'test@gravix.ai';
+"use client";
+import { useState } from "react";
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [resp, setResp] = useState<any>(null);
-  const [status, setStatus] = useState<string>('idle');
-  const [jobId, setJobId] = useState<string>('');
+  const [status, setStatus] = useState<"idle" | "uploading" | "ok" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  // Resolve the target once, and SHOW it for sanity
+  const base = (process.env.NEXT_PUBLIC_API_URL || "/api/proxy").replace(/\/$/, "");
+  const target = `${base}/v1/upload`;
 
   async function onUpload() {
+    if (!file) {
+      setStatus("error");
+      setMessage("Pick a file first");
+      return;
+    }
+    if (file.size > 4_000_000) {
+      setStatus("error");
+      setMessage(`File is ${Math.round(file.size/1024/1024*10)/10}MB. Keep <~4MB if using Vercel proxy.`);
+      return;
+    }
+
+    setStatus("uploading"); setMessage("");
     try {
-      if (!file) return;
-      setStatus('uploading');
-
-      // Prepare form data
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append("file", file);
 
-// 🔼 Upload via same-origin proxy (injects x-user-id server-side)
-const res = await fetch('/api/proxy/v1/upload', {
-  method: 'POST',
-  body: fd,
-});
-
-      const json = await res.json();
-      setResp(json);
-
-      if (!json.ok) {
-        setStatus('error');
-        return;
-      }
-
-      // ✅ At this point the file is uploaded and a call row/job created.
-      //    json has: { ok, callId, jobId, filename, storagePath, ... }
-
-      // 🔔 NEW: Notify Slack via Next.js proxy → /api/calls → your API /v1/calls
-      // This keeps the webhook secret server-side.
-      await fetch('/api/calls', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: TEMP_USER_ID,
-          userEmail: TEMP_USER_EMAIL,
-          fileName: json.filename ?? file.name,
-          storagePath: json.storagePath,     // exakt path your API returned
-          sizeBytes: file.size,
-          durationSec: undefined,            // pass if you measure it client-side
-        }),
-      }).catch((e) => {
-        // Don’t hard-fail the UX if Slack notify hiccups
-        console.error('Slack notify failed:', e);
+      const r = await fetch(target, {
+        method: "POST",
+        body: fd,
+        headers: { "x-user-id": process.env.NEXT_PUBLIC_TEST_UID || "" } as any,
       });
 
-      // Continue your existing job polling flow
-      if (json.jobId) {
-        setJobId(json.jobId);
-        setStatus('queued');
-        pollJob(json.jobId);
-      } else {
-        setStatus('processed'); // upload done, no job returned (edge)
+      let json: any = null, raw = "";
+      try { json = await r.clone().json(); } catch { raw = await r.text(); }
+      if (!r.ok || !json?.ok) {
+        setStatus("error");
+        setMessage(json?.error || raw || `HTTP ${r.status}`);
+        return;
       }
-    } catch (e) {
-      console.error(e);
-      setStatus('error');
+      setStatus("ok");
+      setMessage(`Uploaded: ${json.callId}`);
+    } catch (e: any) {
+      setStatus("error");
+      setMessage(e?.message || "Upload failed");
     }
   }
 
-  async function pollJob(id: string) {
-    setStatus('processing');
-    const tick = async () => {
-      try {
-        const r = await fetch(`${API_BASE}/v1/jobs/${id}`);
-        const j = await r.json();
-        if (!j.ok) {
-          setStatus('error');
-          return;
-        }
-        const s: string = j.job.status;
-        if (s === 'succeeded' || s === 'failed') {
-          setStatus(s);
-          return;
-        }
-        setTimeout(tick, 1200);
-      } catch {
-        setStatus('error');
-      }
-    };
-    tick();
-  }
-
   return (
-    <div className="min-h-screen p-8 space-y-4">
-      <h1 className="text-2xl font-bold">Upload a call</h1>
+    <div className="max-w-3xl mx-auto p-8">
+      <h1 className="text-2xl font-semibold mb-2">Upload a call</h1>
+      <p className="text-xs opacity-70 mb-6">Target: <code className="opacity-90">{target}</code></p>
 
-      <input
-        type="file"
-        accept=".mp3,.wav,.m4a,.json"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
-      />
-
-      <button
-        onClick={onUpload}
-        disabled={!file || status === 'uploading'}
-        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
-      >
-        {status === 'uploading' ? 'Uploading…' : 'Upload'}
-      </button>
-
-      <div className="text-sm">
-        <div>
-          Status: <span className="font-mono">{status}</span>
-        </div>
-        {jobId && (
-          <div>
-            Job ID: <span className="font-mono">{jobId}</span>
-          </div>
-        )}
+      <div className="flex items-center gap-3">
+        <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg"
+               onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <button onClick={onUpload}
+                className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 border border-white/30"
+                disabled={status === "uploading"}>
+          {status === "uploading" ? "Uploading…" : "Upload"}
+        </button>
       </div>
 
-      {resp && (
-        <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
-          {JSON.stringify(resp, null, 2)}
-        </pre>
-      )}
+      <div className="mt-4 text-sm">
+        <span className="opacity-70">Status:</span>{" "}
+        <span className={status === "error" ? "text-red-500" : "text-green-400"}>{status}</span>
+        <div className="mt-1 opacity-80 break-all">{message || "(no message yet)"}</div>
+      </div>
     </div>
   );
 }
