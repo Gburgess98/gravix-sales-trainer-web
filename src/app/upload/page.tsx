@@ -6,8 +6,10 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [callId, setCallId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
 
-  // Resolve target from env (we expect this to be the direct API URL now)
+  // Resolve target from env (direct-to-API for uploads)
   const base = (process.env.NEXT_PUBLIC_API_URL || "/api/proxy").replace(/\/$/, "");
   const target = `${base}/v1/upload`;
 
@@ -17,9 +19,10 @@ export default function UploadPage() {
       setMessage("Pick a file first");
       return;
     }
-
     setStatus("uploading");
     setMessage("");
+    setCallId(null);
+    setJobId(null);
 
     try {
       const fd = new FormData();
@@ -39,18 +42,18 @@ export default function UploadPage() {
         raw = await r.text().catch(() => "");
       }
 
-      console.log("[upload] resp", { ok: r.ok, status: r.status, json: j, raw });
-
       if (!r.ok || !j?.ok) {
         setStatus("error");
         setMessage(j?.error || raw || `HTTP ${r.status}`);
         return;
       }
 
+      // success
       setStatus("ok");
       setMessage(`Uploaded: ${j.callId}`);
+      setCallId(j.callId || null);
+      setJobId(j.jobId || null);
     } catch (e: any) {
-      console.error("[upload] fetch error", e);
       setStatus("error");
       setMessage(e?.message || "Upload failed");
     }
@@ -83,6 +86,25 @@ export default function UploadPage() {
         <span className={status === "error" ? "text-red-500" : "text-green-400"}>{status}</span>
         <div className="mt-1 opacity-80 break-all">{message || "(no message yet)"}</div>
       </div>
+
+      {/* Success actions */}
+      {status === "ok" && callId && (
+        <div className="mt-4 flex items-center gap-3">
+          <a
+            className="underline"
+            href={`/calls/${callId}`}
+            title="Open the call details page"
+          >
+            Open call
+          </a>
+          <a className="underline opacity-80 hover:opacity-100" href="/recent-calls">
+            View recent calls
+          </a>
+          {jobId && (
+            <span className="text-xs opacity-70">job: <code>{jobId}</code></span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
