@@ -1,38 +1,89 @@
 // src/app/api/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-type RouteParams = { path: string[] };
+// Ensure Node runtime so we can stream the request body
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
-  const params = await ctx.params;
-  return proxy(req, params);
-}
-export async function POST(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
-  const params = await ctx.params;
-  return proxy(req, params);
-}
-export async function DELETE(req: NextRequest, ctx: { params: Promise<RouteParams> }) {
-  const params = await ctx.params;
-  return proxy(req, params);
+function getBackendBase(): string {
+  // Optional dev fallback; keeps your strict throw in prod
+  const base =
+    process.env.BACKEND_BASE?.trim() ||
+    (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : "");
+  if (!base) throw new Error("BACKEND_BASE not set in Vercel env");
+  return base.replace(/\/$/, "");
 }
 
-async function proxy(req: NextRequest, params: RouteParams) {
-  const backend = process.env.BACKEND_BASE!;
-  const url = new URL(req.url);
-  const target = `${backend}/${params.path.join("/")}${url.search}`;
-
-  const headers = new Headers(req.headers);
-  headers.set("x-user-id", process.env.NEXT_PUBLIC_TEST_UID || "");
-
-  const res = await fetch(target, {
-    method: req.method,
-    headers,
-    body: req.body as any,
-    redirect: "manual",
-  });
-
-  const buf = await res.arrayBuffer();
-  const out = new NextResponse(buf, { status: res.status });
-  res.headers.forEach((v, k) => out.headers.set(k, v));
-  return out;
+function buildTargetUrl(base: string, path: string[] | undefined, req: NextRequest): string {
+  const tail = Array.isArray(path) && path.length ? path.join("/") : "";
+  const qs = req.nextUrl.searchParams.toString();
+  return `${base}/${tail}${qs ? `?${qs}` : ""}`;
 }
+
+async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
+  try {
+    const base = getBackendBase();
+    const target = buildTargetUrl(base, ctx.params?.path, req);
+
+    // Optional debug: /api/proxy/v1/health?debug=1
+    if (req.nextUrl.searchParams.get("debug") === "1") {
+      return NextResponse.json({ ok: true, base, target });
+    }
+
+    // Clone headers, ensure x-user-id for test flows; never forward hop-by-hop headers
+    const headers = new Headers(req.headers);
+
+    // ✅ Inject dev UID if missing
+    const devUid =
+      process.env.NEXT_PUBLIC_TEST_UID ||
+      process.env.DEV_TEST_UID ||
+      "00000000-0000-4000-8000-000000000001";
+    if (!headers.get("x-user-id")) headers.set("x-user-id", devUid);
+
+    // Strip hop-by-hop / unsafe
+    headers.delete("host");
+    headers.delete("connection");
+    headers.delete("content-length"); // ✅ important when we stream
+
+    // Stream body through for non-GET/HEAD to preserve multipart boundaries
+    const body =
+      req.method === "GET" || req.method === "HEAD" ? undefined : (req as any).body ?? req.body;
+
+    const init: RequestInit = {
+      method: req.method,
+      headers,
+      body,
+      redirect: "manual",
+      // Node.js streaming hint; prevents full buffering of multipart/form-data
+      duplex: "half" as any,
+    };
+
+    const r = await fetch(target, init);
+
+    // Pass backend response straight through so the frontend can read raw error text
+    const outHeaders = new Headers(r.headers);
+    outHeaders.delete("connection");
+
+    // Preserve set-cookie if API sets any (auth later)
+    const setCookie = r.headers.get("set-cookie");
+    if (setCookie) outHeaders.set("set-cookie", setCookie);
+
+    return new NextResponse(r.body, {
+      status: r.status,
+      statusText: r.statusText,
+      headers: outHeaders,
+    });
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+export const GET = handle;
+export const POST = handle;
+export const PUT = handle;
+export const PATCH = handle;
+export const DELETE = handle;
+export const OPTIONS = handle;
+// HEAD is implicitly handled via GET in most cases; add if you need symmetry:
+// export const HEAD = handle;
