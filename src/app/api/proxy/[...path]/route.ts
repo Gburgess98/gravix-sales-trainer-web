@@ -6,11 +6,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getBackendBase(): string {
-  // Optional dev fallback; keeps your strict throw in prod
   const base =
-    process.env.BACKEND_BASE?.trim() ||
+    process.env.NEXT_PUBLIC_API_BASE?.trim() ||
+    process.env.API_BASE?.trim() ||
     (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : "");
-  if (!base) throw new Error("BACKEND_BASE not set in Vercel env");
+  if (!base) throw new Error("NEXT_PUBLIC_API_BASE not set in env");
   return base.replace(/\/$/, "");
 }
 
@@ -34,11 +34,10 @@ async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
     const headers = new Headers(req.headers);
 
     // ✅ Inject dev UID if missing
-    const devUid =
-      process.env.NEXT_PUBLIC_TEST_UID ||
-      process.env.DEV_TEST_UID ||
-      "00000000-0000-4000-8000-000000000001";
-    if (!headers.get("x-user-id")) headers.set("x-user-id", devUid);
+    const devUid = process.env.NEXT_PUBLIC_DEV_USER_ID || "";
+    if (!headers.get("x-user-id") && devUid) {
+      headers.set("x-user-id", devUid);
+    }
 
     // Strip hop-by-hop / unsafe
     headers.delete("host");
