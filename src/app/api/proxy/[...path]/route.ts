@@ -38,6 +38,7 @@ async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
 
     // Clone headers, ensure x-user-id for test flows; never forward hop-by-hop headers
     const headers = new Headers(req.headers);
+    headers.delete("host");
 
     // Normalize and inject dev user id when missing
 // Inject a valid UUID for x-user-id so API never 400s during demos
@@ -48,6 +49,9 @@ const devUid =
 let usedDevUid = false;
 if (!headers.get("x-user-id")) {
   headers.set("x-user-id", devUid);
+  // aliases for safety across proxies/CDNs
+  headers.set("x-gravix-user-id", devUid);
+  headers.set("x-forwarded-user-id", devUid);
   usedDevUid = true;
 }
 
@@ -73,18 +77,18 @@ if (!headers.get("x-user-id")) {
     // Pass backend response straight through so the frontend can read raw error text
     const outHeaders = new Headers(r.headers);
 
+    // Add debug headers so we can verify what the proxy used at runtime
+    try { outHeaders.set("x-proxy-api-base", base); } catch {}
+    try { if (usedDevUid && devUid) outHeaders.set("x-proxy-dev-uid", devUid); } catch {}
 
-// Add debug headers so we can verify what the proxy used at runtime
-try { outHeaders.set("x-proxy-api-base", base); } catch {}
-try { if (usedDevUid && devUid) outHeaders.set("x-proxy-dev-uid", devUid); } catch {}
-return new NextResponse(buf, { status: res.status, headers: outHeaders });
-
+    // Clean hop-by-hop header
     outHeaders.delete("connection");
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");
     if (setCookie) outHeaders.set("set-cookie", setCookie);
 
+    // Stream the response body directly
     return new NextResponse(r.body, {
       status: r.status,
       statusText: r.statusText,
