@@ -61,6 +61,15 @@ export default function AdminScoresAndForcePage() {
   const [loadingScores, setLoadingScores] = useState(false);
   const [errScores, setErrScores] = useState<string | null>(null);
 
+  const modelOpts = useMemo(
+    () => Array.from(new Set(items.map(r => r.ai_model).filter(Boolean))) as string[],
+    [items]
+  );
+  const rubricOpts = useMemo(
+    () => Array.from(new Set(items.map(r => r.rubric_version).filter(Boolean))) as string[],
+    [items]
+  );
+
   const [model, setModel] = useState<string>("");
   const [rubric, setRubric] = useState<string>("");
   const [limit, setLimit] = useState<number>(50);
@@ -126,21 +135,29 @@ export default function AdminScoresAndForcePage() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col">
               <label className="text-xs opacity-70">Model</label>
-              <input
+              <select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="e.g. gpt-4o-mini"
                 className="w-56 rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
-              />
+              >
+                <option value="">All</option>
+                {modelOpts.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col">
               <label className="text-xs opacity-70">Rubric version</label>
-              <input
+              <select
                 value={rubric}
                 onChange={(e) => setRubric(e.target.value)}
-                placeholder="e.g. v1"
                 className="w-40 rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
-              />
+              >
+                <option value="">All</option>
+                {rubricOpts.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col">
               <label className="text-xs opacity-70">Limit</label>

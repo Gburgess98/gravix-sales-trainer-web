@@ -1,4 +1,3 @@
-// src/app/upload/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -9,6 +8,10 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB client-side guardrail
 
 function formatKB(n: number) {
   return `${Math.round(n / 1024)} KB`;
+}
+
+function formatMB(n: number) {
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function uploadWithProgress(url: string, file: File, contentType: string, onProgress?: (p: number) => void) {
@@ -109,7 +112,7 @@ export default function UploadPage() {
           />
           {file && (
             <div className="mt-2 text-xs opacity-80">
-              Selected: <span className="font-mono">{file.name}</span> ({file.type || "n/a"}, {formatKB(file.size)})
+              Selected: <span className="font-mono">{file.name}</span> ({file.type || "n/a"}, {formatKB(file.size)} · {formatMB(file.size)})
               {file.size > MAX_FILE_BYTES && (
                 <span className="ml-2 text-red-300">(too large, max 100MB)</span>
               )}
