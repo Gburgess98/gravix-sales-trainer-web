@@ -1,15 +1,14 @@
-// src/app/recent-calls/page.tsx
 'use client';
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCallsPage, getScoreHistory, type ScoreHistoryItem } from "@/lib/api";
+import useDebouncedSearch from "@/lib/useDebouncedSearch";
 import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
 
 export const dynamic = "force-dynamic";
 
-// ---- Local types (match API rows) ----
 type CallRow = {
   id: string;
   filename: string | null;
@@ -22,11 +21,8 @@ type CallRow = {
 };
 
 function fmtDate(d: string) {
-  try {
-    return new Date(d).toLocaleString("en-GB", { timeZone: "Europe/London" });
-  } catch {
-    return d;
-  }
+  try { return new Date(d).toLocaleString("en-GB", { timeZone: "Europe/London" }); }
+  catch { return d; }
 }
 
 function StatusBadge({ status }: { status: CallRow["status"] }) {
@@ -42,16 +38,10 @@ function StatusBadge({ status }: { status: CallRow["status"] }) {
 function ScoreBadge({ score }: { score: number }) {
   const n = Math.round(Number(score));
   const color =
-    n >= 80
-      ? "bg-green-500/20 text-green-200 border-green-400/30"
-      : n >= 60
-      ? "bg-yellow-500/20 text-yellow-200 border-yellow-400/30"
-      : "bg-red-500/20 text-red-200 border-red-400/30";
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs border ${color}`} title="Overall score">
-      {n}
-    </span>
-  );
+    n >= 80 ? "bg-green-500/20 text-green-200 border-green-400/30"
+    : n >= 60 ? "bg-yellow-500/20 text-yellow-200 border-yellow-400/30"
+    : "bg-red-500/20 text-red-200 border-red-400/30";
+  return <span className={`px-2 py-0.5 rounded-full text-xs border ${color}`} title="Overall score">{isFinite(n) ? n : "—"}</span>;
 }
 
 type ScoresState = Record<string, ScoreHistoryItem[] | "loading" | "error" | undefined>;
@@ -63,108 +53,101 @@ export default function RecentCallsPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // sparkline scores cache/state
-  const [scoresMap, setScoresMap] = useState<ScoresState>({});
-  const scoresCacheRef = useRef<ScoresState>({}); // in-memory cache for this session
+  // 🔎 search
+  const [query, setQuery] = useState("");
+  const debouncedQ = useDebouncedSearch(query, 300);
 
-  // sentinel for infinite scroll
+  // sparkline cache
+  const [scoresMap, setScoresMap] = useState<ScoresState>({});
+  const scoresCacheRef = useRef<ScoresState>({});
+
+  // infinite scroll
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // guard to prevent rapid re-trigger while the same page is loading
   const ioArmedRef = useRef(true);
 
-  async function fetchPage(next?: string | null) {
+  const pageSize = 10;
+  const seenIds = useMemo(() => new Set(calls.map((c) => c.id)), [calls]);
+
+  async function fetchPage(next?: string | null, reset = false) {
+    if (loading) return;
+    setLoading(true);
+    setErr(null);
     try {
-      setLoading(true);
-      setErr(null);
-      const j = await getCallsPage(10, next ?? undefined);
-      const items = (j.items ?? []) as CallRow[];
+      const j = await getCallsPage(pageSize, next ?? undefined, debouncedQ || undefined);
+      const items = (j?.items ?? []) as CallRow[];
 
       setCalls(prev => {
-        // dedupe by id in case of race/overlap
-        const seen = new Set(prev.map(p => p.id));
-        const merged = [...prev];
-        for (const it of items) {
-          if (!seen.has(it.id)) merged.push(it);
-        }
+        const base = reset ? [] : prev;
+        const seen = new Set(base.map((p) => p.id));
+        const merged = [...base];
+        for (const it of items) if (!seen.has(it.id)) merged.push(it);
         return merged;
       });
 
-      setCursor(j.nextCursor || null);
-      setHasMore(Boolean(j.nextCursor));
+      const nextCur = j?.nextCursor || null;
+      setCursor(nextCur);
+      setHasMore(Boolean(nextCur));
     } catch (e: any) {
       setErr(e?.message || "Failed to load calls");
       setHasMore(false);
     } finally {
       setLoading(false);
-      // small arming delay so the observer doesn't instantly retrigger
       ioArmedRef.current = false;
       setTimeout(() => { ioArmedRef.current = true; }, 250);
     }
   }
 
+  // initial load
+  useEffect(() => { fetchPage(null, true); /* eslint-disable-next-line */ }, []);
+
+  // reload on search
   useEffect(() => {
-    fetchPage(null);
+    setCursor(null); setHasMore(true); setCalls([]);
+    setScoresMap({}); scoresCacheRef.current = {};
+    fetchPage(null, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [debouncedQ]);
 
-// Fetch score history per call (lazy, with cache + abort safety)
-useEffect(() => {
-  if (!calls.length) return;
+  // fetch sparkline histories lazily
+  useEffect(() => {
+    if (!calls.length) return;
+    const controllers: AbortController[] = [];
 
-  const controllers: AbortController[] = [];
+    calls.forEach((c) => {
+      if (scoresCacheRef.current[c.id] || scoresMap[c.id]) return;
+      setScoresMap((m) => ({ ...m, [c.id]: "loading" }));
+      const ac = new AbortController();
+      controllers.push(ac);
 
-  calls.forEach((c) => {
-    // already cached or in-flight
-    if (scoresCacheRef.current[c.id] || scoresMap[c.id]) return;
+      getScoreHistory(c.id, 24)
+        .then((items) => {
+          const sorted = items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          scoresCacheRef.current[c.id] = sorted;
+          setScoresMap((m) => ({ ...m, [c.id]: sorted }));
+        })
+        .catch(() => {
+          scoresCacheRef.current[c.id] = "error";
+          setScoresMap((m) => ({ ...m, [c.id]: "error" }));
+        });
+    });
 
-    // mark loading
-    setScoresMap((m) => ({ ...m, [c.id]: "loading" }));
+    return () => { controllers.forEach((ac) => ac.abort()); };
+  }, [calls, scoresMap]);
 
-    const ac = new AbortController();
-    controllers.push(ac);
-
-    // ⬇️ getScoreHistory now returns ScoreHistoryItem[] directly
-    getScoreHistory(c.id, 24)
-      .then((items) => {
-        const sorted = items.sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-        scoresCacheRef.current[c.id] = sorted;
-        setScoresMap((m) => ({ ...m, [c.id]: sorted }));
-      })
-      .catch(() => {
-        scoresCacheRef.current[c.id] = "error";
-        setScoresMap((m) => ({ ...m, [c.id]: "error" }));
-      });
-  });
-
-  return () => {
-    controllers.forEach((ac) => ac.abort());
-  };
-}, [calls, scoresMap]);
-
-
-  // IntersectionObserver to auto-load more
+  // infinite scroll observer
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
-
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting) return;
-        if (!hasMore || loading) return;
-        if (!ioArmedRef.current) return; // throttle
-        fetchPage(cursor);
-      },
-      { root: null, rootMargin: "200px 0px", threshold: 0.01 }
-    );
-
+    const obs = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (!hasMore || loading) return;
+      if (!ioArmedRef.current) return;
+      fetchPage(cursor);
+    }, { root: null, rootMargin: "200px 0px", threshold: 0.01 });
     obs.observe(el);
-    return () => {
-      obs.disconnect();
-    };
-  }, [cursor, hasMore, loading]); // re-bind when pagination state changes
+    return () => obs.disconnect();
+  }, [cursor, hasMore, loading]);
 
   return (
     <div className="p-8 space-y-6">
@@ -175,19 +158,26 @@ useEffect(() => {
           <span className="px-2 py-0.5 rounded bg-yellow-600/20 text-yellow-200 border border-yellow-400/30">60–79</span>
           <span className="px-2 py-0.5 rounded bg-red-600/20 text-red-300 border border-red-400/30">≤59</span>
         </div>
-        <Link href="/upload" className="underline ml-auto">Upload another call</Link>
+
+        {/* 🔎 Search */}
+        <div className="ml-auto w-64">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search filename or ID…"
+            className="w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/40"
+            aria-label="Search recent calls"
+          />
+        </div>
+
+        <Link href="/upload" className="underline">Upload another call</Link>
       </div>
 
       {err && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200 text-sm">
           Error loading calls: {err}
           <div className="mt-3">
-            <button
-              onClick={() => fetchPage(cursor)}
-              className="px-3 py-1.5 rounded-lg border text-xs"
-            >
-              Retry
-            </button>
+            <button onClick={() => fetchPage(cursor)} className="px-3 py-1.5 rounded-lg border text-xs">Retry</button>
           </div>
         </div>
       )}
@@ -208,29 +198,21 @@ useEffect(() => {
 
           return (
             <div key={c.id} className="rounded-2xl border p-4 shadow-sm relative overflow-hidden">
-           {/* Top row */}
-<div className="flex items-start justify-between gap-2">
-  <div className="text-sm opacity-70">{fmtDate(c.created_at)}</div>
-
-  <div className="flex items-center gap-2">
-    {/* Copy share link (CRM panel) */}
-    <CopyLinkButton href={`/calls/${c.id}?panel=crm`} size="sm" />
-
-    {/* Open */}
-    <Link
-      href={`/calls/${c.id}`}
-      aria-label={`Open ${c.filename || c.id}`}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border hover:shadow
-                 hover:scale-[1.03] transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/40"
-      title="Open"
-    >
-      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-        <path d="M8 5v14l11-7z" />
-      </svg>
-    </Link>
-  </div>
-</div>
-
+              {/* Top row */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-sm opacity-70">{fmtDate(c.created_at)}</div>
+                <div className="flex items-center gap-2">
+                  <CopyLinkButton href={`/calls/${c.id}?panel=crm`} size="sm" />
+                  <Link
+                    href={`/calls/${c.id}`}
+                    aria-label={`Open ${c.filename || c.id}`}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border hover:shadow hover:scale-[1.03] transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    title="Open"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M8 5v14l11-7z" /></svg>
+                  </Link>
+                </div>
+              </div>
 
               {/* Filename */}
               <div className="text-lg font-medium mt-1">
@@ -243,26 +225,14 @@ useEffect(() => {
               <div className="mt-2 text-sm flex items-center gap-3 flex-wrap">
                 <StatusBadge status={c.status} />
                 {typeof c.duration_sec === "number" && <span>{Math.round(c.duration_sec)}s</span>}
-
                 {typeof c.score_overall === "number" ? (
                   <ScoreBadge score={c.score_overall} />
                 ) : (
-                  <span
-                    className="px-2 py-0.5 rounded-full text-xs border bg-zinc-500/10 text-zinc-300 border-zinc-400/20"
-                    title="Overall score"
-                  >
-                    —
-                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs border bg-zinc-500/10 text-zinc-300 border-zinc-400/20" title="Overall score">—</span>
                 )}
-
                 {c.status === "scored" && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5"
-                    title={c.ai_model ? `Scored by ${c.ai_model}` : "AI scored"}
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-                      <path d="M5 12l2 2 4-5 4 6 4-8" />
-                    </svg>
+                  <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5" title={c.ai_model ? `Scored by ${c.ai_model}` : "AI scored"}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5"><path d="M5 12l2 2 4-5 4 6 4-8" /></svg>
                     AI
                   </span>
                 )}
@@ -272,20 +242,12 @@ useEffect(() => {
               <div className="mt-3 flex items-center justify-between">
                 {c.storage_path ? (
                   <div className="text-sm break-all opacity-60 pr-3">{c.storage_path}</div>
-                ) : (
-                  <div className="text-sm opacity-50">—</div>
-                )}
+                ) : <div className="text-sm opacity-50">—</div>}
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {isLoadingScores && (
-                    <div className="w-24 h-6 rounded bg-white/10 animate-pulse" />
-                  )}
-                  {isErrorScores && (
-                    <div className="text-xs text-red-300">trend unavailable</div>
-                  )}
-                  {Array.isArray(scores) && items.length === 0 && (
-                    <div className="text-xs opacity-60">no scores yet</div>
-                  )}
+                  {isLoadingScores && <div className="w-24 h-6 rounded bg-white/10 animate-pulse" />}
+                  {isErrorScores && <div className="text-xs text-red-300">trend unavailable</div>}
+                  {Array.isArray(scores) && items.length === 0 && <div className="text-xs opacity-60">no scores yet</div>}
                   {Array.isArray(scores) && items.length > 0 && (
                     <ScoreSparkline
                       scores={items.map((s) => s.score)}
@@ -301,7 +263,6 @@ useEffect(() => {
           );
         })}
 
-        {/* Skeletons while loading first page */}
         {calls.length === 0 && loading && (
           <>
             {[...Array(4)].map((_, i) => (
@@ -322,15 +283,9 @@ useEffect(() => {
       {/* Infinite scroll sentinel */}
       <div ref={sentinelRef} className="h-10 w-full" />
 
-      {/* Fallback button (kept, but you usually won't see it now) */}
       {hasMore && (
         <div className="flex">
-          <button
-            onClick={() => fetchPage(cursor)}
-            disabled={loading}
-            className="ml-auto px-4 py-2 rounded-xl border"
-            aria-busy={loading ? "true" : "false"}
-          >
+          <button onClick={() => fetchPage(cursor)} disabled={loading} className="ml-auto px-4 py-2 rounded-xl border" aria-busy={loading ? "true" : "false"}>
             {loading ? "Loading..." : "Load more"}
           </button>
         </div>

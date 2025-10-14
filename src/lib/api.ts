@@ -1,15 +1,13 @@
 // web/src/lib/api.ts
 
-// ---- Retry helper (yours) ----
 import { fetchJsonWithRetry } from "@/lib/fetchJsonWithRetry";
 
-// Use the same-origin proxy so we avoid CORS and inject x-user-id server-side
+// Always go through the Next proxy so we avoid CORS and can inject x-user-id server-side.
 const PROXY = "/api/proxy";
 
 // -------------------------------
 // Types
 // -------------------------------
-
 export type CallDetail = any & {
   signedAudioUrl?: string;
   signedTtl?: number;
@@ -18,7 +16,7 @@ export type CallDetail = any & {
 export type CallsPageResp<T = any> = {
   ok: boolean;
   items: T[];
-  calls?: T[];              // legacy alias
+  calls?: T[];              // server may send "calls"; we normalize to items
   nextCursor: string | null;
 };
 
@@ -39,7 +37,6 @@ export type ContactHit = {
 
 // -------------------------------
 // Small JSON fetcher with consistent errors
-// (wraps your fetchJsonWithRetry, preserves credentials + no-store)
 // -------------------------------
 async function jfetch<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetchJsonWithRetry<any>(url, {
@@ -61,7 +58,7 @@ export async function getCall(callId: string): Promise<{ call: CallDetail }> {
     `${PROXY}/v1/calls/${encodeURIComponent(callId)}`
   );
 
-  // Try to fetch a signed audio URL (best-effort)
+  // Best-effort signed URL for audio playback
   try {
     const au = await jfetch<{ ok: true; url: string; ttl: number }>(
       `${PROXY}/v1/calls/${encodeURIComponent(callId)}/audio-url`
@@ -69,13 +66,13 @@ export async function getCall(callId: string): Promise<{ call: CallDetail }> {
     detailResp.call.signedAudioUrl = au.url;
     detailResp.call.signedTtl = au.ttl;
   } catch {
-    // optional; ignore
+    // ignore if not available
   }
 
   return { call: detailResp.call };
 }
 
-/** Simple first page of recent calls */
+/** (Legacy) simple list – kept for compatibility if anything still calls it */
 export async function listRecentCalls(limit = 20): Promise<{ calls: any[] }> {
   const j = await jfetch<{ ok: true; items?: any[]; calls?: any[] }>(
     `${PROXY}/v1/calls?limit=${limit}`
@@ -83,38 +80,29 @@ export async function listRecentCalls(limit = 20): Promise<{ calls: any[] }> {
   return { calls: j.calls || j.items || [] };
 }
 
-/** Cursor-based page for Recent Calls */
-export async function getCallsPage(limit = 10, cursor?: string | null) {
-  const qs = new URLSearchParams({ limit: String(limit) });
+/** Cursor-based page for Recent Calls (+ optional search q) */
+export async function getCallsPage(limit = 10, cursor?: string | null, q?: string) {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
   if (cursor) qs.set("cursor", cursor);
-  const j = await jfetch<CallsPageResp>(`${PROXY}/v1/calls?${qs.toString()}`);
-  return { ok: true, items: j.items || j.calls || [], nextCursor: j.nextCursor ?? null } as CallsPageResp;
-}
+  if (q) qs.set("q", q);
 
-/** Manually set score (admin / debug) */
-export async function setScore(callId: string, score: number, rubric?: any) {
-  const j = await jfetch<{ ok: true; call: any }>(
-    `${PROXY}/v1/calls/${encodeURIComponent(callId)}/score`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score_overall: score, rubric }),
-    }
+  const j = await jfetch<CallsPageResp>(
+    `${PROXY}/v1/calls/paged?${qs.toString()}`
   );
-  return j.call;
+
+  // normalize shape
+  return {
+    ok: true,
+    items: j.items || j.calls || [],
+    nextCursor: j.nextCursor ?? null,
+  } as CallsPageResp;
 }
 
 // -------------------------------
 // Uploads (signed upload flow)
 // -------------------------------
 
-/**
- * Use proxy for consistency (frontend -> /api/proxy -> API).
- * If you want to hit API origin directly, swap PROXY with:
- *   const base = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE;
- *   const url = `${base}/v1/upload/signed`;
- * and keep your x-user-id dev header as before.
- */
 export async function signedInitUpload(meta: { filename: string; mime?: string; size?: number }) {
   const j = await jfetch<{ ok: true; path: string; url: string; id: string; kind: "audio" | "json" }>(
     `${PROXY}/v1/upload/signed`,
@@ -150,7 +138,6 @@ export async function finalizeSignedUpload(body: {
 // Pins
 // -------------------------------
 
-/** List pins */
 export async function listPins(callId: string): Promise<{ pins: PinRow[] }> {
   const j = await jfetch<{ ok: true; pins: PinRow[] }>(
     `${PROXY}/v1/pins?callId=${encodeURIComponent(callId)}`
@@ -158,7 +145,6 @@ export async function listPins(callId: string): Promise<{ pins: PinRow[] }> {
   return { pins: j.pins || [] };
 }
 
-/** Create pin */
 export async function createPin(input: { callId: string; t: number; note: string | null }) {
   const j = await jfetch<{ ok: true; pin: PinRow }>(`${PROXY}/v1/pins`, {
     method: "POST",
@@ -168,7 +154,6 @@ export async function createPin(input: { callId: string; t: number; note: string
   return j.pin;
 }
 
-/** Delete pin */
 export async function deletePin(pinId: string) {
   await jfetch<{ ok: true }>(`${PROXY}/v1/pins/${encodeURIComponent(pinId)}`, {
     method: "DELETE",
@@ -221,11 +206,7 @@ export async function getCrmLink(callId: string) {
   return r.link;
 }
 
-// -------------------------------
-// Optional helpers
-// -------------------------------
-
-/** Latest job for a call (if your API exposes it) */
+/** Optional: latest job for a call (if your API exposes it) */
 export async function getLatestJobForCall(callId: string) {
   const j = await jfetch<{ ok: true; job: any }>(
     `${PROXY}/v1/calls/${encodeURIComponent(callId)}/jobs/latest`
