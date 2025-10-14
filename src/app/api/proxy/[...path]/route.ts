@@ -6,11 +6,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getBackendBase(): string {
-  const base =
+  const fromEnv =
     process.env.NEXT_PUBLIC_API_BASE?.trim() ||
     process.env.API_BASE?.trim() ||
-    (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : "");
-  if (!base) throw new Error("NEXT_PUBLIC_API_BASE not set in env");
+    "";
+
+  // Hard fallback so Production doesn’t break even if the env is missing
+  const prodFallback = "https://api.gravixbots.com";
+
+  const base =
+    fromEnv || (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : prodFallback);
+
   return base.replace(/\/$/, "");
 }
 
