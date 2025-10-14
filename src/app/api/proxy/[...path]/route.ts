@@ -39,16 +39,21 @@ async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
     // Clone headers, ensure x-user-id for test flows; never forward hop-by-hop headers
     const headers = new Headers(req.headers);
 
-    // ✅ Inject dev UID if missing
-    const devUid = process.env.NEXT_PUBLIC_DEV_USER_ID || "";
-    if (!headers.get("x-user-id") && devUid) {
-      headers.set("x-user-id", devUid);
-    }
+    // Normalize and inject dev user id when missing
+// Inject a valid UUID for x-user-id so API never 400s during demos
+const devUid =
+  process.env.NEXT_PUBLIC_DEV_USER_ID ||
+  process.env.DEV_TEST_UID ||
+  "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
+let usedDevUid = false;
+if (!headers.get("x-user-id")) {
+  headers.set("x-user-id", devUid);
+  usedDevUid = true;
+}
 
     // Strip hop-by-hop / unsafe
-    headers.delete("host");
     headers.delete("connection");
-    headers.delete("content-length"); // ✅ important when we stream
+    headers.delete("content-length"); // important when we stream
 
     // Stream body through for non-GET/HEAD to preserve multipart boundaries
     const body =
@@ -67,6 +72,13 @@ async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
 
     // Pass backend response straight through so the frontend can read raw error text
     const outHeaders = new Headers(r.headers);
+
+
+// Add debug headers so we can verify what the proxy used at runtime
+try { outHeaders.set("x-proxy-api-base", base); } catch {}
+try { if (usedDevUid && devUid) outHeaders.set("x-proxy-dev-uid", devUid); } catch {}
+return new NextResponse(buf, { status: res.status, headers: outHeaders });
+
     outHeaders.delete("connection");
 
     // Preserve set-cookie if API sets any (auth later)
