@@ -3,27 +3,79 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { uploadCall } from "@/lib/upload";
+import { signedInitUpload, finalizeSignedUpload } from "@/lib/api";
+
+const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB client-side guardrail
+
+function formatKB(n: number) {
+  return `${Math.round(n / 1024)} KB`;
+}
+
+function uploadWithProgress(url: string, file: File, contentType: string, onProgress?: (p: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url, true);
+    xhr.setRequestHeader("Content-Type", contentType || "application/octet-stream");
+    xhr.upload.onprogress = (evt) => {
+      if (!evt.lengthComputable) return;
+      const pct = Math.min(100, Math.max(0, Math.round((evt.loaded / evt.total) * 100)));
+      onProgress?.(pct);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      reject(new Error(`Upload failed with HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(file);
+  });
+}
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
-  const [progress, setProgress] = useState<number>(0); // NEW
+  const [progress, setProgress] = useState<number>(0);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
+
+    // client-side guardrails
+    if (file.size > MAX_FILE_BYTES) {
+      setMsg(`File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB (max 100MB)`);
+      return;
+    }
+
     setBusy(true);
     setMsg(null);
     setResult(null);
-    setProgress(0); // reset bar
+    setProgress(0);
 
     try {
-      const res = await uploadCall(file, { onProgress: setProgress }); // pass progress callback
-      setResult(res);
+      const meta = {
+        filename: file.name,
+        mime: file.type || "application/octet-stream",
+        size: file.size,
+      };
+
+      // 1) Ask API for a signed PUT URL and target path
+      const init = await signedInitUpload(meta); // { ok, path, url, id, kind }
+
+      // 2) Upload file to storage (presigned URL) with progress
+      await uploadWithProgress(init.url, file, meta.mime, setProgress);
+
+      // 3) Finalize so API creates DB row and enqueues jobs
+      const fin = await finalizeSignedUpload({
+        path: init.path,
+        filename: meta.filename,
+        mime: meta.mime,
+        size: meta.size,
+      });
+
+      setResult(fin);
       setMsg("Uploaded ✓");
+      setProgress(100);
     } catch (e: any) {
       setMsg(e?.message || "Upload failed");
     } finally {
@@ -57,8 +109,10 @@ export default function UploadPage() {
           />
           {file && (
             <div className="mt-2 text-xs opacity-80">
-              Selected: <span className="font-mono">{file.name}</span> ({file.type || "n/a"},{" "}
-              {Math.round(file.size / 1024)} KB)
+              Selected: <span className="font-mono">{file.name}</span> ({file.type || "n/a"}, {formatKB(file.size)})
+              {file.size > MAX_FILE_BYTES && (
+                <span className="ml-2 text-red-300">(too large, max 100MB)</span>
+              )}
             </div>
           )}
         </div>
@@ -66,17 +120,14 @@ export default function UploadPage() {
         {/* Progress bar (shows only while uploading) */}
         {busy && (
           <div className="w-full h-2 bg-zinc-700 rounded overflow-hidden">
-            <div
-              className="h-2 bg-white/70 transition-all"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="h-2 bg-white/70 transition-all" style={{ width: `${progress}%` }} />
           </div>
         )}
 
         <button
           type="submit"
-          disabled={!file || busy}
-          className="border rounded px-3 py-1 text-sm"
+          disabled={!file || busy || (file ? file.size > MAX_FILE_BYTES : false)}
+          className="border rounded px-3 py-1 text-sm disabled:opacity-50"
         >
           {busy ? "Uploading…" : "Upload"}
         </button>

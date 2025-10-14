@@ -1,7 +1,14 @@
 "use client";
 
 import { supabase } from "@/lib/supabase-browser";
-import { getSiteUrl } from "@/lib/site";
+
+// Minimal local replacement for getSiteUrl (avoids missing '@/lib/site')
+function getSiteUrl() {
+  const env = process.env.NEXT_PUBLIC_WEB_BASE || process.env.NEXT_PUBLIC_WEB_ORIGIN;
+  if (env) return env.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost:3000"; // fallback for SSR/build
+}
 
 export default function LoginPage() {
   async function login() {

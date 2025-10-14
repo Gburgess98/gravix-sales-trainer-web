@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getCallsPage, getScoreHistory, type ScoreHistoryItem } from "@/lib/api";
-import useDebouncedSearch from "@/lib/useDebouncedSearch";
 import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
 
@@ -19,6 +18,15 @@ type CallRow = {
   score_overall?: number | null;
   ai_model?: string | null;
 };
+
+function useDebounced<T>(value: T, delay = 250) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return v;
+}
 
 function fmtDate(d: string) {
   try { return new Date(d).toLocaleString("en-GB", { timeZone: "Europe/London" }); }
@@ -55,7 +63,7 @@ export default function RecentCallsPage() {
 
   // 🔎 search
   const [query, setQuery] = useState("");
-  const debouncedQ = useDebouncedSearch(query, 300);
+  const debouncedQ = useDebounced(query, 300);
 
   // sparkline cache
   const [scoresMap, setScoresMap] = useState<ScoresState>({});

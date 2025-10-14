@@ -1,6 +1,6 @@
 // web/src/lib/api.ts
 
-import { fetchJsonWithRetry } from "@/lib/fetchJsonWithRetry";
+import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 
 // Always go through the Next proxy so we avoid CORS and can inject x-user-id server-side.
 const PROXY = "/api/proxy";
@@ -97,6 +97,19 @@ export async function getCallsPage(limit = 10, cursor?: string | null, q?: strin
     items: j.items || j.calls || [],
     nextCursor: j.nextCursor ?? null,
   } as CallsPageResp;
+}
+
+/** Manually set score (admin / debug) */
+export async function setScore(callId: string, score: number, rubric?: any) {
+  const j = await jfetch<{ ok: true; call: any }>(
+    `${PROXY}/v1/calls/${encodeURIComponent(callId)}/score`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ score_overall: score, rubric }),
+    }
+  );
+  return j.call;
 }
 
 // -------------------------------
