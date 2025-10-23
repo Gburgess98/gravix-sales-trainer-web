@@ -11,10 +11,10 @@ export function middleware(req: NextRequest) {
   const path = url.pathname;
 
   // Normalize base API proxy path so it never 404s on Vercel
-  if (PROXY_BASES.has(path)) {
-    url.pathname = "/api/proxy/index.html";
-    return NextResponse.rewrite(url);
-  }
+if (PROXY_BASES.has(path)) {
+  url.pathname = "/api/proxy";
+  return NextResponse.rewrite(url);
+}
 
   const needsAuth = PROTECTED.some((re) => re.test(path));
 
