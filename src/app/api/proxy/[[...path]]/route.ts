@@ -1,4 +1,4 @@
-// src/app/api/proxy/[...path]/route.ts
+// src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 // Ensure Node runtime so we can stream the request body
@@ -6,24 +6,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getBackendBase(): string {
-  const fromEnv =
-    process.env.NEXT_PUBLIC_API_BASE?.trim() ||
-    process.env.API_BASE?.trim() ||
-    "";
-
-  // Hard fallback so Production doesn’t break even if the env is missing
-  const prodFallback = "https://api.gravixbots.com";
-
-  const base =
-    fromEnv || (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : prodFallback);
-
-  return base.replace(/\/$/, "");
+  const target = (process.env.API_PROXY_TARGET || "").trim();
+  if (target) return target.replace(/\/$/, "");
+  // Fallbacks: local in dev, public API in prod
+  return (process.env.NODE_ENV !== "production" ? "http://localhost:4000" : "https://api.gravixbots.com");
 }
 
 function buildTargetUrl(base: string, path: string[] | undefined, req: NextRequest): string {
-  const tail = Array.isArray(path) && path.length ? path.join("/") : "";
+  const pieces = Array.isArray(path) ? path : [];
+  const suffix = pieces.length ? `/${pieces.join('/')}` : "/";
   const qs = req.nextUrl.searchParams.toString();
-  return `${base}/${tail}${qs ? `?${qs}` : ""}`;
+  return `${base.replace(/\/$/, '')}${suffix}${qs ? `?${qs}` : ''}`;
 }
 
 async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
@@ -55,6 +48,19 @@ if (!headers.get("x-user-id")) {
   usedDevUid = true;
 }
 
+// Inject org id if missing (prefer explicit header, then env fallbacks)
+const devOrg = process.env.NEXT_PUBLIC_TEST_ORG_ID || process.env.DEFAULT_ORG_ID || "";
+if (devOrg && !headers.get("x-org-id")) {
+  headers.set("x-org-id", devOrg);
+}
+
+// Ensure a request id for tracing
+try {
+  if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
+    headers.set("x-request-id", (crypto as any).randomUUID());
+  }
+} catch {}
+
     // Strip hop-by-hop / unsafe
     headers.delete("connection");
     headers.delete("content-length"); // important when we stream
@@ -83,6 +89,14 @@ if (!headers.get("x-user-id")) {
 
     // Clean hop-by-hop header
     outHeaders.delete("connection");
+
+    // Avoid content decoding mismatch: Node may auto-decompress but preserve encoding header.
+    outHeaders.delete("content-encoding");
+    outHeaders.delete("transfer-encoding");
+    outHeaders.delete("content-length");
+    if (!outHeaders.get("content-type")) {
+      outHeaders.set("content-type", "text/plain; charset=utf-8");
+    }
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");

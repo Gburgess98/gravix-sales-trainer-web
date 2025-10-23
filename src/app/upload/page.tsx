@@ -39,6 +39,39 @@ export default function UploadPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [progress, setProgress] = useState<number>(0);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+
+  async function doUpload(f: File) {
+    setBusy(true);
+    setMsg(null);
+    setResult(null);
+    setProgress(0);
+    try {
+      const meta = {
+        filename: f.name,
+        mime: f.type || "application/octet-stream",
+        size: f.size,
+      };
+      // 1) Ask API for a signed PUT URL and target path
+      const init = await signedInitUpload(meta); // { ok, path, url, id, kind }
+      // 2) Upload file to storage (presigned URL) with progress
+      await uploadWithProgress(init.url, f, meta.mime, setProgress);
+      // 3) Finalize so API creates DB row and enqueues jobs
+      const fin = await finalizeSignedUpload({
+        path: init.path,
+        filename: meta.filename,
+        mime: meta.mime,
+        size: meta.size,
+      });
+      setResult(fin);
+      setMsg("Uploaded ✓");
+      setProgress(100);
+    } catch (e: any) {
+      setMsg(e?.message || "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,41 +82,8 @@ export default function UploadPage() {
       setMsg(`File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB (max 100MB)`);
       return;
     }
-
-    setBusy(true);
-    setMsg(null);
-    setResult(null);
-    setProgress(0);
-
-    try {
-      const meta = {
-        filename: file.name,
-        mime: file.type || "application/octet-stream",
-        size: file.size,
-      };
-
-      // 1) Ask API for a signed PUT URL and target path
-      const init = await signedInitUpload(meta); // { ok, path, url, id, kind }
-
-      // 2) Upload file to storage (presigned URL) with progress
-      await uploadWithProgress(init.url, file, meta.mime, setProgress);
-
-      // 3) Finalize so API creates DB row and enqueues jobs
-      const fin = await finalizeSignedUpload({
-        path: init.path,
-        filename: meta.filename,
-        mime: meta.mime,
-        size: meta.size,
-      });
-
-      setResult(fin);
-      setMsg("Uploaded ✓");
-      setProgress(100);
-    } catch (e: any) {
-      setMsg(e?.message || "Upload failed");
-    } finally {
-      setBusy(false);
-    }
+    setLastFile(file);
+    await doUpload(file);
   }
 
   return (
@@ -100,14 +100,18 @@ export default function UploadPage() {
           onDrop={(e) => {
             e.preventDefault();
             const f = e.dataTransfer.files?.[0];
-            if (f) setFile(f);
+            if (f) { setFile(f); setLastFile(f); }
           }}
         >
           <div className="opacity-70">Drag & drop a file, or choose below.</div>
           <input
             type="file"
             accept="audio/*,.wav,.mp3,.m4a,.webm,.json"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              if (f) setLastFile(f);
+            }}
             className="mt-3 block"
           />
           {file && (
@@ -134,6 +138,15 @@ export default function UploadPage() {
         >
           {busy ? "Uploading…" : "Upload"}
         </button>
+        {lastFile && !busy && (
+          <button
+            type="button"
+            onClick={() => doUpload(lastFile)}
+            className="ml-2 border rounded px-3 py-1 text-sm"
+          >
+            Retry last file
+          </button>
+        )}
 
         {msg && (
           <div className={`text-sm ${/✓/.test(msg) ? "text-green-300" : "text-red-300"}`}>

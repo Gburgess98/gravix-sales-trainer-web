@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getCallsPage, getScoreHistory, type ScoreHistoryItem } from "@/lib/api";
+import { getCallsPage } from "@/lib/api";
 import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
+import { fetchJsonWithRetry } from "@/lib/fetchJsonWithRetry";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+
 
 export const dynamic = "force-dynamic";
 
@@ -52,22 +55,74 @@ function ScoreBadge({ score }: { score: number }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs border ${color}`} title="Overall score">{isFinite(n) ? n : "—"}</span>;
 }
 
-type ScoresState = Record<string, ScoreHistoryItem[] | "loading" | "error" | undefined>;
+function CardSparkline({ id }: { id: string }) {
+  const [vals, setVals] = useState<number[] | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "error" | "done">("idle");
+  useEffect(() => {
+    let cancelled = false;
+    setState("loading");
+    fetchJsonWithRetry(`/api/proxy/v1/calls/${id}/scores?n=12`)
+      .then((r) => {
+        if (cancelled) return;
+        const arr = Array.isArray(r?.values) ? r.values as number[] : [];
+        setVals(arr);
+        setState("done");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setVals(null);
+        setState("error");
+      });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  if (state === "loading") return <div className="w-24 h-6 rounded bg-white/10 animate-pulse" />;
+  if (state === "error") return <div className="text-xs text-red-300">trend unavailable</div>;
+  if (!vals || vals.length < 2) return <div className="text-xs opacity-60">no scores yet</div>;
+  return (
+    <ScoreSparkline
+      scores={vals}
+      width={96}
+      height={28}
+      className="text-slate-300"
+      title="Score trend (oldest → newest)"
+    />
+  );
+}
 
 export default function RecentCallsPage() {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const weakSpot = searchParams.get('weakSpot');
+
+  // status filter (persisted in URL ?status=all|scored|processed|queued)
+  const paramStatus = (searchParams.get("status") || "all") as "all" | "scored" | "processed" | "queued";
+  const [statusFilter, setStatusFilter] = useState<"all" | "scored" | "processed" | "queued">(paramStatus);
+
+  const view = useMemo(() => {
+    if (statusFilter === "all") return calls;
+    return calls.filter(c => c.status === statusFilter);
+  }, [calls, statusFilter]);
 
   // 🔎 search
   const [query, setQuery] = useState("");
   const debouncedQ = useDebounced(query, 300);
 
-  // sparkline cache
-  const [scoresMap, setScoresMap] = useState<ScoresState>({});
-  const scoresCacheRef = useRef<ScoresState>({});
+  // keep state in sync with URL changes (back/forward)
+  useEffect(() => {
+    const s = (searchParams.get("status") || "all") as "all" | "scored" | "processed" | "queued";
+    setStatusFilter(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // infinite scroll
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -105,42 +160,25 @@ export default function RecentCallsPage() {
     }
   }
 
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchPage(cursor);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   // initial load
   useEffect(() => { fetchPage(null, true); /* eslint-disable-next-line */ }, []);
 
   // reload on search
   useEffect(() => {
     setCursor(null); setHasMore(true); setCalls([]);
-    setScoresMap({}); scoresCacheRef.current = {};
     fetchPage(null, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
-
-  // fetch sparkline histories lazily
-  useEffect(() => {
-    if (!calls.length) return;
-    const controllers: AbortController[] = [];
-
-    calls.forEach((c) => {
-      if (scoresCacheRef.current[c.id] || scoresMap[c.id]) return;
-      setScoresMap((m) => ({ ...m, [c.id]: "loading" }));
-      const ac = new AbortController();
-      controllers.push(ac);
-
-      getScoreHistory(c.id, 24)
-        .then((items) => {
-          const sorted = items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          scoresCacheRef.current[c.id] = sorted;
-          setScoresMap((m) => ({ ...m, [c.id]: sorted }));
-        })
-        .catch(() => {
-          scoresCacheRef.current[c.id] = "error";
-          setScoresMap((m) => ({ ...m, [c.id]: "error" }));
-        });
-    });
-
-    return () => { controllers.forEach((ac) => ac.abort()); };
-  }, [calls, scoresMap]);
 
   // infinite scroll observer
   useEffect(() => {
@@ -156,6 +194,43 @@ export default function RecentCallsPage() {
     obs.observe(el);
     return () => obs.disconnect();
   }, [cursor, hasMore, loading]);
+
+  // Keyboard shortcuts: J (load more), K (scroll top), C (copy top call link)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName || "").toUpperCase();
+      const isEditable = !!(target && (target as any).isContentEditable);
+      if (tag === "INPUT" || tag === "TEXTAREA" || isEditable) return;
+
+      const k = e.key.toLowerCase();
+      if (k === "j") {
+        if (cursor && !loadingMore) loadMore();
+      } else if (k === "k") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (k === "c") {
+        const first = (view && view[0]) || (calls && calls[0]);
+        if (first && typeof window !== "undefined") {
+          const href = `${window.location.origin}/calls/${first.id}?panel=coach`;
+          navigator.clipboard?.writeText(href).catch(() => {});
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cursor, loadingMore, view, calls]);
+
+  function updateStatusInUrl(next: "all" | "scored" | "processed" | "queued") {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (next === "all") {
+      sp.delete("status"); // keep URL clean
+    } else {
+      sp.set("status", next);
+    }
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    setStatusFilter(next);
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -181,6 +256,33 @@ export default function RecentCallsPage() {
         <Link href="/upload" className="underline">Upload another call</Link>
       </div>
 
+      {/* Filters */}
+      {weakSpot && (
+        <div className="text-xs inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-purple-400/30 bg-purple-500/10 text-purple-200">
+          Weak spot focus: <span className="font-medium">{weakSpot}</span>
+          <button
+            onClick={() => router.replace(pathname + (searchParams.toString() ? `?${new URLSearchParams(Array.from(searchParams.entries()).filter(([k]) => k !== 'weakSpot')).toString()}` : ''), { scroll: false })}
+            className="ml-2 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      <div className="flex items-center gap-2 text-sm">
+        {(["all","scored","processed","queued"] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => updateStatusInUrl(s)}
+            className={`px-2 py-1 rounded border transition ${
+              statusFilter === s ? "bg-white text-black" : "opacity-80 hover:opacity-100"
+            }`}
+            aria-pressed={statusFilter === s ? "true" : "false"}
+          >
+            {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
       {err && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200 text-sm">
           Error loading calls: {err}
@@ -196,13 +298,15 @@ export default function RecentCallsPage() {
         </div>
       )}
 
+      {statusFilter !== "all" && !err && !loading && view.length === 0 && (
+        <div className="rounded-2xl border p-6 text-sm opacity-80">
+          No {statusFilter} calls match your search.
+        </div>
+      )}
+
       {/* Cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        {calls.map((c) => {
-          const scores = scoresMap[c.id];
-          const isLoadingScores = scores === "loading";
-          const isErrorScores = scores === "error";
-          const items = Array.isArray(scores) ? scores : [];
+        {view.map((c) => {
 
           return (
             <div key={c.id} className="rounded-2xl border p-4 shadow-sm relative overflow-hidden">
@@ -253,18 +357,8 @@ export default function RecentCallsPage() {
                 ) : <div className="text-sm opacity-50">—</div>}
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {isLoadingScores && <div className="w-24 h-6 rounded bg-white/10 animate-pulse" />}
-                  {isErrorScores && <div className="text-xs text-red-300">trend unavailable</div>}
-                  {Array.isArray(scores) && items.length === 0 && <div className="text-xs opacity-60">no scores yet</div>}
-                  {Array.isArray(scores) && items.length > 0 && (
-                    <ScoreSparkline
-                      scores={items.map((s) => s.score)}
-                      width={96}
-                      height={28}
-                      className="text-slate-300"
-                      title="Score trend (oldest → newest)"
-                    />
-                  )}
+                  <span className="text-xs opacity-70">Trend</span>
+                  <CardSparkline id={c.id} />
                 </div>
               </div>
             </div>
@@ -293,8 +387,8 @@ export default function RecentCallsPage() {
 
       {hasMore && (
         <div className="flex">
-          <button onClick={() => fetchPage(cursor)} disabled={loading} className="ml-auto px-4 py-2 rounded-xl border" aria-busy={loading ? "true" : "false"}>
-            {loading ? "Loading..." : "Load more"}
+          <button onClick={loadMore} disabled={loadingMore} className="ml-auto px-4 py-2 rounded-xl border" aria-busy={loadingMore ? "true" : "false"}>
+            {loadingMore ? "Loading…" : "Load more"}
           </button>
         </div>
       )}

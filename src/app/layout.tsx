@@ -3,6 +3,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import HeaderClient from "@/components/HeaderClient";
+import { ToastProvider } from "@/components/Toast";
+
+// inside RootLayout return:
+<ToastProvider>
+  {children}
+</ToastProvider>
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
