@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense } from 'react';
 import { getCallsPage } from "@/lib/api";
 import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
-import { fetchJsonWithRetry } from "@/lib/fetchJsonWithRetry";
+import { fetchJsonWithRetry } from '@/lib/fetchJsonwithretry';
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 
@@ -90,7 +91,7 @@ function CardSparkline({ id }: { id: string }) {
   );
 }
 
-export default function RecentCallsPage() {
+function RecentCallsClient() {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -393,5 +394,13 @@ export default function RecentCallsPage() {
         </div>
       )}
     </div>
+  );
+}
+// Server/CSR bailout requirement: wrap useSearchParams in a Suspense boundary
+export default function RecentCallsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-neutral-500">Loading…</div>}>
+      <RecentCallsClient />
+    </Suspense>
   );
 }

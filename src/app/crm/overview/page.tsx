@@ -1,56 +1,25 @@
-'use client';
+// src/app/crm/overview/page.tsx
+export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from 'react';
-
-export default function CRMOverview() {
-  const [kpis, setKpis] = useState<any>(null);
-  const [err, setErr] = useState<string>("");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/proxy/v1/dashboard/kpis', { cache: 'no-store' });
-        const j = await r.json();
-        if (!r.ok || !j?.ok) throw new Error(j?.error || 'Failed to load KPIs');
-        setKpis(j.kpis);
-      } catch (e: any) {
-        setErr(e?.message || 'Failed to load');
-      }
-    })();
-  }, []);
-
+export default function CrmOverviewPage() {
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-xl font-semibold">CRM Overview</h1>
-      {err && (
-        <div className="text-sm text-red-400 border border-red-500/30 bg-red-500/10 rounded p-2">{err}</div>
-      )}
-      {!kpis ? (
-        <div className="text-sm text-neutral-500">Loading…</div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="rounded-xl border border-neutral-800 p-3">
-            <div className="text-xs text-neutral-400">Calls analyzed</div>
-            <div className="text-2xl font-semibold">{kpis.callsAnalyzed}</div>
-          </div>
-          <div className="rounded-xl border border-neutral-800 p-3">
-            <div className="text-xs text-neutral-400">Win rate</div>
-            <div className="text-2xl font-semibold">{kpis.winRate}%</div>
-          </div>
-          <div className="rounded-xl border border-neutral-800 p-3">
-            <div className="text-xs text-neutral-400">Avg Score</div>
-            <div className="text-2xl font-semibold">{kpis.avgScore}</div>
-          </div>
-          <div className="rounded-xl border border-neutral-800 p-3">
-            <div className="text-xs text-neutral-400">VPS</div>
-            <div className="text-2xl font-semibold">{kpis.vps}</div>
-          </div>
-          <div className="rounded-xl border border-neutral-800 p-3">
-            <div className="text-xs text-neutral-400">AHT</div>
-            <div className="text-2xl font-semibold">{kpis.aht}s</div>
-          </div>
+    <div className="max-w-5xl mx-auto py-10 px-6">
+      <h1 className="text-2xl font-semibold mb-4">CRM · Overview</h1>
+      <p className="opacity-80">This is a stub while we wire data. The route is live.</p>
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="rounded-lg border p-4">
+          <div className="text-sm opacity-70">Total Calls</div>
+          <div className="text-2xl font-semibold">—</div>
         </div>
-      )}
+        <div className="rounded-lg border p-4">
+          <div className="text-sm opacity-70">Conversion Rate</div>
+          <div className="text-2xl font-semibold">—</div>
+        </div>
+        <div className="rounded-lg border p-4">
+          <div className="text-sm opacity-70">Avg. Coaching Score</div>
+          <div className="text-2xl font-semibold">—</div>
+        </div>
+      </div>
     </div>
   );
 }

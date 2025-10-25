@@ -19,10 +19,10 @@ function buildTargetUrl(base: string, path: string[] | undefined, req: NextReque
   return `${base.replace(/\/$/, '')}${suffix}${qs ? `?${qs}` : ''}`;
 }
 
-async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
+async function handle(req: NextRequest, context: any) {
   try {
     const base = getBackendBase();
-    const target = buildTargetUrl(base, ctx.params?.path, req);
+    const target = buildTargetUrl(base, context?.params?.path as string[] | undefined, req);
 
     // Optional debug: /api/proxy/v1/health?debug=1
     if (req.nextUrl.searchParams.get("debug") === "1") {
@@ -33,33 +33,32 @@ async function handle(req: NextRequest, ctx: { params: { path?: string[] } }) {
     const headers = new Headers(req.headers);
     headers.delete("host");
 
-    // Normalize and inject dev user id when missing
-// Inject a valid UUID for x-user-id so API never 400s during demos
-const devUid =
-  process.env.NEXT_PUBLIC_DEV_USER_ID ||
-  process.env.DEV_TEST_UID ||
-  "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
-let usedDevUid = false;
-if (!headers.get("x-user-id")) {
-  headers.set("x-user-id", devUid);
-  // aliases for safety across proxies/CDNs
-  headers.set("x-gravix-user-id", devUid);
-  headers.set("x-forwarded-user-id", devUid);
-  usedDevUid = true;
-}
+    // Inject a valid UUID for x-user-id so API never 400s during demos
+    const devUid =
+      process.env.NEXT_PUBLIC_DEV_USER_ID ||
+      process.env.DEV_TEST_UID ||
+      "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
+    let usedDevUid = false;
+    if (!headers.get("x-user-id")) {
+      headers.set("x-user-id", devUid);
+      // aliases for safety across proxies/CDNs
+      headers.set("x-gravix-user-id", devUid);
+      headers.set("x-forwarded-user-id", devUid);
+      usedDevUid = true;
+    }
 
-// Inject org id if missing (prefer explicit header, then env fallbacks)
-const devOrg = process.env.NEXT_PUBLIC_TEST_ORG_ID || process.env.DEFAULT_ORG_ID || "";
-if (devOrg && !headers.get("x-org-id")) {
-  headers.set("x-org-id", devOrg);
-}
+    // Inject org id if missing (prefer explicit header, then env fallbacks)
+    const devOrg = process.env.NEXT_PUBLIC_TEST_ORG_ID || process.env.DEFAULT_ORG_ID || "";
+    if (devOrg && !headers.get("x-org-id")) {
+      headers.set("x-org-id", devOrg);
+    }
 
-// Ensure a request id for tracing
-try {
-  if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
-    headers.set("x-request-id", (crypto as any).randomUUID());
-  }
-} catch {}
+    // Ensure a request id for tracing
+    try {
+      if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
+        headers.set("x-request-id", (crypto as any).randomUUID());
+      }
+    } catch {}
 
     // Strip hop-by-hop / unsafe
     headers.delete("connection");
@@ -120,5 +119,4 @@ export const PUT = handle;
 export const PATCH = handle;
 export const DELETE = handle;
 export const OPTIONS = handle;
-// HEAD is implicitly handled via GET in most cases; add if you need symmetry:
-// export const HEAD = handle;
+export const HEAD = handle;

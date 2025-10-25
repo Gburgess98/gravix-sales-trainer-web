@@ -1,86 +1,77 @@
-// Defaults for retries/backoff used by fetchJsonWithRetry
-export const DEFAULT_FETCH_RETRY = { attempts: 4, baseMs: 300, maxMs: 2500 };
+// web/src/lib/fetchJsonwithretry.ts
+// NOTE: keep this exact filename (lowercase "withretry") to avoid case-sensitivity issues on Linux builds.
 
-// Re-export to satisfy imports that use PascalCased file name
-export * from "./fetchJsonwithretry";
-export { default } from "./fetchJsonwithretry";
+export type RetryOptions = {
+  /** total attempts including the first try (default 3) */
+  attempts?: number;
+  /** base backoff in ms (default 250) */
+  baseMs?: number;
+  /** max backoff in ms (default 4000) */
+  maxMs?: number;
+};
 
-type RetryOpts = { attempts?: number; baseMs?: number; maxMs?: number };
-type InitWithRetry = RequestInit & { retry?: RetryOpts; retries?: number; backoffMs?: number };
-
-function deriveRetry(init?: InitWithRetry): Required<RetryOpts> {
-  const attempts = init?.retry?.attempts ?? (init?.retries ?? DEFAULT_FETCH_RETRY.attempts);
-  const baseMs = init?.retry?.baseMs ?? (init?.backoffMs ?? DEFAULT_FETCH_RETRY.baseMs);
-  const maxMs = init?.retry?.maxMs ?? DEFAULT_FETCH_RETRY.maxMs;
-  return { attempts, baseMs, maxMs };
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-function shouldRetryStatus(status: number) {
-  return status === 429 || (status >= 500 && status <= 599);
+function backoffDelay(attemptIdx: number, baseMs: number, maxMs: number) {
+  const exp = Math.min(maxMs, Math.floor(baseMs * Math.pow(2, attemptIdx)));
+  const jitter = Math.floor(Math.random() * 100);
+  return Math.min(maxMs, exp + jitter);
 }
 
-export async function fetchJsonWithRetry<T=any>(url: string, init: RequestInit = {}, attempts = 3, backoffMs = 300): Promise<T> {
-  let lastErr: any;
-  for (let i=0;i<attempts;i++) {
-    try {
-      const r = await fetch(url, { ...init, cache: "no-store" });
-      const text = await r.text();
-      let body: any = null;
-      try { body = JSON.parse(text); } catch { body = text; }
-      if (!r.ok) throw new Error(typeof body === "string" ? body : JSON.stringify(body));
-      return body as T;
-    } catch (e:any) {
-      lastErr = e;
-      await new Promise(r => setTimeout(r, backoffMs * (i+1)));
-    }
-  }
-  throw lastErr;
-}
-
-// web/src/lib/fetchJsonWithRetry.ts
-
+/**
+ * Fetch JSON with simple retry/backoff for network and 5xx errors.
+ * - Throws with {status, body} on !ok
+ * - Returns parsed JSON (or text if not JSON)
+ */
 export async function fetchJsonWithRetry<T = any>(
   input: RequestInfo | URL,
-  init: InitWithRetry = {}
+  init: (RequestInit & RetryOptions) = {}
 ): Promise<T> {
-  const { attempts, baseMs, maxMs } = deriveRetry(init);
+  const attempts = Math.max(1, init.attempts ?? 3);
+  const baseMs = init.baseMs ?? 250;
+  const maxMs = init.maxMs ?? 4000;
 
-  let lastErr: any;
-  for (let i = 0; i <= attempts; i++) {
+  let lastErr: unknown;
+
+  for (let i = 0; i < attempts; i++) {
     try {
-      const r = await fetch(input, init);
-      const ct = r.headers.get("content-type") || "";
-      const isJson = ct.includes("application/json") || ct.includes("+json");
+      const res = await fetch(input, init);
+      const text = await res.text();
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      const data = isJson && text ? JSON.parse(text) : (text as unknown as T);
 
-      if (!r.ok) {
-        // Only retry for 429/5xx. For other 4xx, surface the error immediately.
-        if (shouldRetryStatus(r.status)) {
-          lastErr = new Error(`HTTP ${r.status}`);
-        } else {
-          if (isJson) {
-            const j = await r.json().catch(() => ({}));
-            const message = (j as any)?.error || (j as any)?.message || `HTTP ${r.status}`;
-            throw new Error(message);
-          } else {
-            const text = await r.text().catch(() => "");
-            throw new Error(text || `HTTP ${r.status}`);
-          }
-        }
-      } else {
-        if (isJson) {
-          return (await r.json()) as T;
-        } else {
-          const text = await r.text().catch(() => "");
-          return (text ? JSON.parse(text) : ({} as any)) as T;
-        }
+      if (!res.ok) {
+        const msg = isJson && data && (data as any).error
+          ? (data as any).error
+          : `${res.status} ${res.statusText}`;
+        const err: any = new Error(msg);
+        err.status = res.status;
+        err.body = data;
+        throw err;
       }
+
+      return data as T;
     } catch (e: any) {
       lastErr = e;
-    }
+      const status = e?.status as number | undefined;
+      const retriable =
+        e?.name === "FetchError" ||
+        e?.code === "ECONNRESET" ||
+        e?.code === "ETIMEDOUT" ||
+        (status && status >= 500);
 
-    if (i === attempts) break;
-    const sleep = Math.min(maxMs, Math.round(baseMs * 2 ** i * (0.75 + Math.random() * 0.5)));
-    await new Promise((res) => setTimeout(res, sleep));
+      if (i < attempts - 1 && retriable) {
+        await sleep(backoffDelay(i, baseMs, maxMs));
+        continue;
+      }
+      throw e;
+    }
   }
-  throw lastErr ?? new Error("fetch failed");
+
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? "unknown_error"));
 }
+
+// Provide default export for convenience
+export default fetchJsonWithRetry;

@@ -5,11 +5,6 @@ import "./globals.css";
 import HeaderClient from "@/components/HeaderClient";
 import { ToastProvider } from "@/components/Toast";
 
-// inside RootLayout return:
-<ToastProvider>
-  {children}
-</ToastProvider>
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -32,7 +27,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <HeaderClient />
-        <div className="max-w-5xl mx-auto px-4">{children}</div>
+        <ToastProvider>
+          <div className="max-w-5xl mx-auto px-4">{children}</div>
+        </ToastProvider>
       </body>
     </html>
   );

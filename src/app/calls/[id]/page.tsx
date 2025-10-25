@@ -9,10 +9,9 @@ import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import ErrorBox from "@/components/ErrorBox";
 import { linkCallByEmail, getCrmLink } from "@/lib/api";
-import { fetchJsonWithRetry } from "@/lib/fetchJsonWithRetry";
+import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
-import dayjs from "dayjs";
 
 import {
   listPins,
@@ -180,7 +179,6 @@ const DEV_UID = process.env.NEXT_PUBLIC_DEV_USER_ID || "11111111-1111-1111-8111-
 const [assigneeUserId, setAssigneeUserId] = useState(DEV_UID);
 const [drillId, setDrillId] = useState("intro-basics");
 const [notes, setNotes] = useState("");
-const searchParams = useSearchParams();
 
 const [coachNotes, setCoachNotes] = useState("");
 const [notesSaving, setNotesSaving] = useState(false);
@@ -1287,7 +1285,6 @@ async function deleteAssignment(id: string) {
 </div>
           </div>
         </div>
-      </div>
       {/* === /COACH DRAWER === */}
     </AuthGate>
   );
