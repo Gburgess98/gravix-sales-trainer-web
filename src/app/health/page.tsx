@@ -1,51 +1,89 @@
-﻿"use client";
-
-import { useState } from "react";
-
-type Health = { ok?: boolean; service?: string; uptime_s?: number; ts?: string };
+﻿'use client';
+import { useEffect, useState } from 'react';
 
 export default function HealthPage() {
-  const [result, setResult] = useState<string>("");
+  const [text, setText] = useState<string>('');
+  const [ok, setOk] = useState<boolean | null>(null);
+  const [http, setHttp] = useState<number | null>(null);
+  const [detail, setDetail] = useState<string>('');
+  const [base, setBase] = useState<string>('');
+  const [fallback, setFallback] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
-  async function ping() {
-    setResult("Pinging…");
+  async function run() {
+    setLoading(true);
     try {
-      // Add a cache-buster to ensure we don't see stale responses and disable cache
-      const r = await fetch(`/api/proxy/v1/health?t=${Date.now()}` , { cache: "no-store" });
-      const text = await r.text();
-      let body: Health | null = null;
-      try { body = JSON.parse(text); } catch {}
+      const r = await fetch(`/api/proxy/v1/health?debug=1&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        },
+      });
+      setHttp(r.status);
+      setBase(r.headers.get('x-proxy-api-base') || '');
+      setFallback(r.headers.get('x-proxy-api-fallback') || '');
+
+      // Always read as text first; sanitize before parsing
+      const raw = await r.text();
+      let bodyText = raw;
+
+      // Strip UTF-8 BOM if present
+      if (bodyText.charCodeAt(0) === 0xFEFF) bodyText = bodyText.slice(1);
+
+      // If there are stray bytes before JSON, cut to the first JSON token
+      const idx = bodyText.search(/[\{\[]/);
+      if (idx > 0) bodyText = bodyText.slice(idx);
+
+      setText(bodyText);
+
+      let parsed: any = null;
+      try { parsed = JSON.parse(bodyText); } catch {}
 
       if (!r.ok) {
-        setResult(`HTTP ${r.status} • ${text.slice(0, 200)}`);
-        return;
-      }
-
-      if (body && typeof body === "object") {
-        const ok = String(body.ok ?? false);
-        const svc = body.service ?? "(n/a)";
-        const up = body.uptime_s ?? "(n/a)";
-        const stamp = body.ts ?? "(n/a)";
-        setResult(`ok=${ok} • service=${svc} • uptime=${up}s • ts=${stamp}`);
+        setOk(false);
+        setDetail('HTTP error from upstream');
+      } else if (parsed && (parsed.ok === true || parsed.ok === 'true')) {
+        setOk(true);
+        setDetail('OK');
       } else {
-        // If the body wasn't JSON, show the raw text so we can diagnose quickly
-        setResult(`Unexpected response: ${text.slice(0, 200)}`);
+        setOk(false);
+        setDetail('Unexpected response body');
       }
     } catch (e: any) {
-      setResult(`Network error: ${e?.message || e}`);
+      setOk(false);
+      setDetail(e?.message || 'Network error');
+      setText('');
+    } finally {
+      setLoading(false);
     }
   }
 
+  useEffect(() => { run(); }, []);
+
   return (
-    <div className="p-8 max-w-3xl">
-      <h1 className="text-xl font-semibold mb-4">Web Health</h1>
-      <p className="text-sm opacity-80 mb-4">Pings the API via the web proxy.</p>
-      <button onClick={ping} className="px-3 py-1.5 rounded border">Ping API</button>
-      {result && (
-        <div className="mt-4 rounded-xl border p-3 text-sm whitespace-pre-wrap">
-          API status: {result}
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Proxy Health</h1>
+        <button onClick={run} disabled={loading} className="px-3 py-1.5 rounded border">
+          {loading ? 'Checking…' : 'Re-run checks'}
+        </button>
+      </div>
+
+      <div className="rounded border p-3 text-sm">
+        <div>
+          <span className="opacity-70">API status:</span>{' '}
+          {ok == null ? '…' : ok ? 'OK' : 'Unexpected response'}{http ? ` • HTTP ${http}` : ''}
         </div>
-      )}
+        {detail && <div className="opacity-70">{detail}</div>}
+        {(base || fallback) && (
+          <div className="mt-2 text-xs opacity-70">base={base} {fallback ? `| fallback=${fallback}` : ''}</div>
+        )}
+      </div>
+
+      <div className="rounded border p-3">
+        <div className="text-xs opacity-70 mb-2">Raw body</div>
+        <pre className="text-xs overflow-x-auto whitespace-pre-wrap">{text || '—'}</pre>
+      </div>
     </div>
   );
 }
