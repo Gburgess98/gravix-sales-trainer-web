@@ -34,6 +34,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         data-open-route={isOpenRoute ? '1' : undefined}
       >
+        {/* Client-side safety: if this page is marked open and we somehow arrived with ?redirect=, strip it to avoid loops */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var b=document.body;if(!b)return;var isOpen=b.dataset.openRoute==='1';if(!isOpen)return;var qs=new URLSearchParams(location.search);var r=qs.get('redirect');if(r && r[0]==='/'){if(location.pathname!==r){location.replace(r);}else{history.replaceState(null,'',r);}}}catch(e){}})();`,
+          }}
+        />
         <HeaderClient />
         <ToastProvider>
           <div className="max-w-5xl mx-auto px-4">{children}</div>
