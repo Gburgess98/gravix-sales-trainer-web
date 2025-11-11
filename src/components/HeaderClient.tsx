@@ -14,6 +14,7 @@ export default function HeaderClient() {
     console.log('HeaderClient session →', session);
   }, [session]);
 
+  // Retained for future use; header now avoids intercepting clicks
   const logout = async () => {
     await supabase.auth.signOut();
     window.location.href = '/login';
@@ -32,12 +33,15 @@ export default function HeaderClient() {
               </Link>
 
               <span className="text-sm opacity-70">{session.user.email}</span>
-              <button
-                onClick={logout}
+              {/* Use plain navigation to avoid client-side click interception */}
+              <Link
+                href="/login?logout=1"
                 className="border rounded px-3 py-1 text-sm"
+                data-testid="nav-logout"
+                title="Logout"
               >
                 Logout
-              </button>
+              </Link>
             </>
           ) : (
             <Link href="/login" className="border rounded px-3 py-1 text-sm">

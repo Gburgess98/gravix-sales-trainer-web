@@ -1,14 +1,28 @@
-import type { NextConfig } from "next";
+// next.config.ts
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  eslint: {
-    // Allow production builds to complete even if there are ESLint errors
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // Allow production builds to complete even if there are TS type errors
-    ignoreBuildErrors: true,
-  },
-};
+  reactStrictMode: true,
 
-export default nextConfig;
+  async headers() {
+    return [
+      // Home: force dynamic fetch + add probe
+      {
+        source: '/',
+        headers: [
+          { key: 'x-config-probe', value: 'next-config-root' },
+          { key: 'cache-control', value: 'no-store' },
+        ],
+      },
+      // All other routes: add probe header so we can see this config is live
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'x-config-probe', value: 'next-config-root' },
+        ],
+      },
+    ]
+  },
+}
+
+export default nextConfig
