@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Run globally (cheap) — we only ACT on specific paths.
-export const config = { matcher: ['/:path*'] }
+export const config = { matcher: ['/', '/probe', '/crm/overview', '/recent-calls'] }
 
 export function middleware(req: NextRequest) {
   const url = req.nextUrl
@@ -11,6 +11,7 @@ export function middleware(req: NextRequest) {
     const res = NextResponse.next()
     res.headers.set('x-mw-probe', 'root-mw-active')
     res.headers.set('x-config-probe', 'next-config-root')
+    res.headers.set('x-mw-version', 'v5-open-request');
     for (const [k, v] of Object.entries(extra)) res.headers.set(k, v)
     return res
   }
@@ -23,6 +24,7 @@ export function middleware(req: NextRequest) {
     // keep the probe headers on the response for debugging
     res.headers.set('x-mw-probe', 'root-mw-active')
     res.headers.set('x-config-probe', 'next-config-root')
+    res.headers.set('x-mw-version', 'v5-open-request');
     res.headers.set('x-open-route', '1')
     return res
   }
