@@ -1,8 +1,7 @@
-// middleware.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const MW_VERSION = "2025-11-11T23:15Z"; // bump when you change middleware
+const MW_VERSION = "2025-11-11T23:27Z"; // bump when you change middleware
 
 const IGNORE_PREFIXES = ["/_next", "/favicon", "/api", "/assets", "/fonts", "/images"];
 const PUBLIC_PATHS = new Set<string>([
@@ -29,12 +28,11 @@ function hasBypass(req: NextRequest) {
 }
 
 function isAuthed(req: NextRequest) {
-  // Supabase cookie example; tweak to your setup
+  // Supabase cookies (adjust if you use different names)
   const sb = req.cookies.get("sb-access-token") || req.cookies.get("sb-refresh-token");
   if (sb) return true;
   // Optional header-based auth
   if (req.headers.get("authorization")) return true;
-
   return false;
 }
 
