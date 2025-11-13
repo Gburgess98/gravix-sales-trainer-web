@@ -24,3 +24,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* --- Safety: disable pointer events for any accidental full-screen overlay elements --- */
+[data-overlay],
+.smoke-overlay,
+.toast-smoke,
+.fullscreen-overlay {
+  pointer-events: none !important;
+}
