@@ -1,14 +1,36 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  reactStrictMode: true,
+
+  // 🔧 TEMP: ship fixes despite lint/TS warnings. We'll re-enable after we clean types.
   eslint: {
-    // Allow production builds to complete even if there are ESLint errors
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Allow production builds to complete even if there are TS type errors
     ignoreBuildErrors: true,
   },
-};
 
-export default nextConfig;
+  async headers() {
+    return [
+      // Home page — force fresh HTML (avoid stale cached root)
+      {
+        source: '/',
+        headers: [
+          { key: 'x-config-probe', value: 'next-config-root' },
+          { key: 'cache-control', value: 'no-store' },
+        ],
+      },
+      // All routes — add probe header + also disable edge caching temporarily
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'x-config-probe', value: 'next-config-root' },
+          { key: 'cache-control', value: 'no-store' },
+        ],
+      },
+    ]
+  },
+}
+
+export default nextConfig
