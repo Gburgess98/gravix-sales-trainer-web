@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
-import { getCallsPage } from '@/lib/api';
 import ScoreSparkline from '@/components/ScoreSparkline';
 import CopyLinkButton from '@/components/CopyLinkButton';
 import { fetchJsonWithRetry } from '@/lib/fetchJsonwithretry';
@@ -118,13 +117,26 @@ function RecentCallsClient() {
     setLoading(true);
     setErr(null);
     try {
-      const j = await getCallsPage({ status, q: debouncedQ, cursor: reset ? null : cursor, limit: 12 });
-      const items = j.items ?? j.calls ?? [];
-      setCalls(reset ? items : [...calls, ...items]);
-      setCursor(j.nextCursor ?? null);
-      setHasMore(Boolean(j.nextCursor));
+      const params = new URLSearchParams();
+      params.set('limit', String(12));
+      if (!reset && cursor) params.set('cursor', cursor);
+      if (debouncedQ) params.set('search', debouncedQ);
+      if (status && status !== 'all') params.set('status', status);
+
+      const j = await fetchJsonWithRetry<{
+        ok: boolean;
+        items: CallItem[];
+        nextCursor?: string | null;
+      }>(`/api/proxy/v1/calls/paged?${params.toString()}`);
+
+      const items = (j?.items ?? []) as CallItem[];
+
+      setCalls(prev => (reset ? items : [...prev, ...items]));
+      const nextCur = j?.nextCursor ?? null;
+      setCursor(nextCur);
+      setHasMore(Boolean(nextCur));
     } catch (e: any) {
-      setErr(e.message || 'Failed to load');
+      setErr(e?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
