@@ -7,11 +7,16 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Sparkline from "@/components/Sparkline";
 // Alias to avoid clashing with Next.js route option export: `export const dynamic = "force-dynamic"`
-import nextDynamic from 'next/dynamic';
-import clsx from 'clsx';
-import { listCoachAssignments, getTopObjections, getDashboardKpis, type DashboardKpisResp } from '@/lib/api';
+import nextDynamic from "next/dynamic";
+import clsx from "clsx";
+import {
+  listCoachAssignments,
+  getTopObjections,
+  type DashboardKpisResp,
+} from "@/lib/api";
 import { getBackendBase } from "@/lib/config"; // or your config utility if already available
-import { isOpenPath, guardDisabled } from '@/lib/openRoutes';
+import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
+import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 
 // --- Medal helpers (Top Reps UI polish) ---
 function rankMedal(rank: number) {
@@ -140,29 +145,40 @@ export default function CrmOverviewPage() {
     return () => { alive = false; };
   }, []);
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const resp = await getDashboardKpis({ days: 90 /* TODO: orgId when ready */ });
-        if (!alive) return;
-        if (resp && (resp as any).ok !== false) setTrends(resp);
-      } catch (e) {
-        if (alive) setTrends({
+  let alive = true;
+
+  (async () => {
+    try {
+      const resp = await fetchJsonWithRetry<DashboardKpisResp>(
+        "/api/proxy/v1/dashboard/kpis?days=90"
+      );
+      if (!alive) return;
+      if (resp && (resp as any).ok !== false) {
+        setTrends(resp);
+      }
+    } catch (e) {
+      if (alive) {
+        setTrends({
           ok: false as any,
           total_calls: 0,
           avg_score_overall: null,
+          conversion_rate_90d: null as any,
           callsAnalyzed: [],
           avgScore: [],
           winRate: [],
           top_accounts: [],
           top_reps: [],
           since: new Date().toISOString(),
-        });
-        console.error('getDashboardKpis failed', e);
+        } as any);
       }
-    })();
-    return () => { alive = false; };
-  }, []);
+      console.error("getDashboardKpis via proxy failed", e);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, []);
   useEffect(() => {
     let alive = true;
     // Load assignments (requires one of callId/accountId/contactId/assigneeUserId|repId). If no rep filter, skip.
@@ -234,7 +250,9 @@ export default function CrmOverviewPage() {
   return (
     <div className="max-w-5xl mx-auto py-10 px-6">
       <h1 className="text-2xl font-semibold mb-2">CRM · Overview</h1>
-      <p className="opacity-80">This is a stub while we wire data. The route is live.</p>
+      <p className="opacity-80">
+  Snapshot of recent team performance based on analysed calls.
+</p>
       {/* Manager Assignments Summary */}
       <div className="mt-3 mb-5 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-2 text-sm text-neutral-300 flex flex-wrap gap-4">
         {loadingSummary ? (
