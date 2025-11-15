@@ -420,7 +420,7 @@ export default function CrmOverviewPage() {
               return (
                 <Link
                   key={r.user_id || String(idx)}
-                  href={`/crm/overview?rep=${encodeURIComponent(r.user_id)}`}
+                  href={`/crm/reps/${encodeURIComponent(r.user_id)}`}
                   className={`px-4 py-3 flex items-center justify-between hover:bg-neutral-900 ${isActive ? 'bg-neutral-900 border-l-2 border-sky-500' : ''}`}
                   title={isActive ? 'Active filter: this rep' : 'Filter by this rep'}
                 >
