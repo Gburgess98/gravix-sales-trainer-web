@@ -76,13 +76,30 @@ export default function RepProfilePage() {
 
   return (
     <div className="max-w-5xl mx-auto py-10 px-6">
-      <h1 className="text-2xl font-semibold mb-2">Rep · Profile</h1>
-      <p className="opacity-80 mb-4">
-        Snapshot of this rep&apos;s performance over the last 90 days.
-      </p>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">Rep · Profile</h1>
+          <p className="text-sm text-neutral-400 mb-1">
+            Snapshot of this rep&apos;s performance over the last 90 days.
+          </p>
+          <div className="text-xs text-neutral-500">
+            Rep ID:{" "}
+            <code className="text-neutral-200">
+              {titleId}
+            </code>
+          </div>
+        </div>
 
-      <div className="mb-4 text-xs text-neutral-400">
-        Rep ID: <code className="text-neutral-200">{titleId}</code>
+        <div className="flex flex-col items-end gap-2">
+          <Link
+            href={`/sparring?repId=${encodeURIComponent(
+              String(repId ?? titleId)
+            )}&persona=price_sensitive`}
+            className="inline-flex items-center rounded-md border border-emerald-600/60 bg-emerald-600/10 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-600/20"
+          >
+            AI Sparring
+          </Link>
+        </div>
       </div>
 
       {loading && (

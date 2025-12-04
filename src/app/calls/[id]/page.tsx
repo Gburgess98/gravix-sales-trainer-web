@@ -17,7 +17,6 @@ import {
   listPins,
   createPin,
   deletePin,
-  setScore,
   getScoreHistory,
   type ScoreHistoryItem,
 } from '@/lib/api';
@@ -57,6 +56,37 @@ async function getCallViaProxy(callId: string) {
   return await fetchJsonWithRetry<any>(api(`/v1/calls/${encodeURIComponent(callId)}`), { cache: 'no-store' });
 }
 
+function formatCallDuration(meta: any): string {
+  if (!meta) return "—";
+
+  // Prefer ms if present
+  if (typeof meta.duration_ms === "number" && meta.duration_ms > 0) {
+    const totalSeconds = Math.floor(meta.duration_ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes === 0) return `${seconds}s`;
+    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }
+
+  if (typeof meta.duration_sec === "number" && meta.duration_sec > 0) {
+    const minutes = Math.floor(meta.duration_sec / 60);
+    const seconds = meta.duration_sec % 60;
+    if (minutes === 0) return `${seconds}s`;
+    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }
+
+  return "—";
+}
+
+function statusDotColour(status: string | undefined | null): string {
+  if (!status) return "bg-neutral-500";
+  const s = status.toLowerCase();
+  if (s === "failed" || s === "error") return "bg-red-400";
+  if (s === "processing" || s === "queued" || s === "running") return "bg-amber-300";
+  if (s === "scored" || s === "processed" || s === "completed") return "bg-emerald-400";
+  return "bg-neutral-500";
+}
+
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const callId = (id ?? '').toString();
@@ -92,11 +122,6 @@ const toast = useToast();
   const [callMeta, setCallMeta] = useState<any>(null);
   const [loadingCall, setLoadingCall] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-
-  // Score UI state
-  const [scoreVal, setScoreVal] = useState<number>(80);
-  const [savingScore, setSavingScore] = useState(false);
-  const [scoreMsg, setScoreMsg] = useState<string | null>(null);
 
   // Score history
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
@@ -236,9 +261,6 @@ const onSaveAssign = useCallback(async () => {
         setAudioUrl(res?.call?.signedAudioUrl ?? null);
         console.debug('[CallPage] loaded via proxy', { id: callId, ok: !!res?.call });
 
-        if (typeof res?.call?.score_overall === 'number') {
-          setScoreVal(Number(res.call.score_overall));
-        }
         setErr(null);
       } catch (e: any) {
         if (!alive) return;
@@ -339,11 +361,7 @@ async function deleteAssignment(id: string) {
       try {
         const res = await getCallViaProxy(callId);
         if (cancelled) return;
-        setCallMeta(res.call);
-
-        if (typeof res?.call?.score_overall === 'number') {
-          setScoreVal(Number(res.call.score_overall));
-        }
+                setCallMeta(res.call);
 
         if (res?.call?.signedAudioUrl && res.call.signedAudioUrl !== audioUrl) {
           setAudioUrl(res.call.signedAudioUrl);
@@ -430,23 +448,6 @@ async function deleteAssignment(id: string) {
     }
   }, [coachOpen, assignOpen]);
 
-  // Keyboard shortcuts: c = CRM, a = Coach (Assign)
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      // ignore when typing in inputs/textareas or when modifier keys are held
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key.toLowerCase() === "c") {
-        openCrm();
-      } else if (e.key.toLowerCase() === "a") {
-        openCoach(true);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openCrm, openCoach]);
-
   // Player: track time + duration
   useEffect(() => {
     const el = audioRef.current;
@@ -513,20 +514,6 @@ async function deleteAssignment(id: string) {
       setPins((p) => p.filter((x) => x.id !== id));
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to delete pin');
-    }
-  }
-
-  async function onSaveScore() {
-    try {
-      setSavingScore(true);
-      setScoreMsg(null);
-      await setScore(callId, Math.max(0, Math.min(100, Number(scoreVal))));
-      setScoreMsg('Saved ✓');
-      setTimeout(() => setScoreMsg(null), 1500);
-    } catch (e: any) {
-      setScoreMsg(e?.message || 'Failed');
-    } finally {
-      setSavingScore(false);
     }
   }
 
@@ -657,6 +644,23 @@ async function deleteAssignment(id: string) {
     router.replace(`${pathname}?${url.searchParams.toString()}`);
   };
 
+    // Keyboard shortcuts: c = CRM, a = Coach (Assign)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      // ignore when typing in inputs/textareas or when modifier keys are held
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.toLowerCase() === "c") {
+        openCrm();
+      } else if (e.key.toLowerCase() === "a") {
+        openCoach(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openCrm, openCoach]);
+
   const overall: number | null =
     typeof callMeta?.score_overall === 'number'
       ? Math.round(Number(callMeta.score_overall))
@@ -668,6 +672,10 @@ async function deleteAssignment(id: string) {
   const accountChip = linkInfo?.account
     ? (linkInfo.account.name || linkInfo.account.domain || linkInfo.account.id)
     : null;
+
+  const durationLabel = formatCallDuration(callMeta);
+  const flags: string[] =
+    Array.isArray(callMeta?.flags) ? (callMeta.flags as string[]).filter(Boolean) : [];
 
   return (
     <AuthGate>
@@ -691,30 +699,6 @@ async function deleteAssignment(id: string) {
           <div className="ml-auto flex items-center gap-2">
             {/* Copy share link to open CRM panel */}
             <CopyLinkButton href={`/calls/${callId}?panel=crm`} size="md" />
-
-            {/* --- ADD: CRM linker UI --- */}
-<div className="mt-3 space-y-2">
-  <div className="flex gap-2">
-    <input className="flex-1 bg-neutral-900 border border-neutral-700 rounded p-2"
-      placeholder="Search contacts…" value={crmQuery} onChange={e => setCrmQuery(e.target.value)} />
-    <button onClick={searchContacts} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500">
-      {crmLoading ? "Searching..." : "Search"}
-    </button>
-  </div>
-  {crmError && <ErrorBox msg={crmError} />}
-  <ul className="divide-y divide-neutral-800">
-    {crmResults.map(c => (
-      <li key={c.id} className="py-2 flex items-center justify-between">
-        <div>
-          <div className="font-medium">{c.name}</div>
-          <div className="opacity-70 text-sm">{c.email}</div>
-        </div>
-        <button onClick={() => linkCall(c.id)} className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500">Link</button>
-      </li>
-    ))}
-    {!crmLoading && crmResults.length === 0 && <li className="py-2 opacity-60">No results</li>}
-  </ul>
-</div>
 
             {/* Existing action */}
             <button onClick={openCrm} className="rounded-xl border px-3 py-1.5 text-sm">
@@ -767,6 +751,68 @@ async function deleteAssignment(id: string) {
           )}
           <p className="text-xs opacity-60">Hint: press <kbd className="px-1 border rounded">c</kbd> for CRM, <kbd className="px-1 border rounded">a</kbd> for Coach.</p>
         </div>
+
+        {/* Summary header band (score + duration + summary + flags) */}
+        <section className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          {/* Left: score + status + duration */}
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-neutral-600 text-lg font-semibold tabular-nums">
+              {overall != null ? overall : "—"}
+            </div>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex h-2 w-2 rounded-full ${statusDotColour(
+                    callMeta?.status
+                  )}`}
+                />
+                <span className="text-neutral-300 capitalize">
+                  {callMeta?.status ?? "queued"}
+                </span>
+              </div>
+              <div className="text-neutral-400">
+                Duration:{" "}
+                <span className="text-neutral-100">{durationLabel}</span>
+              </div>
+              {callMeta?.ai_model && (
+                <div className="text-xs text-neutral-500">
+                  Scored by {callMeta.ai_model}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: summary + flags */}
+          <div className="md:max-w-md space-y-2 text-sm">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                Summary
+              </div>
+              <p className="text-neutral-200">
+                {callMeta?.summary ||
+                  "No summary has been generated for this call yet."}
+              </p>
+            </div>
+
+            {flags.length > 0 && (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                  Flags
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {flags.map((flag) => (
+                    <span
+                      key={flag}
+                      className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-0.5 text-[11px] font-medium text-neutral-200"
+                    >
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Rubric (if available) */}
         {callMeta?.rubric ? (
@@ -967,30 +1013,6 @@ async function deleteAssignment(id: string) {
           </div>
         </section>
 
-        {/* Manual override */}
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Score</h2>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={Number.isFinite(scoreVal) ? scoreVal : 0}
-              onChange={(e) => setScoreVal(Number(e.target.value))}
-              className="border rounded px-2 py-1 text-sm bg-transparent w-24"
-            />
-            <button
-              onClick={onSaveScore}
-              disabled={savingScore}
-              className="border rounded px-3 py-1 text-sm"
-            >
-              {savingScore ? 'Saving…' : 'Save Score'}
-            </button>
-            {scoreMsg && <span className="text-sm opacity-70">{scoreMsg}</span>}
-          </div>
-          <p className="text-xs opacity-60">Tip: 0–100. Saving updates the card on /recent-calls.</p>
-        </section>
-
         {/* CRM summary chips (quick glance) */}
         <section className="space-y-2">
           <h2 className="text-lg font-medium">CRM</h2>
@@ -1036,11 +1058,13 @@ async function deleteAssignment(id: string) {
             Coach panel opened via deep link — “Assign Drill” preset is active.
           </div>
         )}
-        {err && (
-          <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-            {err}
-          </div>
-        )}
+{err && (
+  <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+    {err === "invalid callId"
+      ? "This is a demo placeholder call. No full metadata or audio is stored for this ID."
+      : err}
+  </div>
+)}
       </main>
 
       {/* === CRM DRAWER === */}
