@@ -226,3 +226,121 @@ export async function getLatestJobForCall(callId: string) {
   );
   return j.job;
 }
+
+// ---------------------------
+// Sparring sessions
+// ---------------------------
+
+export type SparringSession = {
+  id: string;
+  created_at: string;
+  rep_id: string;
+  persona_id: string | null;
+  total_score: number | null;
+  xp_awarded: number | null;
+};
+
+export async function listSparringSessions(opts?: { limit?: number }) {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+
+  const qs = params.toString();
+  const url = `/api/proxy/v1/sparring/sessions${qs ? `?${qs}` : ""}`;
+
+  const res = await fetchJsonWithRetry(url);
+  // API shape: { ok: true, sessions: [...] }
+  return (res.sessions ?? []) as SparringSession[];
+}
+
+// -------------------------------
+// Sparring helpers
+// -------------------------------
+
+export type SparringSessionSummary = {
+  id: string;
+  rep_id: string | null;
+  persona_id: string | null;
+  total_score: number | null;
+  xp_awarded: number | null;
+  created_at: string;
+};
+
+export async function getSparringSessionsByRep(
+  repId: string,
+  limit: number = 5
+): Promise<SparringSessionSummary[]> {
+  if (!repId) return [];
+
+  const params = new URLSearchParams({
+    repId,
+    limit: String(limit),
+  });
+
+  const res = await fetchJsonWithRetry<{
+    ok: boolean;
+    sessions?: SparringSessionSummary[];
+    error?: string;
+  }>(`${PROXY}/v1/sparring/sessions?${params.toString()}`);
+
+  if (!res || (res as any).ok === false) {
+    const msg =
+      (res && (res as any).error) || "Failed to load sparring sessions";
+    throw new Error(msg);
+  }
+
+  return res.sessions || [];
+}
+
+export async function scoreSparring(transcript: string, personaId: string) {
+  const res = await fetchJsonWithRetry<{
+    ok: boolean;
+    personaId: string;
+    scores: {
+      tone?: number | null;
+      discovery?: number | null;
+      objection?: number | null;
+      close?: number | null;
+      overall?: number | null;
+    };
+    total?: number | null;
+    xp_awarded?: number | null;
+    error?: string;
+  }>(`${PROXY}/v1/sparring/score`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript, personaId }),
+  });
+
+  if (!res || (res as any).ok === false) {
+    const msg =
+      (res && (res as any).error) || "Failed to score sparring session";
+    throw new Error(msg);
+  }
+
+  return res;
+}
+
+export async function logSparringSession(body: {
+  repId: string;
+  personaId: string;
+  transcript: string;
+  totalScore?: number | null;
+  xpAwarded?: number | null;
+}) {
+  const res = await fetchJsonWithRetry<{ ok: boolean; session: any }>(
+    `${PROXY}/v1/sparring/log`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!res || (res as any).ok === false) {
+    const msg =
+      (res && (res as any).error) || "Failed to log sparring session";
+    throw new Error(msg);
+  }
+
+  return res.session;
+}

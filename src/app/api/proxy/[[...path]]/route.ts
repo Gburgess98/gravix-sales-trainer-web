@@ -34,24 +34,44 @@ async function handle(req: NextRequest, context: any) {
     const headers = new Headers(req.headers);
     headers.delete("host");
 
-    // Inject a valid UUID for x-user-id so API never 400s during demos
+    // Always inject a concrete user + org so backend never 400s
     const devUid =
       process.env.NEXT_PUBLIC_DEV_USER_ID ||
       process.env.DEV_TEST_UID ||
       "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
+
     let usedDevUid = false;
-    if (!headers.get("x-user-id")) {
-      headers.set("x-user-id", devUid);
-      // aliases for safety across proxies/CDNs
-      headers.set("x-gravix-user-id", devUid);
-      headers.set("x-forwarded-user-id", devUid);
+
+    const existingUserId = headers.get("x-user-id");
+    const finalUserId =
+      existingUserId && existingUserId.trim().length > 0
+        ? existingUserId
+        : devUid;
+
+    if (!existingUserId || existingUserId.trim().length === 0) {
       usedDevUid = true;
     }
 
-    // Inject org id if missing (prefer explicit header, then env fallbacks)
-    const devOrg = process.env.NEXT_PUBLIC_TEST_ORG_ID || process.env.DEFAULT_ORG_ID || "";
-    if (devOrg && !headers.get("x-org-id")) {
-      headers.set("x-org-id", devOrg);
+    // Normalise all the user-id style headers to the same value
+    headers.set("x-user-id", finalUserId);
+    headers.set("x-gravix-user-id", finalUserId);
+    headers.set("x-forwarded-user-id", finalUserId);
+
+    // Org id: prefer explicit header, then env fallbacks
+    const devOrg =
+      process.env.NEXT_PUBLIC_TEST_ORG_ID ||
+      process.env.NEXT_PUBLIC_DEFAULT_ORG_ID ||
+      process.env.DEFAULT_ORG_ID ||
+      "";
+
+    const existingOrgId = headers.get("x-org-id");
+    const finalOrgId =
+      existingOrgId && existingOrgId.trim().length > 0
+        ? existingOrgId
+        : devOrg;
+
+    if (finalOrgId) {
+      headers.set("x-org-id", finalOrgId);
     }
 
     // Ensure a request id for tracing
