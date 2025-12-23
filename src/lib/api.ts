@@ -144,6 +144,37 @@ export async function patchAdminConfig(
 }
 
 // -------------------------------
+// Admin: Rep management
+// -------------------------------
+
+export type AdminRepRow = {
+  id: string;
+  name: string | null;
+  tier: string | null;
+  xp: number | null;
+  created_at?: string | null;
+};
+
+export async function listAdminReps(): Promise<{ ok: true; reps: AdminRepRow[] }> {
+  const url = `${PROXY}/v1/admin/reps`;
+  return await jfetch<{ ok: true; reps: AdminRepRow[] }>(url, {
+    method: "GET",
+  });
+}
+
+export async function patchAdminRepTier(
+  repId: string,
+  tier: "SalesRep" | "TeamLead" | "Manager" | "Owner"
+): Promise<{ ok: true; rep: AdminRepRow }> {
+  const url = `${PROXY}/v1/admin/reps/${encodeURIComponent(repId)}`;
+  return await jfetch<{ ok: true; rep: AdminRepRow }>(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier }),
+  });
+}
+
+// -------------------------------
 // Calls
 // -------------------------------
 
