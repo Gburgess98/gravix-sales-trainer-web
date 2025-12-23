@@ -30,15 +30,15 @@ async function handle(req: NextRequest, context: any) {
       return NextResponse.json({ ok: true, base, target });
     }
 
-    // Clone headers, ensure x-user-id for test flows; never forward hop-by-hop headers
+    // Clone headers; never forward hop-by-hop headers
     const headers = new Headers(req.headers);
     headers.delete("host");
 
-    // Always inject a concrete user + org so backend never 400s
+    // Dev fallback UID only when not production AND there is no explicit x-user-id header.
     const devUid =
       process.env.NEXT_PUBLIC_DEV_USER_ID ||
       process.env.DEV_TEST_UID ||
-      "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
+      "00000000-0000-4000-8000-000000000001"; // v4-shaped UUID fallback
 
     let usedDevUid = false;
 
@@ -46,16 +46,20 @@ async function handle(req: NextRequest, context: any) {
     const finalUserId =
       existingUserId && existingUserId.trim().length > 0
         ? existingUserId
-        : devUid;
+        : (process.env.NODE_ENV !== "production" ? devUid : "");
 
-    if (!existingUserId || existingUserId.trim().length === 0) {
-      usedDevUid = true;
+    if (!finalUserId) {
+      // In production with no explicit user id header, do not inject.
+      // Backend will correctly return missing_x_user_id.
+    } else {
+      if (!existingUserId || existingUserId.trim().length === 0) {
+        usedDevUid = true;
+      }
+      // Normalise all the user-id style headers to the same value
+      headers.set("x-user-id", finalUserId);
+      headers.set("x-gravix-user-id", finalUserId);
+      headers.set("x-forwarded-user-id", finalUserId);
     }
-
-    // Normalise all the user-id style headers to the same value
-    headers.set("x-user-id", finalUserId);
-    headers.set("x-gravix-user-id", finalUserId);
-    headers.set("x-forwarded-user-id", finalUserId);
 
     // Org id: prefer explicit header, then env fallbacks
     const devOrg =

@@ -6,6 +6,70 @@ import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 const PROXY = "/api/proxy";
 
 // -------------------------------
+// Auth header injection (client-side)
+// -------------------------------
+
+function getSupabaseUserIdFromStorage(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    // Supabase v2 default storage key shape: sb-<project-ref>-auth-token
+    // We'll search for any key ending in "-auth-token" to keep this robust.
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (!k) continue;
+      if (!k.includes("auth-token")) continue;
+
+      const raw = window.localStorage.getItem(k);
+      if (!raw) continue;
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = null;
+      }
+
+      const uid =
+        parsed?.user?.id ||
+        parsed?.currentSession?.user?.id ||
+        parsed?.data?.user?.id ||
+        null;
+
+      if (typeof uid === "string" && uid.length > 10) return uid;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
+function withUserIdHeaders(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers || {});
+
+  // If caller already provided x-user-id, respect it.
+  if (!headers.get("x-user-id")) {
+    const uid = getSupabaseUserIdFromStorage();
+    if (uid) {
+      headers.set("x-user-id", uid);
+      // keep the aliases aligned (helps back-compat across endpoints)
+      headers.set("x-gravix-user-id", uid);
+      headers.set("x-forwarded-user-id", uid);
+    }
+  }
+
+  return {
+    ...(init || {}),
+    headers,
+  };
+}
+
+async function apiFetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  return await fetchJsonWithRetry<T>(url, withUserIdHeaders(init));
+}
+
+// -------------------------------
 // Types
 // -------------------------------
 export type CallDetail = any & {
@@ -36,16 +100,47 @@ export type ContactHit = {
 };
 
 // -------------------------------
+// Admin config
+// -------------------------------
+export type AdminConfig = {
+  streak_threshold: number;
+  xp_multiplier: number;
+  comeback_bonus: number;
+  updated_at?: string;
+};
+
+// -------------------------------
 // Small JSON fetcher with consistent errors
 // -------------------------------
 async function jfetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetchJsonWithRetry<any>(url, {
+  const r = await apiFetchJson<any>(url, {
     credentials: "include",
     cache: "no-store",
     ...(init || {}),
   });
   if (!r?.ok) throw new Error(r?.error || `HTTP error for ${url}`);
   return r as T;
+}
+
+export async function getAdminConfig(): Promise<AdminConfig> {
+  const j = await jfetch<{ ok: true; config: AdminConfig }>(
+    `${PROXY}/v1/admin/config`
+  );
+  return j.config;
+}
+
+export async function patchAdminConfig(
+  patch: Partial<Pick<AdminConfig, "streak_threshold" | "xp_multiplier" | "comeback_bonus">>
+): Promise<AdminConfig> {
+  const j = await jfetch<{ ok: true; config: AdminConfig }>(
+    `${PROXY}/v1/admin/config`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  );
+  return j.config;
 }
 
 // -------------------------------
@@ -247,7 +342,7 @@ export async function listSparringSessions(opts?: { limit?: number }) {
   const qs = params.toString();
   const url = `/api/proxy/v1/sparring/sessions${qs ? `?${qs}` : ""}`;
 
-  const res = await fetchJsonWithRetry(url);
+  const res = await apiFetchJson(url);
   // API shape: { ok: true, sessions: [...] }
   return (res.sessions ?? []) as SparringSession[];
 }
@@ -276,7 +371,7 @@ export async function getSparringSessionsByRep(
     limit: String(limit),
   });
 
-  const res = await fetchJsonWithRetry<{
+  const res = await apiFetchJson<{
     ok: boolean;
     sessions?: SparringSessionSummary[];
     error?: string;
@@ -292,7 +387,7 @@ export async function getSparringSessionsByRep(
 }
 
 export async function scoreSparring(transcript: string, personaId: string) {
-  const res = await fetchJsonWithRetry<{
+  const res = await apiFetchJson<{
     ok: boolean;
     personaId: string;
     scores: {
@@ -327,7 +422,7 @@ export async function logSparringSession(body: {
   totalScore?: number | null;
   xpAwarded?: number | null;
 }) {
-  const res = await fetchJsonWithRetry<{ ok: boolean; session: any }>(
+  const res = await apiFetchJson<{ ok: boolean; session: any }>(
     `${PROXY}/v1/sparring/log`,
     {
       method: "POST",
