@@ -33,6 +33,7 @@ export default function SparringStartButton({
 
   const [localPersona, setLocalPersona] = useState(personaId);
   const [localDifficulty, setLocalDifficulty] = useState(difficulty);
+  const [mode, setMode] = useState<"standard" | "time_trial" | "close_2m">("standard");
 
   const [presets, setPresets] = useState<SparringPersonaPreset[]>([]);
 
@@ -79,6 +80,17 @@ export default function SparringStartButton({
         },
       };
 
+      // Attach game mode + optional target duration for drills
+      if (mode === "standard") {
+        body.mode = "standard";
+      } else if (mode === "time_trial") {
+        body.mode = "time_trial";
+      } else if (mode === "close_2m") {
+        // Treat this as a special case of time_trial with a 2-minute target
+        body.mode = "time_trial";
+        body.targetDurationSec = 120; // 2 minutes target
+      }
+
       const res = await fetchJsonWithRetry("/api/proxy/v1/sparring/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -112,8 +124,8 @@ export default function SparringStartButton({
           onClick={onClick}
           disabled={busy}
           className={`inline-flex items-center justify-center rounded-full border border-emerald-500 px-4 py-1.5 text-xs font-medium ${busy
-              ? "bg-emerald-700/60 text-black/70"
-              : "bg-emerald-600 text-black hover:bg-emerald-500"
+            ? "bg-emerald-700/60 text-black/70"
+            : "bg-emerald-600 text-black hover:bg-emerald-500"
             } disabled:opacity-50 ${className}`}
         >
           {busy ? "Starting…" : label}
@@ -160,6 +172,52 @@ export default function SparringStartButton({
                     </span>
                   </div>
 
+                  <div className="space-y-2 mt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+                        Game mode
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Standard, time trial, or a 2-minute close drill
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMode("standard")}
+                        className={`rounded-full border px-3 py-1 text-xs ${mode === "standard"
+                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          : "border-neutral-700 bg-neutral-900 text-neutral-300"
+                          }`}
+                      >
+                        Standard round
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMode("time_trial")}
+                        className={`rounded-full border px-3 py-1 text-xs ${mode === "time_trial"
+                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          : "border-neutral-700 bg-neutral-900 text-neutral-300"
+                          }`}
+                      >
+                        Time trial (speed)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMode("close_2m")}
+                        className={`rounded-full border px-3 py-1 text-xs ${mode === "close_2m"
+                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          : "border-neutral-700 bg-neutral-900 text-neutral-300"
+                          }`}
+                      >
+                        Close in 2 minutes
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid max-h-64 grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
                     {presets.map((p) => {
                       const selected = p.id === localPersona;
@@ -174,8 +232,8 @@ export default function SparringStartButton({
                             }
                           }}
                           className={`flex w-full flex-col items-start rounded-2xl border px-4 py-3 text-left text-xs transition ${selected
-                              ? "border-emerald-500/80 bg-emerald-500/5"
-                              : "border-neutral-800 bg-neutral-950 hover:border-neutral-600"
+                            ? "border-emerald-500/80 bg-emerald-500/5"
+                            : "border-neutral-800 bg-neutral-950 hover:border-neutral-600"
                             }`}
                         >
                           <div className="flex w-full items-center justify-between gap-2">

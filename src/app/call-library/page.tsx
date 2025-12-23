@@ -34,6 +34,7 @@ type SparringSession = {
   id: string;
   created_at: string;
   persona_id: string | null;
+  difficulty?: string | null;
   xp_awarded: number | null;
   total?: number | null;
 };
@@ -106,12 +107,22 @@ function statusDotColour(status: string) {
   return "bg-neutral-500";
 }
 
+
 function displayType(type?: string | null): string {
   if (!type) return "Live";
   const t = type.toLowerCase();
   if (t === "upload") return "Upload";
   if (t === "sparring") return "Sparring";
   return "Live";
+}
+
+function difficultyLabel(value?: string | null) {
+  if (!value) return "Normal";
+  const v = value.toLowerCase();
+  if (v === "easy") return "Easy";
+  if (v === "hard") return "Hard";
+  if (v === "nightmare") return "Nightmare";
+  return "Normal";
 }
 
 export default function CallLibraryPage() {
@@ -878,6 +889,9 @@ export default function CallLibraryPage() {
                   typeof s.xp_awarded === "number" ? s.xp_awarded : undefined;
                 const total =
                   typeof s.total === "number" ? Math.round(s.total) : null;
+                const personaLabel =
+                  s.persona_id &&
+                  (sparPersonas.find((p) => p.id === s.persona_id)?.label || s.persona_id);
 
                 return (
                   <Link
@@ -891,12 +905,21 @@ export default function CallLibraryPage() {
                           <div className="text-sm text-neutral-100 truncate">
                             Sparring session
                           </div>
-                          {s.persona_id && (
-                            <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                              {s.persona_id}
-                            </span>
-                          )}
                         </div>
+                        {(personaLabel || s.difficulty) && (
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                            {personaLabel && (
+                              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                                {personaLabel}
+                              </span>
+                            )}
+                            {s.difficulty && (
+                              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                                {difficultyLabel(s.difficulty)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="text-xs text-neutral-500">{created}</div>
                       </div>
 

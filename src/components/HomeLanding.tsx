@@ -1,7 +1,39 @@
+"use client";
 // src/components/HomeLanding.tsx
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getAdminConfig } from "@/lib/api";
 
 export default function HomeLanding() {
+  const [isManager, setIsManager] = useState(false);
+  const [managerCheckDone, setManagerCheckDone] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        // Manager check MUST be client-side and go via api.ts so x-user-id is attached
+        await getAdminConfig();
+
+        if (!alive) return;
+
+        setIsManager(true);
+      } catch {
+        if (!alive) return;
+        setIsManager(false);
+      } finally {
+        if (!alive) return;
+        setManagerCheckDone(true);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <main className="p-8">
       <h1 className="text-xl font-semibold mb-4">Gravix</h1>
@@ -22,13 +54,27 @@ export default function HomeLanding() {
           </div>
         </Link>
 
+        {managerCheckDone && isManager && (
+          <Link
+            href="/admin/settings"
+            className="block"
+            data-testid="nav-admin-settings"
+          >
+            <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
+              Admin Settings
+              <div className="text-xs text-white/60 mt-1">
+                Streaks, XP multipliers, comeback bonus
+              </div>
+            </div>
+          </Link>
+        )}
+
         <Link href="/proxy/health" className="block" data-testid="nav-proxy-health">
           <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
             Proxy Health
           </div>
         </Link>
 
-        {/* NEW: Call Library */}
         <Link
           href="/call-library"
           className="group rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 hover:border-neutral-500 hover:bg-neutral-900 transition-colors"
@@ -37,7 +83,8 @@ export default function HomeLanding() {
             <div>
               <div className="font-medium text-neutral-50">Call Library</div>
               <p className="text-sm text-neutral-400">
-                Browse all live calls, AI sparring sessions, and uploads in one place.
+                Browse all live calls, AI sparring sessions, and uploads in one
+                place.
               </p>
             </div>
             <span className="text-xs text-neutral-400 group-hover:text-neutral-100">
