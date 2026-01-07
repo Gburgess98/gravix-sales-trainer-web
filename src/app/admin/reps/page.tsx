@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { listAdminReps, patchAdminRepTier, AdminRepRow, getAdminConfig } from "@/lib/api";
 
@@ -12,6 +13,7 @@ const ROLE_OPTIONS = [
 ] as const;
 
 export default function AdminRepsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +42,8 @@ export default function AdminRepsPage() {
 
         const msg = String(e?.message || "");
         if (msg.includes("forbidden_not_manager") || msg.includes("missing_x_user_id")) {
-          setForbidden(true);
-          setReps([]);
+          router.replace("/");
+          return;
         } else {
           setError(msg || "failed_to_load_reps");
         }

@@ -1,6 +1,7 @@
 // web/src/lib/api.ts
 
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { supabaseBrowser } from "@/lib/supabaseClient";
 
 // Always go through the Next proxy so we avoid CORS and can inject x-user-id server-side.
 const PROXY = "/api/proxy";
@@ -9,64 +10,204 @@ const PROXY = "/api/proxy";
 // Auth header injection (client-side)
 // -------------------------------
 
-function getSupabaseUserIdFromStorage(): string | null {
-  if (typeof window === "undefined") return null;
+let _cachedUid: string | null = null;
+let _cachedToken: string | null = null;
+let _cachedAt = 0;
 
+
+type BrowserAuth = { uid: string | null; token: string | null };
+
+function tryDecodeJwtSub(token: string | null): string | null {
+  if (!token) return null;
   try {
-    // Supabase v2 default storage key shape: sb-<project-ref>-auth-token
-    // We'll search for any key ending in "-auth-token" to keep this robust.
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const k = window.localStorage.key(i);
-      if (!k) continue;
-      if (!k.includes("auth-token")) continue;
-
-      const raw = window.localStorage.getItem(k);
-      if (!raw) continue;
-
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = null;
-      }
-
-      const uid =
-        parsed?.user?.id ||
-        parsed?.currentSession?.user?.id ||
-        parsed?.data?.user?.id ||
-        null;
-
-      if (typeof uid === "string" && uid.length > 10) return uid;
-    }
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "===".slice((b64.length + 3) % 4);
+    const json = JSON.parse(atob(padded));
+    const sub = typeof json?.sub === "string" ? json.sub : null;
+    return sub && sub.length > 10 ? sub : null;
   } catch {
-    // ignore
+    return null;
   }
-
-  return null;
 }
 
-function withUserIdHeaders(init?: RequestInit): RequestInit {
+function getSupabaseAuthFromStorage(): { uid: string | null; token: string | null } {
+  if (typeof window === "undefined") return { uid: null, token: null };
+
+  type Candidate = { uid: string; token: string | null; expiresAt: number };
+
+  const extractCandidate = (raw: string | null): Candidate | null => {
+    if (!raw) return null;
+
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+
+    const uid =
+      parsed?.user?.id ||
+      parsed?.currentSession?.user?.id ||
+      parsed?.data?.user?.id ||
+      parsed?.session?.user?.id ||
+      parsed?.data?.session?.user?.id ||
+      null;
+
+    const token =
+      parsed?.access_token ||
+      parsed?.currentSession?.access_token ||
+      parsed?.data?.session?.access_token ||
+      parsed?.session?.access_token ||
+      null;
+
+    // Supabase sessions often include `expires_at` (seconds since epoch)
+    const expiresAt =
+      Number(parsed?.expires_at) ||
+      Number(parsed?.currentSession?.expires_at) ||
+      Number(parsed?.data?.session?.expires_at) ||
+      Number(parsed?.session?.expires_at) ||
+      0;
+
+    if (typeof uid !== "string" || uid.length <= 10) return null;
+
+    return {
+      uid,
+      token: typeof token === "string" && token.length > 20 ? token : null,
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+    };
+  };
+
+  const shouldConsiderKey = (k: string) => {
+    // Supabase v2 commonly uses: sb-<project-ref>-auth-token
+    if (k.includes("auth-token")) return true;
+    // also allow broader matching for custom wrappers
+    if (k.toLowerCase().includes("supabase") && k.toLowerCase().includes("auth")) return true;
+    if (k.startsWith("sb-") && k.includes("-auth")) return true;
+    return false;
+  };
+
+  const scanStorage = (s: Storage | undefined): Candidate[] => {
+    if (!s) return [];
+    const out: Candidate[] = [];
+
+    try {
+      for (let i = 0; i < s.length; i++) {
+        const k = s.key(i);
+        if (!k) continue;
+        if (!shouldConsiderKey(k)) continue;
+
+        const c = extractCandidate(s.getItem(k));
+        if (c) out.push(c);
+      }
+    } catch {
+      // ignore
+    }
+
+    return out;
+  };
+
+  // Prefer the most-recent (highest expires_at) across storages.
+  const candidates = [...scanStorage(window.localStorage), ...scanStorage(window.sessionStorage)];
+
+  if (!candidates.length) return { uid: null, token: null };
+
+  candidates.sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0));
+  return { uid: candidates[0].uid, token: candidates[0].token };
+}
+
+async function getBrowserAuth(): Promise<BrowserAuth> {
+  if (typeof window === "undefined") return { uid: null, token: null };
+
+  const now = Date.now();
+  if ((_cachedUid || _cachedToken) && now - _cachedAt < 30_000) {
+    return { uid: _cachedUid, token: _cachedToken };
+  }
+
+  // 1) Prefer asking Supabase directly (most reliable)
+  try {
+    if (supabaseBrowser?.auth?.getSession) {
+      const { data } = await supabaseBrowser.auth.getSession();
+      const session = data?.session;
+      const uid = (session?.user?.id || "").trim() || null;
+      const token = (session?.access_token || "").trim() || null;
+
+      if (uid || token) {
+        _cachedUid = uid;
+        _cachedToken = token;
+        _cachedAt = now;
+        return { uid, token };
+      }
+    }
+
+    // fallback: getUser gives uid even if session read fails
+    if (supabaseBrowser?.auth?.getUser) {
+      const { data, error } = await supabaseBrowser.auth.getUser();
+      if (!error) {
+        const uid = (data?.user?.id || "").trim() || null;
+        if (uid) {
+          _cachedUid = uid;
+          _cachedAt = now;
+          return { uid, token: null };
+        }
+      }
+    }
+  } catch {
+    // ignore (fallback to storage)
+  }
+
+  // 2) Fallback: attempt to pull from local/sessionStorage
+  const { uid, token } = getSupabaseAuthFromStorage();
+  _cachedUid = uid;
+  _cachedToken = token;
+  _cachedAt = now;
+  return { uid, token };
+}
+
+async function withUserIdHeaders(init?: RequestInit): Promise<RequestInit> {
   const headers = new Headers(init?.headers || {});
 
-  // If caller already provided x-user-id, respect it.
-  if (!headers.get("x-user-id")) {
-    const uid = getSupabaseUserIdFromStorage();
-    if (uid) {
-      headers.set("x-user-id", uid);
-      // keep the aliases aligned (helps back-compat across endpoints)
-      headers.set("x-gravix-user-id", uid);
-      headers.set("x-forwarded-user-id", uid);
+  // Browser-only: attach auth so the proxy can resolve the user.
+  if (typeof window !== "undefined") {
+    const { uid, token } = await getBrowserAuth();
+
+    // Prefer bearer token when present (set both casings for safety)
+    if (token && !headers.get("authorization") && !headers.get("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+      headers.set("authorization", `Bearer ${token}`);
+    }
+
+    // If caller already provided x-user-id, respect it.
+    if (!headers.get("x-user-id")) {
+      // Prefer explicit uid from session/user; otherwise derive from JWT sub.
+      const effectiveUid = uid || tryDecodeJwtSub(token);
+      if (effectiveUid) {
+        headers.set("x-user-id", effectiveUid);
+        // keep the aliases aligned (helps back-compat across endpoints)
+        headers.set("x-gravix-user-id", effectiveUid);
+        headers.set("x-forwarded-user-id", effectiveUid);
+      }
     }
   }
+
+  // Always include cookies for proxy auth/session (browser + server calls that use this helper)
+  const credentials = (init as any)?.credentials ?? "include";
 
   return {
     ...(init || {}),
+    credentials,
     headers,
   };
 }
 
 async function apiFetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  return await fetchJsonWithRetry<T>(url, withUserIdHeaders(init));
+  const finalInit = await withUserIdHeaders({
+    credentials: "include",
+    cache: "no-store",
+    ...(init || {}),
+  });
+  return await fetchJsonWithRetry<T>(url, finalInit);
 }
 
 // -------------------------------
@@ -113,11 +254,13 @@ export type AdminConfig = {
 // Small JSON fetcher with consistent errors
 // -------------------------------
 async function jfetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await apiFetchJson<any>(url, {
+  const finalInit = await withUserIdHeaders({
     credentials: "include",
     cache: "no-store",
     ...(init || {}),
   });
+
+  const r = await fetchJsonWithRetry<any>(url, finalInit);
   if (!r?.ok) throw new Error(r?.error || `HTTP error for ${url}`);
   return r as T;
 }
@@ -469,4 +612,161 @@ export async function logSparringSession(body: {
   }
 
   return res.session;
+}
+
+// ------------------------------
+// Minimal helpers for admin pages
+// ------------------------------
+
+type ApiJson = Record<string, any>;
+
+function normaliseProxyPath(path: string) {
+  // Accept "/v1/..." or "v1/..." etc
+  if (!path.startsWith("/")) path = `/${path}`;
+  return path.startsWith("/v1") ? path : `/v1${path}`;
+}
+
+export async function apiGet<T = ApiJson>(path: string, init: RequestInit = {}) {
+  const urlPath = normaliseProxyPath(path);
+
+  const finalInit = await withUserIdHeaders({
+    ...init,
+    method: "GET",
+    credentials: "include",
+    cache: init.cache ?? "no-store",
+  });
+
+  const json = await fetchJsonWithRetry<any>(
+    `/api/proxy${urlPath}`,
+    finalInit
+  );
+
+  if (!json?.ok) {
+    throw new Error(json?.error || json?.message || "request_failed");
+  }
+
+  return json as T;
+}
+
+export async function apiPost<T = ApiJson>(
+  path: string,
+  body: any,
+  init: RequestInit = {}
+) {
+  const urlPath = normaliseProxyPath(path);
+
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const finalInit = await withUserIdHeaders({
+    ...init,
+    method: "POST",
+    credentials: "include",
+    cache: init.cache ?? "no-store",
+    headers,
+    body: JSON.stringify(body ?? {}),
+  });
+
+  const json = await fetchJsonWithRetry<any>(
+    `/api/proxy${urlPath}`,
+    finalInit
+  );
+
+  if (!json?.ok) {
+    throw new Error(json?.error || json?.message || "request_failed");
+  }
+
+  return json as T;
+}
+// ------------------------------
+// Convenience proxy helpers (safe to use from pages)
+// ------------------------------
+
+/**
+ * Fetch against the Next proxy using the same auth/header injection as apiGet/apiPost.
+ * Accepts either "/v1/..." or "v1/..." or "/..." paths.
+ */
+export async function proxyFetch(path: string, init: RequestInit = {}) {
+  // Allow callers to pass full proxy URLs too (e.g. "/api/proxy/v1/...")
+  if (path.startsWith("/api/proxy")) {
+    return fetchWithProxyAuth(path, init);
+  }
+
+  const urlPath = normaliseProxyPath(path);
+
+  const finalInit = await withUserIdHeaders({
+    ...init,
+    credentials: (init as any)?.credentials ?? "include",
+    cache: init.cache ?? "no-store",
+  });
+
+  return fetch(`/api/proxy${urlPath}`, finalInit);
+}
+
+export async function proxyGet<T = ApiJson>(path: string, init: RequestInit = {}) {
+  const r = await proxyFetch(path, { ...init, method: "GET" });
+  const json = (await r.json().catch(() => null)) as any;
+  if (!r.ok || !json?.ok) {
+    throw new Error(json?.error || json?.message || `request_failed_${r.status}`);
+  }
+  return json as T;
+}
+
+export async function proxyPost<T = ApiJson>(
+  path: string,
+  body: any,
+  init: RequestInit = {}
+) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  const r = await proxyFetch(path, {
+    ...init,
+    method: "POST",
+    headers,
+    body: JSON.stringify(body ?? {}),
+  });
+
+  const json = (await r.json().catch(() => null)) as any;
+  if (!r.ok || !json?.ok) {
+    throw new Error(json?.error || json?.message || `request_failed_${r.status}`);
+  }
+  return json as T;
+}
+
+// ------------------------------
+// Browser-only auth helper (for places that still call fetch directly)
+// ------------------------------
+
+function isProxyUrl(u: string) {
+  return u.startsWith("/api/proxy/") || u === "/api/proxy" || u.startsWith("/api/proxy?");
+}
+
+/**
+ * Use this when you have legacy code doing `fetch('/api/proxy/...')`.
+ * It attaches the same browser auth headers as the rest of this module.
+ */
+export async function fetchWithProxyAuth(url: string, init: RequestInit = {}) {
+  if (!isProxyUrl(url)) {
+    // Non-proxy call: just pass through (still include credentials if caller set them)
+    return fetch(url, init);
+  }
+
+  const finalInit = await withUserIdHeaders({
+    ...init,
+    credentials: (init as any)?.credentials ?? "include",
+    cache: init.cache ?? "no-store",
+  });
+
+  return fetch(url, finalInit);
+}
+
+/**
+ * Same as `fetchWithProxyAuth`, but accepts a `/v1/...` path and prefixes `/api/proxy`.
+ */
+export async function fetchProxy(path: string, init: RequestInit = {}) {
+  const urlPath = normaliseProxyPath(path);
+  return fetchWithProxyAuth(`/api/proxy${urlPath}`, init);
 }

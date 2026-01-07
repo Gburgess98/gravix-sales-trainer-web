@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = "/api/proxy";
 
 export type AdminConfig = {
   streak_threshold: number;
@@ -8,7 +8,10 @@ export type AdminConfig = {
 };
 
 export async function getAdminConfig(): Promise<AdminConfig> {
-  const res = await fetch(`${API_URL}/v1/admin/config`, { cache: "no-store" });
+  const res = await fetch(`${API_URL}/v1/admin/config`, {
+    cache: "no-store",
+    credentials: "include",
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error ?? "Failed to load admin config");
   return json.config;
@@ -20,6 +23,7 @@ export async function patchAdminConfig(patch: Partial<Pick<AdminConfig,
   const res = await fetch(`${API_URL}/v1/admin/config`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(patch),
   });
   const json = await res.json();

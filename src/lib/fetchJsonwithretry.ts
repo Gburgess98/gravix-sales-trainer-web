@@ -20,6 +20,42 @@ function backoffDelay(attemptIdx: number, baseMs: number, maxMs: number) {
   return Math.min(maxMs, exp + jitter);
 }
 
+function isProxyRequest(input: RequestInfo | URL) {
+  try {
+    const s = typeof input === "string" ? input : (input as any)?.toString?.() ?? "";
+    return s.includes("/api/proxy/");
+  } catch {
+    return false;
+  }
+}
+
+function getSupabaseAccessTokenFromLocalStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const key = Object.keys(window.localStorage).find(
+      (k) => k.startsWith("sb-") && k.endsWith("-auth-token")
+    );
+    if (!key) return null;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.access_token === "string" ? parsed.access_token : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasAuthHeader(headers: HeadersInit | undefined): boolean {
+  if (!headers) return false;
+  try {
+    if (headers instanceof Headers) return headers.has("authorization") || headers.has("Authorization");
+    if (Array.isArray(headers)) return headers.some(([k]) => String(k).toLowerCase() === "authorization");
+    return Object.keys(headers as any).some((k) => k.toLowerCase() === "authorization");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Fetch JSON with simple retry/backoff for network and 5xx errors.
  * - Throws with {status, body} on !ok
@@ -37,7 +73,25 @@ export async function fetchJsonWithRetry<T = any>(
 
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(input, init);
+      // Build a safe per-request init (do not mutate caller-provided init)
+      const finalInit: RequestInit = { ...init };
+
+      // Browser-only: if calling our Next proxy, include cookies and attach Supabase bearer if available
+      if (typeof window !== "undefined" && isProxyRequest(input)) {
+        if (!finalInit.credentials) finalInit.credentials = "include";
+
+        const alreadyHasAuth = hasAuthHeader(finalInit.headers);
+        if (!alreadyHasAuth) {
+          const token = getSupabaseAccessTokenFromLocalStorage();
+          if (token) {
+            const merged = new Headers(finalInit.headers as any);
+            merged.set("Authorization", `Bearer ${token}`);
+            finalInit.headers = merged;
+          }
+        }
+      }
+
+      const res = await fetch(input, finalInit);
       const text = await res.text();
       const isJson = (res.headers.get("content-type") || "").includes("application/json");
       const data = isJson && text ? JSON.parse(text) : (text as unknown as T);
