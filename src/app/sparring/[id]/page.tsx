@@ -7,6 +7,7 @@ import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import ErrorBox from "@/components/ErrorBox";
 import { useToast } from "@/components/Toast";
 import { triggerConfetti } from "@/lib/confetti";
+import { proxyFetch } from "@/lib/api";
 
 type ScoreBreakdown = {
   opener?: number;
@@ -499,7 +500,7 @@ export default function SparringSessionPage() {
     if (!id) return;
 
     try {
-      const r = await fetch(`/api/proxy/v1/sparring/sessions/${encodeURIComponent(id)}/micro-score`, {
+      const r = await proxyFetch(`/api/proxy/v1/sparring/sessions/${encodeURIComponent(id)}/micro-score`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
@@ -573,7 +574,7 @@ export default function SparringSessionPage() {
         text: t.text,
       }));
 
-      const r = await fetch("/api/proxy/v1/whisperer/preview", {
+      const r = await proxyFetch("/v1/whisperer/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -821,7 +822,7 @@ export default function SparringSessionPage() {
       // Use plain fetch here to avoid any legacy "expected JSON array"
       // assumptions inside fetchJsonWithRetry. This endpoint returns
       // an object: { ok, session, total, xp_awarded, flags, summary }.
-      const res = await fetch("/api/proxy/v1/sparring/score", {
+      const res = await proxyFetch("/v1/sparring/score", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId: session.id }),

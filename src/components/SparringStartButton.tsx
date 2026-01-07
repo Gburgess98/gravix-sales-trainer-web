@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { proxyFetch } from "@/lib/api";
 
 type SparringPersonaPreset = {
   id: string;
@@ -45,7 +45,7 @@ export default function SparringStartButton({
   useEffect(() => {
     async function loadPresets() {
       try {
-        const res = await fetch("/api/proxy/v1/sparring/personas", { cache: "no-store" });
+        const res = await proxyFetch("/api/proxy/v1/sparring/personas", { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (json && json.ok && Array.isArray(json.personas)) {
           setPresets(json.personas as SparringPersonaPreset[]);
@@ -91,17 +91,20 @@ export default function SparringStartButton({
         body.targetDurationSec = 120; // 2 minutes target
       }
 
-      const res = await fetchJsonWithRetry("/api/proxy/v1/sparring/sessions", {
+      const res = await proxyFetch("/api/proxy/v1/sparring/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
+        cache: "no-store",
       });
 
-      if (!res || res.ok === false || !res.session?.id) {
-        throw new Error(res?.error || "Failed to start sparring session.");
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json || json.ok === false || !json.session?.id) {
+        throw new Error(json?.error || "Failed to start sparring session.");
       }
 
-      router.push(`/sparring/${encodeURIComponent(res.session.id)}`);
+      router.push(`/sparring/${encodeURIComponent(json.session.id)}`);
     } catch (e: any) {
       console.error("Start sparring failed", e);
       setErr(e?.message || "Failed to start sparring session.");

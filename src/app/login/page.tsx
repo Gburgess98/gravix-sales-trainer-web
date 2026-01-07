@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+
 import { supabase } from "@/lib/supabase-browser";
 
 // Minimal local replacement for getSiteUrl (avoids missing '@/lib/site')
@@ -11,11 +14,40 @@ function getSiteUrl() {
 }
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("logout") === "1") {
+      // Best-effort cleanup in case user hits /login?logout=1 directly
+      (async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+
+        try {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.includes("auth-token") || k.startsWith("sb-")) {
+              keysToRemove.push(k);
+            }
+          }
+          keysToRemove.forEach((k) => localStorage.removeItem(k));
+        } catch {}
+      })();
+    }
+  }, [searchParams]);
   async function login() {
     const redirectTo = `${getSiteUrl()}/auth/callback`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo }
+      options: {
+        redirectTo,
+        queryParams: {
+          prompt: "select_account"
+        }
+      }
     });
   }
   return (

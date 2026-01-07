@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import * as API from '@/lib/api';
 
 export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
@@ -10,7 +11,7 @@ export default function LeaderboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/proxy/v1/dashboard/leaderboard?limit=10', { cache: 'no-store' });
+        const r = await API.apiGet('/dashboard/leaderboard?limit=10', { cache: 'no-store' });
         const j = await r.json();
         if (!j?.ok) throw new Error(j?.error || 'fetch_failed');
         setRows(j.items || []);

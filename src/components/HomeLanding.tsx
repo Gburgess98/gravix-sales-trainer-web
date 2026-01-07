@@ -54,19 +54,56 @@ export default function HomeLanding() {
           </div>
         </Link>
 
-        {managerCheckDone && isManager && (
-          <Link
-            href="/admin/settings"
-            className="block"
-            data-testid="nav-admin-settings"
-          >
-            <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
-              Admin Settings
-              <div className="text-xs text-white/60 mt-1">
-                Streaks, XP multipliers, comeback bonus
-              </div>
+        <Link href="/assignments" className="block" data-testid="nav-assignments">
+          <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
+            My Assignments
+            <div className="text-xs text-white/60 mt-1">
+              Your tasks from your manager
             </div>
-          </Link>
+          </div>
+        </Link>
+
+        {managerCheckDone && isManager && (
+          <>
+            <Link
+              href="/admin/settings"
+              className="block"
+              data-testid="nav-admin-settings"
+            >
+              <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
+                Admin Settings
+                <div className="text-xs text-white/60 mt-1">
+                  Streaks, XP multipliers, comeback bonus
+                </div>
+              </div>
+            </Link>
+
+            <Link
+              href="/admin/assignments"
+              className="block"
+              data-testid="nav-admin-assignments"
+            >
+              <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
+                Admin · Assignments
+                <div className="text-xs text-white/60 mt-1">
+                  Create and track rep tasks
+                </div>
+              </div>
+            </Link>
+
+            <Link
+              href="/admin/reps"
+              className="block"
+              data-testid="nav-admin-reps"
+            >
+              <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
+                Admin · Reps
+                <div className="text-xs text-white/60 mt-1">
+                  Manage team members and roles
+                </div>
+              </div>
+            </Link>
+          </>
         )}
 
         <Link href="/proxy/health" className="block" data-testid="nav-proxy-health">

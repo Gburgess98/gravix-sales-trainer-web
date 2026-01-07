@@ -12,6 +12,7 @@ import { linkCallByEmail, getCrmLink } from "@/lib/api";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
+import { proxyFetch } from "@/lib/api";
 
 import {
   listPins,
@@ -273,23 +274,24 @@ const onSaveAssign = useCallback(async () => {
     return () => { alive = false; };
   }, [callId]);
 
-  // Load coach assignments for this call
+// Load coach assignments for this call (initial) + refresh when coach panel opens
 useEffect(() => {
   if (!callId) return;
   let cancelled = false;
   (async () => {
     try {
       setAssignmentsLoading(true);
-      const r = await fetchJsonWithRetry<any>(`/api/proxy/v1/coach/assignments?callId=${encodeURIComponent(callId)}`);
-      if (!cancelled && r?.ok) setAssignments(r.items || []);
+      await loadAssignments();
     } catch {
-      // swallow – non-critical for page
+      // ignore
     } finally {
       if (!cancelled) setAssignmentsLoading(false);
     }
   })();
-  return () => { cancelled = true; };
-}, [callId]);
+  return () => {
+    cancelled = true;
+  };
+}, [callId, loadAssignments]);
 
 // Load drills catalog (static list from API)
 useEffect(() => {
@@ -314,7 +316,7 @@ useEffect(() => {
   (async () => {
     try {
       setUsersLoading(true);
-      const r = await fetch('/api/proxy/v1/team/users?limit=100', { cache: 'no-store' });
+      const r = await proxyFetch("/v1/team/users?limit=100", { cache: "no-store" });
       const j = await r.json();
       if (!cancelled && j?.ok && Array.isArray(j.items)) setUsers(j.items);
     } catch {}
@@ -326,9 +328,9 @@ useEffect(() => {
 // --- ADD: deleteAssignment helper ---
 async function deleteAssignment(id: string) {
   try {
-    const r = await fetch(`/api/proxy/v1/coach/assignments/${id}`, { method: "DELETE" });
+    const r = await proxyFetch(`/v1/coach/assignments/${id}`, { method: "DELETE" });
     if (!r.ok) throw new Error("Delete failed");
-    setAssignments(xs => xs.filter(x => x.id !== id));
+    setAssignments((xs) => xs.filter((x) => x.id !== id));
   } catch (e) {
     console.error("deleteAssignment", e);
   }
@@ -470,7 +472,7 @@ async function deleteAssignment(id: string) {
       el.removeEventListener('seeked', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
     };
-  }, [audioRef.current, audioUrl]);
+  }, [audioUrl]);
 
   // Player: resign URL if it errors (TTL expiry)
   useEffect(() => {
@@ -486,7 +488,7 @@ async function deleteAssignment(id: string) {
 
     el.addEventListener('error', onError);
     return () => el.removeEventListener('error', onError);
-  }, [callId, audioRef.current]);
+  }, [callId, audioUrl]);
 
   // ------- Actions -------
 
@@ -569,9 +571,9 @@ async function deleteAssignment(id: string) {
       const ac = new AbortController();
       searchAbortRef.current = ac;
       try {
-        const r = await fetch(
-          `/api/proxy/v1/crm/contacts?q=${encodeURIComponent(term)}&limit=12`,
-          { signal: ac.signal }
+        const r = await proxyFetch(
+          `/v1/crm/contacts?q=${encodeURIComponent(term)}&limit=12`,
+          { signal: ac.signal, cache: "no-store" }
         );
         const j = await r.json().catch(() => ({}));
         if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
@@ -988,7 +990,7 @@ async function deleteAssignment(id: string) {
                   if (!quickDrill || !assignee) return;
                   setAssignBusy(true);
                   try {
-                    const r = await fetch("/api/proxy/v1/coach/assign", {
+                    const r = await proxyFetch("/v1/coach/assign", {
                       method: "POST",
                       headers: { "content-type": "application/json" },
                       body: JSON.stringify({ callId, assigneeUserId: assignee, drillId: quickDrill }),

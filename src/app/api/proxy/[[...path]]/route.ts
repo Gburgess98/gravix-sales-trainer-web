@@ -1,10 +1,26 @@
 // src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
+import { cookies as nextCookies } from "next/headers";
 
 // Ensure Node runtime so we can stream the request body
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function decodeJwtSub(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "===".slice((b64.length + 3) % 4);
+    const json = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    const sub = typeof json?.sub === "string" ? json.sub : null;
+    return sub && sub.length > 10 ? sub : null;
+  } catch {
+    return null;
+  }
+}
 
 function getBackendBase(): string {
   const target = (process.env.API_PROXY_TARGET || "").trim();
@@ -20,13 +36,86 @@ function buildTargetUrl(base: string, path: string[] | undefined, req: NextReque
   return `${base.replace(/\/$/, '')}${suffix}${qs ? `?${qs}` : ''}`;
 }
 
+async function getUserIdFromSupabaseCookies(
+  _req: NextRequest,
+  cookieList: Array<{ name: string; value: string }>
+): Promise<string> {
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createServerClient } = await import("@supabase/ssr");
+
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() {
+          // IMPORTANT: use the cookie list captured once in the route handler
+          return cookieList;
+        },
+        setAll(_cookies) {
+          // Proxy must never mutate auth cookies
+          // (No-op by design)
+        },
+      },
+    });
+
+    const { data } = await supabase.auth.getUser();
+    return (data?.user?.id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function getUserIdFromAuthorizationHeader(req: NextRequest): Promise<string> {
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const auth = (req.headers.get("authorization") || "").trim();
+    if (!auth.toLowerCase().startsWith("bearer ")) return "";
+    const token = auth.slice(7).trim();
+    if (!token) return "";
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error) return "";
+    return (data?.user?.id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function handle(req: NextRequest, context: any) {
   try {
     const base = getBackendBase();
-    const target = buildTargetUrl(base, context?.params?.path as string[] | undefined, req);
+
+    // Next.js App Router: treat params as async-safe and only read once
+    const params = context?.params ? await Promise.resolve(context.params as any) : undefined;
+    const pathParts = (params as any)?.path as string[] | undefined;
+
+    // Next.js App Router: await cookies() once and reuse
+    const cookieStore = await nextCookies();
+    const cookieList = (cookieStore.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+
+    const target = buildTargetUrl(base, pathParts, req);
 
     // Optional debug: /api/proxy/v1/health?debug=1
     if (req.nextUrl.searchParams.get("debug") === "1") {
+      // Note: user id resolution happens after header cloning below
       return NextResponse.json({ ok: true, base, target });
     }
 
@@ -34,32 +123,76 @@ async function handle(req: NextRequest, context: any) {
     const headers = new Headers(req.headers);
     headers.delete("host");
 
-    // Dev fallback UID only when not production AND there is no explicit x-user-id header.
+    // ---- Resolve user id (priority)
+    // 1) Explicit x-user-id header (curl/dev)
+    // 2) Authorization: Bearer <jwt> (decode sub locally)
+    // 3) Supabase cookie session (real browser)
+    // 4) Dev fallback (explicit opt-in only)
+    const headerUserId = (headers.get("x-user-id") || "").trim();
+    const authHeader = (headers.get("authorization") || headers.get("Authorization") || "").trim();
+    const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+    const bearerUserId = decodeJwtSub(bearerToken) || "";
+
+    const cookieUserId = (!headerUserId && !bearerUserId)
+      ? await getUserIdFromSupabaseCookies(req, cookieList)
+      : "";
+
     const devUid =
-      process.env.NEXT_PUBLIC_DEV_USER_ID ||
-      process.env.DEV_TEST_UID ||
-      "00000000-0000-4000-8000-000000000001"; // v4-shaped UUID fallback
+      (process.env.NEXT_PUBLIC_DEV_USER_ID || process.env.DEV_TEST_UID || "").trim();
 
-    let usedDevUid = false;
+    const allowDevFallback =
+      process.env.NODE_ENV !== "production" &&
+      ((process.env.PROXY_DEV_FALLBACK || "") === "1" ||
+        (process.env.NEXT_PUBLIC_PROXY_DEV_FALLBACK || "") === "1");
 
-    const existingUserId = headers.get("x-user-id");
-    const finalUserId =
-      existingUserId && existingUserId.trim().length > 0
-        ? existingUserId
-        : (process.env.NODE_ENV !== "production" ? devUid : "");
+    const resolvedUserId =
+      headerUserId ||
+      bearerUserId ||
+      cookieUserId ||
+      (allowDevFallback ? devUid : "");
 
-    if (!finalUserId) {
-      // In production with no explicit user id header, do not inject.
-      // Backend will correctly return missing_x_user_id.
-    } else {
-      if (!existingUserId || existingUserId.trim().length === 0) {
-        usedDevUid = true;
-      }
-      // Normalise all the user-id style headers to the same value
-      headers.set("x-user-id", finalUserId);
-      headers.set("x-gravix-user-id", finalUserId);
-      headers.set("x-forwarded-user-id", finalUserId);
+    const usedDevUid =
+      !headerUserId && !bearerUserId && !cookieUserId && allowDevFallback && !!devUid;
+
+    const authSource = headerUserId
+      ? "header"
+      : bearerUserId
+        ? "bearer"
+        : cookieUserId
+          ? "cookie"
+          : usedDevUid
+            ? "dev"
+            : "";
+
+    // Debug headers
+    headers.set("x-proxy-auth-source", authSource);
+    headers.set("x-proxy-user-id", resolvedUserId || "");
+    headers.set("x-proxy-dev-uid", devUid || "");
+    headers.set("x-proxy-bearer", bearerToken ? "1" : "");
+
+    if (!resolvedUserId) {
+      const res = NextResponse.json({ ok: false, error: "missing_user" }, { status: 401 });
+      try { res.headers.set("x-proxy-auth-source", authSource); } catch { }
+      try { res.headers.set("x-proxy-user-id", resolvedUserId || ""); } catch { }
+      try { res.headers.set("x-proxy-dev-uid", devUid || ""); } catch { }
+      try { res.headers.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
+      try {
+        const hasCookieHeader = !!req.headers.get("cookie");
+        const hasNextCookies = cookieList.length > 0;
+        res.headers.set("x-proxy-has-cookie", hasCookieHeader ? "1" : "");
+        // keep header name for compatibility, but source is the single cookie list
+        res.headers.set("x-proxy-has-req-cookies", hasNextCookies ? "1" : "");
+        res.headers.set("x-proxy-has-next-cookies", hasNextCookies ? "1" : "");
+      } catch { }
+      try { res.headers.set("x-proxy-has-x-user-id", headerUserId ? "1" : ""); } catch { }
+      try { res.headers.set("x-proxy-has-supabase-env", (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) && (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY) ? "1" : ""); } catch { }
+      return res;
     }
+
+    // Inject identity headers for API
+    headers.set("x-user-id", resolvedUserId);
+    headers.set("x-gravix-user-id", resolvedUserId);
+    headers.set("x-forwarded-user-id", resolvedUserId);
 
     // Org id: prefer explicit header, then env fallbacks
     const devOrg =
@@ -83,7 +216,7 @@ async function handle(req: NextRequest, context: any) {
       if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
         headers.set("x-request-id", (crypto as any).randomUUID());
       }
-    } catch {}
+    } catch { }
 
     // Strip hop-by-hop / unsafe
     headers.delete("connection");
@@ -121,10 +254,21 @@ async function handle(req: NextRequest, context: any) {
 
     // Pass backend response straight through so the frontend can read raw error text
     const outHeaders = new Headers(r.headers);
+    try {
+      const hasCookieHeader = !!req.headers.get("cookie");
+      const hasNextCookies = cookieList.length > 0;
+      outHeaders.set("x-proxy-has-cookie", hasCookieHeader ? "1" : "");
+      outHeaders.set("x-proxy-has-req-cookies", hasNextCookies ? "1" : "");
+      outHeaders.set("x-proxy-has-next-cookies", hasNextCookies ? "1" : "");
+    } catch { }
 
     // Add debug headers so we can verify what the proxy used at runtime
-    try { outHeaders.set("x-proxy-api-base", base); } catch {}
-    try { if (usedDevUid && devUid) outHeaders.set("x-proxy-dev-uid", devUid); } catch {}
+    try { outHeaders.set("x-proxy-api-base", base); } catch { }
+    try { outHeaders.set("x-proxy-dev-uid", devUid); } catch { }
+    try { outHeaders.set("x-proxy-user-id", resolvedUserId); } catch { }
+    try { outHeaders.set("x-proxy-api-fallback", usedDevUid ? "1" : ""); } catch { }
+    try { outHeaders.set("x-proxy-auth-source", authSource); } catch { }
+    try { outHeaders.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");
@@ -157,12 +301,12 @@ async function handle(req: NextRequest, context: any) {
 
     // Heuristic: if it still looks binary and no JSON token found, attempt decompression guesses
     if (!/[\{\[]/.test(bodyText)) {
-      try { bodyText = gunzipSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+      try { bodyText = gunzipSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       if (!/[\{\[]/.test(bodyText)) {
-        try { bodyText = brotliDecompressSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+        try { bodyText = brotliDecompressSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       }
       if (!/[\{\[]/.test(bodyText)) {
-        try { bodyText = inflateSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+        try { bodyText = inflateSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       }
     }
 
@@ -193,8 +337,8 @@ async function handle(req: NextRequest, context: any) {
     }
 
     // Helpful debug headers
-    try { outHeaders.set("x-proxy-api-base", base); } catch {}
-    try { outHeaders.set("x-proxy-api-fallback", ""); } catch {}
+    try { outHeaders.set("x-proxy-api-base", base); } catch { }
+    try { outHeaders.set("x-proxy-api-fallback", usedDevUid ? "1" : ""); } catch { }
 
     // Final cleanup to strip any leftover binary prefix characters
     if (/^[^\x20-\x7E\r\n]+\{/.test(bodyText)) {

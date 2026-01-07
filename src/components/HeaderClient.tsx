@@ -16,8 +16,32 @@ export default function HeaderClient() {
 
   // Retained for future use; header now avoids intercepting clicks
   const logout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/login';
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("[logout] supabase signOut failed:", e);
+    }
+
+    // Clear cached app user id (if present)
+    try {
+      localStorage.removeItem("gravix_user_id");
+    } catch {}
+
+    // Clear Supabase auth keys so session cannot rehydrate
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (k.includes("auth-token") || k.startsWith("sb-")) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+
+    // Hard redirect to login to reset all client state
+    window.location.href = "/login";
   };
 
   return (
@@ -33,15 +57,16 @@ export default function HeaderClient() {
               </Link>
 
               <span className="text-sm opacity-70">{session.user.email}</span>
-              {/* Use plain navigation to avoid client-side click interception */}
-              <Link
-                href="/login?logout=1"
+              {/* Use button to trigger logout and fully clear Supabase state */}
+              <button
+                type="button"
+                onClick={logout}
                 className="border rounded px-3 py-1 text-sm"
                 data-testid="nav-logout"
                 title="Logout"
               >
                 Logout
-              </Link>
+              </button>
             </>
           ) : (
             <Link href="/login" className="border rounded px-3 py-1 text-sm">

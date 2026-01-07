@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { proxyFetch } from "@/lib/api";
 
 type Row = { name: string; ok: boolean; status?: number | null; ms?: number; detail?: string };
 
@@ -14,7 +15,7 @@ export default function AdminStatusCard() {
       setLoading(true);
       try {
         const t0 = performance.now();
-        const r = await fetch('/api/proxy/v1/admin/status', { cache: 'no-store' });
+        const r = await proxyFetch("/v1/admin/status", { cache: "no-store" });
         const ms = Math.round(performance.now() - t0);
         const j = await r.json();
         const rows: Row[] = (j?.checks || []).map((c: any) => ({
