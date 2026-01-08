@@ -4,8 +4,32 @@ import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
 import { cookies as nextCookies } from "next/headers";
 
 // Ensure Node runtime so we can stream the request body
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Guardrail: this proxy should ONLY forward to our API surface.
+// Prevents accidental open-proxy behaviour if someone hits /api/proxy/<random>.
+const ALLOWED_FIRST_SEGMENTS = new Set(["v1"]);
+
+
+function isAllowedProxyPath(pathParts: string[] | undefined): boolean {
+  if (!pathParts || pathParts.length === 0) return false;
+  const first = String(pathParts[0] || "").trim();
+  return ALLOWED_FIRST_SEGMENTS.has(first);
+}
+
+function isProxyDebugAllowed(req: NextRequest): boolean {
+  // In dev, allow without token.
+  if (process.env.NODE_ENV !== "production") return true;
+
+  // In prod, require an explicit token.
+  const token = (process.env.PROXY_DEBUG_TOKEN || "").trim();
+  if (!token) return false;
+
+  const hdr = (req.headers.get("x-proxy-debug-token") || "").trim();
+  return !!hdr && hdr === token;
+}
 
 function decodeJwtSub(token: string | null): string | null {
   if (!token) return null;
@@ -107,14 +131,117 @@ async function handle(req: NextRequest, context: any) {
     const params = context?.params ? await Promise.resolve(context.params as any) : undefined;
     const pathParts = (params as any)?.path as string[] | undefined;
 
+    // ---- Known-good proxy debug route (never forwards upstream)
+    // GET /api/proxy/__debug  (dev: open, prod: requires x-proxy-debug-token)
+    if (req.method === "GET" && Array.isArray(pathParts) && pathParts[0] === "__debug") {
+      if (!isProxyDebugAllowed(req)) {
+        const res = NextResponse.json({ ok: false, error: "debug_forbidden" }, { status: 403 });
+        res.headers.set("x-proxy-guardrail", "debug_forbidden");
+        return res;
+      }
+
+      const cookieStore = await nextCookies();
+      const cookieList = (cookieStore.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+
+      const hdrs = new Headers(req.headers);
+      const headerUserId = (hdrs.get("x-user-id") || "").trim();
+
+      const authHeader = (hdrs.get("authorization") || hdrs.get("Authorization") || "").trim();
+      const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+      const bearerUserId = decodeJwtSub(bearerToken) || "";
+
+      const cookieUserId = (!headerUserId && !bearerUserId)
+        ? await getUserIdFromSupabaseCookies(req, cookieList)
+        : "";
+
+      const devUid = (process.env.NEXT_PUBLIC_DEV_USER_ID || process.env.DEV_TEST_UID || "").trim();
+      const allowDevFallback =
+        process.env.NODE_ENV !== "production" &&
+        ((process.env.PROXY_DEV_FALLBACK || "") === "1" ||
+          (process.env.NEXT_PUBLIC_PROXY_DEV_FALLBACK || "") === "1");
+
+      const resolvedUserId =
+        headerUserId ||
+        bearerUserId ||
+        cookieUserId ||
+        (allowDevFallback ? devUid : "");
+
+      const usedDevUid =
+        !headerUserId && !bearerUserId && !cookieUserId && allowDevFallback && !!devUid;
+
+      const authSource = headerUserId
+        ? "header"
+        : bearerUserId
+          ? "bearer"
+          : cookieUserId
+            ? "cookie"
+            : usedDevUid
+              ? "dev"
+              : "none";
+
+      const hasCookieHeader = !!req.headers.get("cookie");
+      const hasNextCookies = cookieList.length > 0;
+
+      const hasSupabaseEnv = !!(
+        (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) &&
+        (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)
+      );
+
+      return NextResponse.json(
+        {
+          ok: true,
+          now: new Date().toISOString(),
+          method: req.method,
+          pathParts,
+          base: getBackendBase(),
+          auth: {
+            resolvedUserId: resolvedUserId || "",
+            authSource,
+            hasBearer: !!bearerToken,
+            hasXUserIdHeader: !!headerUserId,
+            allowDevFallback,
+          },
+          cookies: {
+            hasCookieHeader,
+            cookieCount: cookieList.length,
+            hasNextCookies,
+          },
+          env: {
+            hasSupabaseEnv,
+            nodeEnv: process.env.NODE_ENV,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
+    // Guardrail: only allow forwarding to /v1/*
+    if (!isAllowedProxyPath(pathParts)) {
+      return NextResponse.json(
+        { ok: false, error: "proxy_path_not_allowed" },
+        {
+          status: 404,
+          headers: {
+            "x-proxy-guardrail": "path_not_allowed",
+          },
+        }
+      );
+    }
+
     // Next.js App Router: await cookies() once and reuse
     const cookieStore = await nextCookies();
     const cookieList = (cookieStore.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
 
     const target = buildTargetUrl(base, pathParts, req);
 
-    // Optional debug: /api/proxy/v1/health?debug=1
+    // Optional debug: /api/proxy/v1/health?debug=1 (DEV ONLY)
     if (req.nextUrl.searchParams.get("debug") === "1") {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { ok: false, error: "debug_disabled" },
+          { status: 404, headers: { "x-proxy-guardrail": "debug_disabled" } }
+        );
+      }
       // Note: user id resolution happens after header cloning below
       return NextResponse.json({ ok: true, base, target });
     }

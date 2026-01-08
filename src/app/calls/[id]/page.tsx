@@ -96,6 +96,8 @@ const toast = useToast();
 
   // url controls for crm panel
   const params = useSearchParams();
+  const assignmentId =
+    params.get("assignmentId") || params.get("assignment") || undefined;
   const router = useRouter();
   const pathname = usePathname();
 
@@ -227,22 +229,28 @@ useEffect(() => {
   })();
 }, [coachOpen, callId]);
 
-const onSaveAssign = useCallback(async () => {
-  try {
-    setAssignSaving(true); setAssignError(null);
-    await fetchJsonWithRetry(`/api/proxy/v1/coach/assign`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ callId, assigneeUserId, drillId, notes })
-    });
-    await loadAssignments().catch(() => {});
-    toast("Assignment saved.");
-  } catch (e: any) {
-    setAssignError(e?.message || "Failed to save assignment.");
-  } finally {
-    setAssignSaving(false);
-  }
-}, [callId, assigneeUserId, drillId, notes, loadAssignments, toast]);
+  const onSaveAssign = useCallback(async () => {
+    try {
+      setAssignSaving(true); setAssignError(null);
+      await fetchJsonWithRetry(`/api/proxy/v1/coach/assign`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callId,
+          assigneeUserId,
+          drillId,
+          notes,
+          ...(assignmentId ? { assignmentId } : {}),
+        }),
+      });
+      await loadAssignments().catch(() => {});
+      toast("Assignment saved.");
+    } catch (e: any) {
+      setAssignError(e?.message || "Failed to save assignment.");
+    } finally {
+      setAssignSaving(false);
+    }
+  }, [callId, assigneeUserId, drillId, notes, loadAssignments, toast, assignmentId]);
 
 
   // ------- Data loaders -------
@@ -993,7 +1001,12 @@ async function deleteAssignment(id: string) {
                     const r = await proxyFetch("/v1/coach/assign", {
                       method: "POST",
                       headers: { "content-type": "application/json" },
-                      body: JSON.stringify({ callId, assigneeUserId: assignee, drillId: quickDrill }),
+                      body: JSON.stringify({
+                        callId,
+                        assigneeUserId: assignee,
+                        drillId: quickDrill,
+                        ...(assignmentId ? { assignmentId } : {}),
+                      }),
                     });
                     const j = await r.json();
                     if (!r.ok || !j?.ok) throw new Error(j?.error || "failed");
