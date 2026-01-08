@@ -32,20 +32,107 @@ type Signals = {
   stale_reps_7d: { rep_id: string; name: string; tier?: string }[];
 };
 
-function fmt(dt?: string | null) {
-  if (!dt) return "—";
-  try {
-    return new Date(dt).toLocaleString();
-  } catch {
-    return dt;
-  }
+type StuckSignal = {
+  label: string;
+  tone: "danger" | "warn" | "neutral";
+  reason: string; // manager-facing “why stuck”
+};
+
+// Helper for stuck state pills
+function stuckPill(sig: StuckSignal) {
+  const cls =
+    sig.tone === "danger"
+      ? "border-red-500/30 bg-red-500/10 text-red-200"
+      : sig.tone === "warn"
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+      : "border-neutral-700 bg-neutral-900 text-neutral-200";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {sig.label}
+    </span>
+  );
 }
 
-function isOverdue(a: Assignment) {
-  if (!a.due_at) return false;
-  const due = new Date(a.due_at).getTime();
-  const now = Date.now();
-  return a.status !== "completed" && Number.isFinite(due) && due < now;
+function stuckSectionClass(tone: StuckSignal["tone"]) {
+  if (tone === "danger") {
+    return "border-red-500/40 bg-red-500/5";
+  }
+  if (tone === "warn") {
+    return "border-amber-500/40 bg-amber-500/5";
+  }
+  return "border-neutral-800 bg-neutral-950";
+}
+
+function repStuckSignal(args: {
+  rep: Rep;
+  raw: Assignment[];
+  signals: Signals | null;
+}): StuckSignal {
+  const { rep, raw, signals } = args;
+
+  const openCount = raw.filter((a) => String(a.status).toLowerCase() === "assigned").length;
+  const overdueCount = raw.filter((a) => isOverdue(a)).length;
+
+  if (overdueCount > 0) {
+    return {
+      label: `Overdue: ${overdueCount}`,
+      tone: "danger",
+      reason: `${overdueCount} overdue assignment${overdueCount === 1 ? "" : "s"}`,
+    };
+  }
+
+  const isStale = !!signals?.stale_reps_7d?.some((r) => r.rep_id === rep.id);
+  if (isStale) {
+    return {
+      label: "No completions (7d)",
+      tone: "warn",
+      reason: "No completed assignments in the last 7 days",
+    };
+  }
+
+  if (openCount > 0) {
+    return {
+      label: `Open: ${openCount}`,
+      tone: "neutral",
+      reason: `${openCount} open assignment${openCount === 1 ? "" : "s"}`,
+    };
+  }
+
+  return {
+    label: "All clear",
+    tone: "neutral",
+    reason: "No open or overdue assignments",
+  };
+}
+
+function repNextAction(args: {
+  rep: Rep;
+  raw: Assignment[];
+  signals: Signals | null;
+}): string | null {
+  const { rep, raw, signals } = args;
+
+  const overdue = raw.filter((a) => isOverdue(a));
+  if (overdue.length > 0) {
+    return "Chase overdue task or reassign with today’s due date";
+  }
+
+  const isStale = !!signals?.stale_reps_7d?.some((r) => r.rep_id === rep.id);
+  if (isStale) {
+    return "Assign 1 sparring drill today to restart momentum";
+  }
+
+  const openCount = raw.filter((a) => String(a.status).toLowerCase() === "assigned").length;
+  if (openCount >= 3) {
+    return "Reduce open tasks — assign only 1 priority today";
+  }
+
+  if (openCount > 0) {
+    return "Follow up on current assignment";
+  }
+
+  return null;
 }
 
 function statusPill(status: string, overdue: boolean) {
@@ -71,6 +158,28 @@ function statusPill(status: string, overdue: boolean) {
   );
 }
 
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
+}
+
+function isOverdue(a: Assignment) {
+  if (!a.due_at) return false;
+  const due = new Date(a.due_at).getTime();
+  const now = Date.now();
+  return a.status !== "completed" && Number.isFinite(due) && due < now;
+}
+
+function completedLast7d(a: Assignment) {
+  if (!a.completed_at) return false;
+  const t = new Date(a.completed_at).getTime();
+  return Date.now() - t <= 7 * 24 * 60 * 60 * 1000;
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await proxyFetch(path, { cache: "no-store" });
   const txt = await res.text();
@@ -93,6 +202,8 @@ export default function AdminAssignmentsClient() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  const [filter, setFilter] = useState<"open" | "completed7d" | "overdue">("open");
 
   async function load() {
     setErr(null);
@@ -154,6 +265,28 @@ export default function AdminAssignmentsClient() {
     const overdue = flat.filter((a) => isOverdue(a)).length;
     return { assigned, completed, overdue };
   }, [flat]);
+
+  const sortedReps = useMemo(() => {
+    // Sort managers' view by "stuck first": overdue → stale (7d) → open count → name
+    return [...reps].sort((a, b) => {
+      const aRaw = rowsByRep[a.id] || [];
+      const bRaw = rowsByRep[b.id] || [];
+
+      const aOverdue = aRaw.filter(isOverdue).length;
+      const bOverdue = bRaw.filter(isOverdue).length;
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+      const aStale = signals?.stale_reps_7d?.some((r) => r.rep_id === a.id) ? 1 : 0;
+      const bStale = signals?.stale_reps_7d?.some((r) => r.rep_id === b.id) ? 1 : 0;
+      if (aStale !== bStale) return bStale - aStale;
+
+      const aOpen = aRaw.filter((x) => String(x.status).toLowerCase() === "assigned").length;
+      const bOpen = bRaw.filter((x) => String(x.status).toLowerCase() === "assigned").length;
+      if (aOpen !== bOpen) return bOpen - aOpen;
+
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }, [reps, rowsByRep, signals]);
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -225,25 +358,98 @@ export default function AdminAssignmentsClient() {
             </div>
           ) : null}
 
+          <div className="mt-6 flex items-center gap-2">
+            <button
+              onClick={() => setFilter("open")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                filter === "open"
+                  ? "bg-white text-black"
+                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+              }`}
+            >
+              Assigned
+            </button>
+
+            <button
+              onClick={() => setFilter("completed7d")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                filter === "completed7d"
+                  ? "bg-white text-black"
+                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+              }`}
+            >
+              Completed (7d)
+            </button>
+
+            <button
+              onClick={() => setFilter("overdue")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                filter === "overdue"
+                  ? "bg-white text-black"
+                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+              }`}
+            >
+              Overdue
+            </button>
+          </div>
+
           {/* Rep panels */}
           <div className="mt-8 space-y-6">
-            {reps.map((rep) => {
-              const list = rowsByRep[rep.id] || [];
+            {sortedReps.map((rep) => {
+              const raw = rowsByRep[rep.id] || [];
+              const list =
+                filter === "open"
+                  ? raw.filter((a) => String(a.status).toLowerCase() === "assigned")
+                  : filter === "completed7d"
+                  ? raw.filter((a) => String(a.status).toLowerCase() === "completed" && completedLast7d(a))
+                  : raw.filter((a) => isOverdue(a));
               if (!list.length) return null;
 
-              const open = list.filter((a) => String(a.status).toLowerCase() === "assigned");
-              const done = list.filter((a) => String(a.status).toLowerCase() === "completed");
+              const open = raw.filter((a) => String(a.status).toLowerCase() === "assigned");
+              const done = raw.filter((a) => String(a.status).toLowerCase() === "completed");
+
+              const sig = repStuckSignal({ rep, raw, signals });
 
               return (
-                <section key={rep.id} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <section
+                  key={rep.id}
+                  className={["rounded-2xl border p-4", stuckSectionClass(sig.tone)].join(" ")}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-base font-semibold">{rep.name || rep.id}</div>
                       <div className="mt-1 text-xs text-neutral-500">
                         Open: {open.length} · Completed: {done.length}
                       </div>
+                      <div className="mt-1 text-xs text-neutral-400">
+                        <span className="font-semibold text-neutral-300">Why:</span> {sig.reason}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      {stuckPill(sig)}
+
+                      {(sig.tone === "danger" || sig.tone === "warn") ? (
+                        <Link
+                          href={`/admin/assignments?rep_id=${encodeURIComponent(rep.id)}#create-assignment`}
+                          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                        >
+                          Quick assign
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
+                  {(() => {
+                    const suggestion = repNextAction({ rep, raw, signals });
+                    if (!suggestion) return null;
+
+                    return (
+                      <div className="mt-2 text-xs text-neutral-400">
+                        Suggested next move:{" "}
+                        <span className="text-neutral-200">{suggestion}</span>
+                      </div>
+                    );
+                  })()}
 
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full text-left text-sm">
@@ -286,7 +492,7 @@ export default function AdminAssignmentsClient() {
             })}
 
             {/* If nothing has been assigned at all */}
-            {reps.every((r) => (rowsByRep[r.id] || []).length === 0) ? (
+            {sortedReps.every((r) => (rowsByRep[r.id] || []).length === 0) ? (
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-6 text-sm text-neutral-400">
                 No assignments found for your reps.
               </div>

@@ -38,6 +38,26 @@ function fmt(dt?: string | null) {
   }
 }
 
+function daysUntil(dueAt?: string | null) {
+  if (!dueAt) return 0;
+  const due = new Date(dueAt).getTime();
+  if (Number.isNaN(due)) return 0;
+  const diffMs = due - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function dueLabel(a: Assignment) {
+  const late = daysLate(a.due_at);
+  if (late > 0) return { text: `Overdue (${late} day${late === 1 ? "" : "s"})`, tone: "overdue" as const };
+  if (isDueToday(a.due_at)) return { text: "Due today", tone: "today" as const };
+  if (a.due_at) {
+    const inDays = daysUntil(a.due_at);
+    return { text: inDays <= 1 ? "Due tomorrow" : `Due in ${inDays} days`, tone: "upcoming" as const };
+  }
+  return { text: "No due date", tone: "none" as const };
+}
+
 function pill(status: string) {
   const s = String(status || "").toLowerCase();
   if (s === "completed") {
@@ -52,6 +72,91 @@ function pill(status: string) {
       ASSIGNED
     </span>
   );
+}
+
+function daysLate(dueAt?: string | null) {
+  if (!dueAt) return 0;
+  const due = new Date(dueAt).getTime();
+  if (Number.isNaN(due)) return 0;
+  const diffMs = Date.now() - due;
+  if (diffMs <= 0) return 0;
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function isOverdue(a: Assignment) {
+  return daysLate(a.due_at) > 0;
+}
+
+function openCardClass(a: Assignment) {
+  if (!isOverdue(a)) return "rounded-xl border border-neutral-800 bg-neutral-950 p-4";
+  return "rounded-xl border border-red-500/40 bg-red-500/10 p-4";
+}
+
+function focusReason(a: Assignment | null) {
+  if (!a) return "";
+  const late = daysLate(a.due_at);
+  if (late > 0) return `Reason: Overdue (${late} day${late === 1 ? "" : "s"})`;
+  return "Reason: Oldest assigned";
+}
+
+function isDueToday(dueAt?: string | null) {
+  if (!dueAt) return false;
+  const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return false;
+
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+function priorityBucket(a: Assignment) {
+  // 0 = overdue, 1 = due today, 2 = due later, 3 = no due date
+  const late = daysLate(a.due_at);
+  if (late > 0) return 0;
+  if (isDueToday(a.due_at)) return 1;
+  if (a.due_at) return 2;
+  return 3;
+}
+
+function compareAssignments(a: Assignment, b: Assignment) {
+  const pa = priorityBucket(a);
+  const pb = priorityBucket(b);
+  if (pa !== pb) return pa - pb;
+
+  // Within a bucket:
+  // - if both have due dates, earliest due first
+  // - otherwise oldest created first
+  const aDue = a.due_at ? new Date(a.due_at).getTime() : NaN;
+  const bDue = b.due_at ? new Date(b.due_at).getTime() : NaN;
+
+  const aHasDue = Number.isFinite(aDue);
+  const bHasDue = Number.isFinite(bDue);
+
+  if (aHasDue && bHasDue && aDue !== bDue) return aDue - bDue;
+
+  const aCreated = new Date(a.created_at).getTime();
+  const bCreated = new Date(b.created_at).getTime();
+  return aCreated - bCreated;
+}
+
+function getTodayFocus(assignments: Assignment[]) {
+  const assigned = assignments.filter((a) => a.status === "assigned");
+  if (assigned.length === 0) return null;
+
+  const now = Date.now();
+
+  const overdue = assigned
+    .filter((a) => a.due_at && new Date(a.due_at).getTime() < now)
+    .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
+
+  if (overdue.length > 0) return overdue[0];
+
+  return assigned.sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )[0];
 }
 
 async function proxyJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -108,8 +213,12 @@ export default function AssignmentsClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const open = useMemo(() => rows.filter((r) => r.status === "assigned"), [rows]);
+  const open = useMemo(
+    () => rows.filter((r) => r.status === "assigned").slice().sort(compareAssignments),
+    [rows]
+  );
   const done = useMemo(() => rows.filter((r) => r.status === "completed"), [rows]);
+  const todayFocus = useMemo(() => getTodayFocus(rows), [rows]);
 
   async function complete(id: string) {
     setErr(null);
@@ -151,6 +260,79 @@ export default function AssignmentsClient() {
         </div>
       </div>
 
+      {todayFocus && !loading && (
+        <div
+          className={
+            todayFocus && isOverdue(todayFocus)
+              ? "mt-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4"
+              : "mt-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4"
+          }
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div
+                className={
+                  todayFocus && isOverdue(todayFocus)
+                    ? "text-xs font-semibold uppercase tracking-wide text-red-300"
+                    : "text-xs font-semibold uppercase tracking-wide text-orange-300"
+                }
+              >
+               Today’s Focus
+              </div>
+              <div className="mt-1 text-lg font-semibold">{todayFocus.title || "(Untitled)"}</div>
+              <div className="mt-1 text-xs">
+                {(() => {
+                  const d = dueLabel(todayFocus);
+                  const cls =
+                    d.tone === "overdue"
+                      ? "text-red-300"
+                      : d.tone === "today"
+                        ? "text-orange-300"
+                        : "text-neutral-400";
+                  return <span className={cls}>{d.text}</span>;
+                })()}
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                <span className="text-neutral-300">{focusReason(todayFocus)}</span>
+              </div>
+            </div>
+
+            {todayFocus.type === "sparring" ? (
+              <Link
+                href={`/sparring?assignment=${encodeURIComponent(
+                  todayFocus.id
+                )}&assignmentId=${encodeURIComponent(todayFocus.id)}${
+                  todayFocus.target_id ? `&persona=${encodeURIComponent(todayFocus.target_id)}` : ""
+                }`}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+              >
+                Start now
+              </Link>
+            ) : todayFocus.type === "call_review" && todayFocus.target_id ? (
+              <Link
+                href={`/calls/${encodeURIComponent(
+                  todayFocus.target_id
+                )}?assignment=${encodeURIComponent(
+                  todayFocus.id
+                )}&assignmentId=${encodeURIComponent(todayFocus.id)}&callId=${encodeURIComponent(
+                  todayFocus.target_id
+                )}`}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+              >
+                Review call
+              </Link>
+            ) : (
+              <button
+                onClick={() => complete(todayFocus.id)}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+              >
+                Mark complete
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {err && (
         <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
           {err}
@@ -168,7 +350,7 @@ export default function AssignmentsClient() {
                 <div className="text-sm text-neutral-500">No open assignments.</div>
               ) : (
                 open.map((a) => (
-                  <div key={a.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div key={a.id} className={openCardClass(a)}>
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2">
@@ -176,14 +358,28 @@ export default function AssignmentsClient() {
                           {pill(a.status)}
                         </div>
                         <div className="mt-1 text-base font-semibold">{a.title || "(Untitled)"}</div>
-                        <div className="mt-2 text-xs text-neutral-500">
-                          Due: {fmt(a.due_at)} · Created: {fmt(a.created_at)}
+                        <div className="mt-2 text-xs">
+                          {(() => {
+                            const d = dueLabel(a);
+                            const cls =
+                              d.tone === "overdue"
+                                ? "text-red-300"
+                                : d.tone === "today"
+                                  ? "text-orange-300"
+                                  : "text-neutral-500";
+                            return (
+                              <>
+                                <span className={cls}>{d.text}</span>
+                                <span className="text-neutral-500"> · Created: {fmt(a.created_at)}</span>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
 
                       {a.type === "sparring" ? (
                         <Link
-                          href={`/sparring?assignment=${encodeURIComponent(a.id)}${
+                          href={`/sparring?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}${
                             a.target_id ? `&persona=${encodeURIComponent(a.target_id)}` : ""
                           }`}
                           className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
@@ -192,7 +388,7 @@ export default function AssignmentsClient() {
                         </Link>
                       ) : a.type === "call_review" && a.target_id ? (
                         <Link
-                          href={`/calls/${encodeURIComponent(a.target_id)}?assignment=${encodeURIComponent(a.id)}`}
+                          href={`/calls/${encodeURIComponent(a.target_id)}?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}&callId=${encodeURIComponent(a.target_id)}`}
                           className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
                         >
                           Open call review

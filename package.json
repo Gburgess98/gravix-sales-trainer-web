@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "prepare": "husky",
+    "smoke:proxy": "bash scripts/smoke-proxy-auth.sh",
+    "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "test": "echo \"No tests yet\""
   },
   "lint-staged": {

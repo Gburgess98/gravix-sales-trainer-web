@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import ErrorBox from "@/components/ErrorBox";
@@ -466,7 +466,17 @@ function attachMicroToLastUserTurn(prev: SparTurn[], micro: any): SparTurn[] {
 export default function SparringSessionPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params?.id as string;
+
+  // If this session was launched from /assignments, we carry the assignment context
+  // so the backend can auto-complete it when the sparring round is scored.
+  const assignmentId = useMemo(() => {
+    const v = searchParams?.get("assignmentId") || searchParams?.get("assignment");
+    if (!v) return null;
+    const t = String(v).trim();
+    return t.length > 0 ? t : null;
+  }, [searchParams]);
 
   const [session, setSession] = useState<SparringSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -825,7 +835,10 @@ export default function SparringSessionPage() {
       const res = await proxyFetch("/v1/sparring/score", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sessionId: session.id }),
+        body: JSON.stringify({
+          sessionId: session.id,
+          ...(assignmentId ? { assignmentId } : {}),
+        }),
       });
 
       if (!res.ok) {
