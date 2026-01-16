@@ -10,12 +10,34 @@ export const dynamic = "force-dynamic";
 
 // Guardrail: this proxy should ONLY forward to our API surface.
 // Prevents accidental open-proxy behaviour if someone hits /api/proxy/<random>.
+
 const ALLOWED_FIRST_SEGMENTS = new Set(["v1"]);
+const MAX_PROXY_SEGMENTS = 20;
+const MAX_PROXY_SEGMENT_LEN = 200;
+
+function sanitizeProxyPathParts(pathParts: string[] | undefined): string[] | null {
+  if (!Array.isArray(pathParts) || pathParts.length === 0) return null;
+  if (pathParts.length > MAX_PROXY_SEGMENTS) return null;
+
+  const cleaned: string[] = [];
+  for (const raw of pathParts) {
+    const seg = String(raw ?? "").trim();
+    if (!seg) return null;
+    if (seg.length > MAX_PROXY_SEGMENT_LEN) return null;
+    // Block path traversal / odd encodings
+    if (seg === "." || seg === ".." || seg.includes("..") || seg.includes("\\")) return null;
+    // Disallow accidental absolute URLs / schemes
+    if (/^[a-zA-Z]+:/.test(seg)) return null;
+    cleaned.push(seg);
+  }
+  return cleaned;
+}
 
 
 function isAllowedProxyPath(pathParts: string[] | undefined): boolean {
-  if (!pathParts || pathParts.length === 0) return false;
-  const first = String(pathParts[0] || "").trim();
+  const cleaned = sanitizeProxyPathParts(pathParts);
+  if (!cleaned || cleaned.length === 0) return false;
+  const first = cleaned[0];
   return ALLOWED_FIRST_SEGMENTS.has(first);
 }
 
@@ -129,7 +151,8 @@ async function handle(req: NextRequest, context: any) {
 
     // Next.js App Router: treat params as async-safe and only read once
     const params = context?.params ? await Promise.resolve(context.params as any) : undefined;
-    const pathParts = (params as any)?.path as string[] | undefined;
+    const rawPathParts = (params as any)?.path as string[] | undefined;
+    const pathParts = sanitizeProxyPathParts(rawPathParts);
 
     // ---- Known-good proxy debug route (never forwards upstream)
     // GET /api/proxy/__debug  (dev: open, prod: requires x-proxy-debug-token)
@@ -217,6 +240,18 @@ async function handle(req: NextRequest, context: any) {
 
     // Guardrail: only allow forwarding to /v1/*
     if (!isAllowedProxyPath(pathParts)) {
+      // If sanitize failed, treat it as a bad request (someone is probing)
+      if (!pathParts) {
+        return NextResponse.json(
+          { ok: false, error: "proxy_path_invalid" },
+          {
+            status: 400,
+            headers: {
+              "x-proxy-guardrail": "path_invalid",
+            },
+          }
+        );
+      }
       return NextResponse.json(
         { ok: false, error: "proxy_path_not_allowed" },
         {
@@ -234,7 +269,7 @@ async function handle(req: NextRequest, context: any) {
 
     const target = buildTargetUrl(base, pathParts, req);
 
-    // Optional debug: /api/proxy/v1/health?debug=1 (DEV ONLY)
+    // Optional debug: /api/proxy/v1/*?debug=1 (DEV ONLY)
     if (req.nextUrl.searchParams.get("debug") === "1") {
       if (process.env.NODE_ENV === "production") {
         return NextResponse.json(
@@ -242,8 +277,7 @@ async function handle(req: NextRequest, context: any) {
           { status: 404, headers: { "x-proxy-guardrail": "debug_disabled" } }
         );
       }
-      // Note: user id resolution happens after header cloning below
-      return NextResponse.json({ ok: true, base, target });
+      return NextResponse.json({ ok: true, base, target, pathParts }, { status: 200 });
     }
 
     // Clone headers; never forward hop-by-hop headers

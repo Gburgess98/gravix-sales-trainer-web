@@ -477,6 +477,8 @@ export default function SparringSessionPage() {
     const t = String(v).trim();
     return t.length > 0 ? t : null;
   }, [searchParams]);
+  const launchedFromAssignments = Boolean(assignmentId);
+  const [assignmentAutoCompleted, setAssignmentAutoCompleted] = useState(false);
 
   const [session, setSession] = useState<SparringSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -865,6 +867,20 @@ export default function SparringSessionPage() {
         setSession(updated);
       }
 
+      // If this sparring was launched from an Assignment, the API may auto-complete it.
+      if (assignmentId) {
+        const completed =
+          Boolean((data as any).assignment_completed) ||
+          Boolean((data as any).assignmentCompleted) ||
+          ((data as any).assignment && (data as any).assignment.status === "completed") ||
+          ((data as any).assignment && (data as any).assignment.completed_at);
+
+        if (completed) {
+          setAssignmentAutoCompleted(true);
+          toast("Completed ✓ (auto-marked from sparring)");
+        }
+      }
+
       const numericTotal: number | null =
         typeof data.total === "number"
           ? Math.round(data.total)
@@ -1221,12 +1237,21 @@ export default function SparringSessionPage() {
           <h1 className="text-xl font-medium text-neutral-50">{title}</h1>
         </div>
 
-        <Link
-          href="/call-library"
-          className="text-xs rounded border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:bg-neutral-900"
-        >
-          Back to Call Library
-        </Link>
+        {launchedFromAssignments ? (
+          <Link
+            href="/assignments"
+            className="text-xs rounded border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-emerald-200 hover:bg-emerald-500/15"
+          >
+            Back to Assignments
+          </Link>
+        ) : (
+          <Link
+            href="/call-library"
+            className="text-xs rounded border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:bg-neutral-900"
+          >
+            Back to Call Library
+          </Link>
+        )}
       </div>
 
       {loading && (
@@ -1354,6 +1379,14 @@ export default function SparringSessionPage() {
               </div>
 
               {/* Right-hand summary: score, outcome, XP, timer, actions */}
+              {launchedFromAssignments && assignmentAutoCompleted && (
+                <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-200">
+                  ✅ Assignment completed via sparring.
+                  <Link href="/assignments" className="ml-2 underline text-emerald-100 hover:text-emerald-50">
+                    View assignments
+                  </Link>
+                </div>
+              )}
               <div className="flex flex-col items-end gap-2 text-xs">
                 {/* Score + outcome + XP */}
                 <div className="flex items-center gap-2">

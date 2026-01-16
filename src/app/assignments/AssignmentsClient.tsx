@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { proxyFetch } from "@/lib/api";
 
@@ -36,6 +36,50 @@ function fmt(dt?: string | null) {
   } catch {
     return dt;
   }
+}
+
+function ymdLocal(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function computeCompletionStreak(done: Assignment[]) {
+  // Consecutive days ending today where user completed >=1 assignment (local date)
+  const days = new Set<string>();
+  for (const a of done) {
+    if (!a.completed_at) continue;
+    const t = new Date(a.completed_at);
+    if (Number.isNaN(t.getTime())) continue;
+    days.add(ymdLocal(t));
+  }
+
+  let streak = 0;
+  const cur = new Date();
+  while (true) {
+    const key = ymdLocal(cur);
+    if (!days.has(key)) break;
+    streak += 1;
+    cur.setDate(cur.getDate() - 1);
+  }
+
+  return {
+    streak,
+    hasCompletedToday: days.has(ymdLocal(new Date())),
+  };
+}
+
+function focusIdAttr(id: string) {
+  return `assignment-${id}`;
+}
+
+function isWithinLastDays(dt?: string | null, days = 7) {
+  if (!dt) return false;
+  const t = new Date(dt).getTime();
+  if (Number.isNaN(t)) return false;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return t >= cutoff;
 }
 
 function daysUntil(dueAt?: string | null) {
@@ -88,20 +132,107 @@ function isOverdue(a: Assignment) {
 }
 
 function openCardClass(a: Assignment) {
-  if (!isOverdue(a)) return "rounded-xl border border-neutral-800 bg-neutral-950 p-4";
-  return "rounded-xl border border-red-500/40 bg-red-500/10 p-4";
+  // Rep view: strong urgency for overdue (red wash + left bar)
+  const base = "rounded-xl border bg-neutral-950 p-4";
+  if (!isOverdue(a)) return `${base} border-neutral-800`;
+  return `${base} border-red-500/40 bg-red-500/10 border-l-4 border-l-red-500/70`;
 }
 
 function focusReason(a: Assignment | null) {
   if (!a) return "";
   const late = daysLate(a.due_at);
-  if (late > 0) return `Reason: Overdue (${late} day${late === 1 ? "" : "s"})`;
-  return "Reason: Oldest assigned";
+  if (late > 0) return `Overdue (${late} day${late === 1 ? "" : "s"})`;
+  if (isDueToday(a.due_at)) return "Due today";
+  if (a.due_at) return "Earliest due";
+  return "Oldest assigned";
+}
+
+function focusMeta(a: Assignment | null) {
+  if (!a) {
+    return {
+      dueText: "",
+      dueClass: "text-neutral-400",
+      bgClass: "bg-neutral-950",
+      reasonText: "",
+      accentClass: "border-neutral-800",
+      labelClass: "text-neutral-300",
+    };
+  }
+
+  const d = dueLabel(a);
+  const overdue = d.tone === "overdue";
+  const dueCls =
+    d.tone === "overdue"
+      ? "text-red-300"
+      : d.tone === "today"
+        ? "text-neutral-300"
+        : d.tone === "upcoming"
+          ? "text-neutral-400"
+          : "text-neutral-500";
+
+  return {
+    dueText: d.text,
+    dueClass: dueCls,
+    bgClass: overdue ? "bg-red-500/10" : "bg-neutral-950",
+    reasonText: `Reason: ${focusReason(a)}`,
+    accentClass: overdue ? "border-red-500/40 border-l-red-500/70" : "border-neutral-800 border-l-neutral-800",
+    labelClass: overdue ? "text-red-300" : "text-neutral-300",
+  };
+}
+
+function nextBestAction(a: Assignment | null) {
+  if (!a) return "";
+  if (a.type === "sparring") return "Next best action: Run this drill now (5 mins)";
+  if (a.type === "call_review") return "Next best action: Score one call (2 mins)";
+  return "Next best action: Mark complete when done";
+}
+
+const SNOOZE_KEY = "gst:snoozedAssignments";
+
+function readSnoozes(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SNOOZE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function writeSnoozes(map: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SNOOZE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+function isSnoozed(a: Assignment, snoozes: Record<string, number>) {
+  if (a.status !== "assigned") return false;
+  if (a.type !== "custom") return false;
+  const until = snoozes[a.id];
+  return typeof until === "number" && until > Date.now();
 }
 
 function isDueToday(dueAt?: string | null) {
   if (!dueAt) return false;
   const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return false;
+
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+function isSameLocalDay(dt?: string | null) {
+  if (!dt) return false;
+  const d = new Date(dt);
   if (Number.isNaN(d.getTime())) return false;
 
   const now = new Date();
@@ -142,22 +273,6 @@ function compareAssignments(a: Assignment, b: Assignment) {
   return aCreated - bCreated;
 }
 
-function getTodayFocus(assignments: Assignment[]) {
-  const assigned = assignments.filter((a) => a.status === "assigned");
-  if (assigned.length === 0) return null;
-
-  const now = Date.now();
-
-  const overdue = assigned
-    .filter((a) => a.due_at && new Date(a.due_at).getTime() < now)
-    .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
-
-  if (overdue.length > 0) return overdue[0];
-
-  return assigned.sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )[0];
-}
 
 async function proxyJson<T>(path: string, init?: RequestInit): Promise<T> {
   // `proxyFetch` is responsible for attaching browser auth to `/api/proxy/*`.
@@ -194,6 +309,11 @@ export default function AssignmentsClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [confettiOn, setConfettiOn] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const lastCompletedIdRef = useRef<string | null>(null);
+  const [snoozes, setSnoozes] = useState<Record<string, number>>({});
 
   async function load() {
     setErr(null);
@@ -209,28 +329,114 @@ export default function AssignmentsClient() {
   }
 
   useEffect(() => {
+    setSnoozes(readSnoozes());
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const open = useMemo(
-    () => rows.filter((r) => r.status === "assigned").slice().sort(compareAssignments),
-    [rows]
+    () =>
+      rows
+        .filter((r) => r.status === "assigned")
+        .filter((r) => !isSnoozed(r, snoozes))
+        .slice()
+        .sort(compareAssignments),
+    [rows, snoozes]
   );
+  // Snoozed count (active only)
+  const activeSnoozedCount = useMemo(() => {
+    const now = Date.now();
+    return Object.values(snoozes).filter((until) => typeof until === "number" && until > now).length;
+  }, [snoozes]);
+
+  const hasActiveSnoozes = activeSnoozedCount > 0;
   const done = useMemo(() => rows.filter((r) => r.status === "completed"), [rows]);
-  const todayFocus = useMemo(() => getTodayFocus(rows), [rows]);
+  const streak = useMemo(() => computeCompletionStreak(done), [done]);
+
+  const momentum = useMemo(() => {
+    const openCount = open.length;
+
+    const overdueCount = open.filter((a) => isOverdue(a)).length;
+    const dueTodayCount = open.filter((a) => isDueToday(a.due_at) && !isOverdue(a)).length;
+
+    const completed7d = done.filter((a) => isWithinLastDays(a.completed_at, 7)).length;
+    const completedTodayCount = done.filter((a) => isSameLocalDay(a.completed_at)).length;
+
+    // simple completion rate over last 7 days: completed / (completed + still-open)
+    const denom = completed7d + openCount;
+    const completionRate7d = denom > 0 ? Math.round((completed7d / denom) * 100) : 0;
+
+    return {
+      openCount,
+      overdueCount,
+      dueTodayCount,
+      completed7d,
+      completedTodayCount,
+      completionRate7d,
+    };
+  }, [open, done]);
+
+  // Today’s Focus should match the same prioritisation we use for the Open list.
+  // (overdue → due today → due later → no due date, then earliest due / oldest created)
+  const todayFocus = open.length > 0 ? open[0] : null;
+  const focus = useMemo(() => focusMeta(todayFocus), [todayFocus]);
+
+  function showToast(type: "success" | "error", msg: string) {
+    setToast({ type, msg });
+    if (type === "success") {
+      setConfettiOn(true);
+      window.setTimeout(() => setConfettiOn(false), 900);
+    }
+    window.setTimeout(() => setToast(null), 2600);
+  }
 
   async function complete(id: string) {
     setErr(null);
     setSavingId(id);
+
+    // optimistic UI: remove from Open immediately and add to Completed
+    const prev = rows;
+    const target = prev.find((x) => x.id === id);
+    if (target) {
+      const optimistic: Assignment = {
+        ...target,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        completed_by: target.completed_by ?? "rep",
+      };
+      setRows([...prev.filter((x) => x.id !== id), optimistic]);
+    }
+
     try {
       await proxyJson<CompleteResponse>(
         `/v1/assignments/${encodeURIComponent(id)}/complete`,
         { method: "PATCH" }
       );
+
+      showToast("success", "Completed ✓ (+XP soon)");
+      lastCompletedIdRef.current = id;
+
+      // sync with server truth
       await load();
+
+      // Auto-focus next assignment (Today’s Focus after refresh)
+      window.setTimeout(() => {
+        const el = document.querySelector('[data-todays-focus="true"]') as HTMLElement | null;
+        const nextId = el?.getAttribute("data-assignment-id") || null;
+
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        if (nextId) {
+          setHighlightId(nextId);
+          window.setTimeout(() => setHighlightId(null), 2200);
+        }
+      }, 150);
     } catch (e: any) {
-      setErr(e?.message || "complete_failed");
+      // rollback if server fails
+      setRows(prev);
+      const msg = e?.message || "complete_failed";
+      setErr(msg);
+      showToast("error", msg);
     } finally {
       setSavingId(null);
     }
@@ -242,6 +448,39 @@ export default function AssignmentsClient() {
         <div>
           <h1 className="text-xl font-semibold">My Assignments</h1>
           <p className="text-sm text-neutral-400">Complete tasks set by your manager.</p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+              Streak:{" "}
+              <span className="font-semibold text-neutral-100">{streak.streak}</span>
+              <span className="text-neutral-500">{" "}day{streak.streak === 1 ? "" : "s"}</span>
+            </span>
+
+            {streak.hasCompletedToday ? (
+              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                You’re back on track ✓
+              </span>
+            ) : (
+              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
+                Complete 1 task today to keep momentum
+              </span>
+            )}
+
+            {hasActiveSnoozes && (
+              <button
+                type="button"
+                onClick={() => {
+                  writeSnoozes({});
+                  setSnoozes({});
+                  showToast("success", "Cleared snoozed tasks");
+                }}
+                className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900"
+                title="Clear snoozed custom tasks"
+              >
+                Snoozed: {activeSnoozedCount} (clear)
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -260,40 +499,51 @@ export default function AssignmentsClient() {
         </div>
       </div>
 
+      {toast && (
+        <div
+          className={`relative mt-4 rounded-lg border p-3 text-sm ${toast.type === "success"
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+            : "border-red-500/30 bg-red-500/10 text-red-200"
+            }`}
+        >
+          {toast.msg}
+
+          {confettiOn && toast.type === "success" ? (
+            <div className="pointer-events-none absolute -top-2 right-2 select-none text-lg">
+              ✨ 🎉 ✨
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {todayFocus && !loading && (
         <div
-          className={
-            todayFocus && isOverdue(todayFocus)
-              ? "mt-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4"
-              : "mt-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4"
-          }
+          id={focusIdAttr(todayFocus.id)}
+          data-todays-focus="true"
+          data-assignment-id={todayFocus.id}
+          className={`mt-6 rounded-xl border p-4 border-l-4 ${focus.bgClass} ${focus.accentClass}`}
         >
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div
-                className={
-                  todayFocus && isOverdue(todayFocus)
-                    ? "text-xs font-semibold uppercase tracking-wide text-red-300"
-                    : "text-xs font-semibold uppercase tracking-wide text-orange-300"
-                }
-              >
-               Today’s Focus
+              <div className={`text-xs font-semibold uppercase tracking-wide ${focus.labelClass}`}>
+                Today’s Focus
               </div>
               <div className="mt-1 text-lg font-semibold">{todayFocus.title || "(Untitled)"}</div>
-              <div className="mt-1 text-xs">
-                {(() => {
-                  const d = dueLabel(todayFocus);
-                  const cls =
-                    d.tone === "overdue"
-                      ? "text-red-300"
-                      : d.tone === "today"
-                        ? "text-orange-300"
-                        : "text-neutral-400";
-                  return <span className={cls}>{d.text}</span>;
-                })()}
-              </div>
+
+              {focus.dueText ? (
+                <div className="mt-1 text-xs">
+                  <span className={focus.dueClass}>{focus.dueText}</span>
+                </div>
+              ) : null}
+
+              {focus.reasonText ? (
+                <div className="mt-1 text-xs text-neutral-400">
+                  <span className="text-neutral-300">{focus.reasonText}</span>
+                </div>
+              ) : null}
+
               <div className="mt-1 text-xs text-neutral-400">
-                <span className="text-neutral-300">{focusReason(todayFocus)}</span>
+                <span className="text-neutral-300">{nextBestAction(todayFocus)}</span>
               </div>
             </div>
 
@@ -301,9 +551,8 @@ export default function AssignmentsClient() {
               <Link
                 href={`/sparring?assignment=${encodeURIComponent(
                   todayFocus.id
-                )}&assignmentId=${encodeURIComponent(todayFocus.id)}${
-                  todayFocus.target_id ? `&persona=${encodeURIComponent(todayFocus.target_id)}` : ""
-                }`}
+                )}&assignmentId=${encodeURIComponent(todayFocus.id)}${todayFocus.target_id ? `&persona=${encodeURIComponent(todayFocus.target_id)}` : ""
+                  }`}
                 className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
               >
                 Start now
@@ -322,13 +571,91 @@ export default function AssignmentsClient() {
                 Review call
               </Link>
             ) : (
-              <button
-                onClick={() => complete(todayFocus.id)}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
-              >
-                Mark complete
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => complete(todayFocus.id)}
+                  disabled={savingId === todayFocus.id}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                >
+                  {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
+                </button>
+
+                {todayFocus.type === "custom" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const until = Date.now() + 24 * 60 * 60 * 1000;
+                      const next = { ...readSnoozes(), [todayFocus.id]: until };
+                      writeSnoozes(next);
+                      setSnoozes(next);
+                      showToast("success", "Snoozed for 24h");
+                    }}
+                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+                  >
+                    Snooze 24h
+                  </button>
+                ) : null}
+              </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+                Momentum
+              </div>
+              <div className="mt-1 text-sm text-neutral-400">
+                Keep the loop tight: clear today’s focus, then chip away at the open list.
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-xs text-neutral-500">7d completion rate</div>
+              <div className="text-lg font-semibold text-neutral-200">{momentum.completionRate7d}%</div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+              <div className="text-[11px] text-neutral-500">Open</div>
+              <div className="text-sm font-semibold text-neutral-200">{momentum.openCount}</div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+              <div className="text-[11px] text-neutral-500">Overdue</div>
+              <div className={"text-sm font-semibold " + (momentum.overdueCount > 0 ? "text-red-200" : "text-neutral-200")}>
+                {momentum.overdueCount}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+              <div className="text-[11px] text-neutral-500">Due today</div>
+              <div className={"text-sm font-semibold " + (momentum.dueTodayCount > 0 ? "text-neutral-100" : "text-neutral-200")}>
+                {momentum.dueTodayCount}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+              <div className="text-[11px] text-neutral-500">Completed</div>
+              <div className="text-sm font-semibold text-neutral-200">
+                {momentum.completedTodayCount > 0 ? (
+                  <>
+                    {momentum.completed7d} <span className="text-[11px] text-neutral-500">(7d)</span>
+                    <span className="ml-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                      +{momentum.completedTodayCount} today
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {momentum.completed7d} <span className="text-[11px] text-neutral-500">(7d)</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -350,7 +677,12 @@ export default function AssignmentsClient() {
                 <div className="text-sm text-neutral-500">No open assignments.</div>
               ) : (
                 open.map((a) => (
-                  <div key={a.id} className={openCardClass(a)}>
+                  <div
+                    key={a.id}
+                    id={focusIdAttr(a.id)}
+                    data-assignment-id={a.id}
+                    className={openCardClass(a) + (highlightId === a.id ? " ring-2 ring-white/30" : "")}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2">
@@ -365,7 +697,7 @@ export default function AssignmentsClient() {
                               d.tone === "overdue"
                                 ? "text-red-300"
                                 : d.tone === "today"
-                                  ? "text-orange-300"
+                                  ? "text-neutral-300"
                                   : "text-neutral-500";
                             return (
                               <>
@@ -379,9 +711,8 @@ export default function AssignmentsClient() {
 
                       {a.type === "sparring" ? (
                         <Link
-                          href={`/sparring?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}${
-                            a.target_id ? `&persona=${encodeURIComponent(a.target_id)}` : ""
-                          }`}
+                          href={`/sparring?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}${a.target_id ? `&persona=${encodeURIComponent(a.target_id)}` : ""
+                            }`}
                           className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
                         >
                           Start sparring

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
 
 type Rep = {
@@ -44,8 +45,8 @@ function stuckPill(sig: StuckSignal) {
     sig.tone === "danger"
       ? "border-red-500/30 bg-red-500/10 text-red-200"
       : sig.tone === "warn"
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-      : "border-neutral-700 bg-neutral-900 text-neutral-200";
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+        : "border-neutral-700 bg-neutral-900 text-neutral-200";
 
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${cls}`}>
@@ -55,11 +56,13 @@ function stuckPill(sig: StuckSignal) {
 }
 
 function stuckSectionClass(tone: StuckSignal["tone"]) {
+  // Keep the page calm: only a subtle accent border for stuck reps.
+  // The row itself already highlights overdue items.
   if (tone === "danger") {
-    return "border-red-500/40 bg-red-500/5";
+    return "border-red-500/35 bg-neutral-950";
   }
   if (tone === "warn") {
-    return "border-amber-500/40 bg-amber-500/5";
+    return "border-amber-500/35 bg-neutral-950";
   }
   return "border-neutral-800 bg-neutral-950";
 }
@@ -180,6 +183,28 @@ function completedLast7d(a: Assignment) {
   return Date.now() - t <= 7 * 24 * 60 * 60 * 1000;
 }
 
+function todayYmd() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+async function readJsonOrThrow(res: Response) {
+  const txt = await res.text();
+  let json: any = null;
+  try {
+    json = txt ? JSON.parse(txt) : null;
+  } catch {
+    // ignore
+  }
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error || `request_failed_${res.status}`);
+  }
+  return json;
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await proxyFetch(path, { cache: "no-store" });
   const txt = await res.text();
@@ -195,15 +220,471 @@ async function getJson<T>(path: string): Promise<T> {
   return json as T;
 }
 
+function targetLabel(type: Assignment["type"]) {
+  if (type === "sparring") return "Persona";
+  if (type === "call_review") return "Call";
+  return "Target";
+}
+
+function targetPlaceholder(type: Assignment["type"]) {
+  if (type === "sparring") return "persona id (optional)";
+  if (type === "call_review") return "call id (optional)";
+  return "id";
+}
+
+function buildDueAtIso(dateYmd: string) {
+  // Treat the selected date as end-of-day in the user's local time.
+  // `YYYY-MM-DDT23:59:59` (no Z) is parsed as local time by JS.
+  try {
+    const d = new Date(`${dateYmd}T23:59:59`);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function recentlyAssignedSameTitle(assignments: Assignment[], repId: string, title: string) {
+  if (!repId || !title) return false;
+
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const tNorm = title.trim().toLowerCase();
+
+  return assignments.some((a) => {
+    if (a.rep_id !== repId) return false;
+    if ((a.title || "").trim().toLowerCase() !== tNorm) return false;
+    const created = new Date(a.created_at).getTime();
+    return Number.isFinite(created) && created >= cutoff;
+  });
+}
+
+function readParam(sp: URLSearchParams, key: string, fallback = "") {
+  const v = sp.get(key);
+  return v == null || v === "" ? fallback : v;
+}
+
+function writeParam(sp: URLSearchParams, key: string, value: string | null) {
+  if (value == null || value === "") sp.delete(key);
+  else sp.set(key, value);
+  return sp;
+}
+
+function safeJsonParse<T>(v: string | null, fallback: T): T {
+  if (!v) return fallback;
+  try {
+    return JSON.parse(v) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function AdminAssignmentsClient() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [reps, setReps] = useState<Rep[]>([]);
   const [rowsByRep, setRowsByRep] = useState<Record<string, Assignment[]>>({});
   const [signals, setSignals] = useState<Signals | null>(null);
 
+  const searchParams = useSearchParams();
+  const sp = new URLSearchParams(searchParams.toString());
+
+  const repIdFromUrl = readParam(sp, "rep_id", "");
+  const createTypeFromUrl = readParam(sp, "create_type", "");
+  const createTitleFromUrl = readParam(sp, "create_title", "");
+
+  const filterFromUrl = readParam(sp, "filter", "open");
+  const qFromUrl = readParam(sp, "q", "");
+  const limitFromUrl = readParam(sp, "limit", "25");
+
+  // Create panel state
+  const [createRepId, setCreateRepId] = useState<string>("");
+  const [createType, setCreateType] = useState<Assignment["type"]>("custom");
+  const [createTitle, setCreateTitle] = useState<string>("");
+  const [createDueAt, setCreateDueAt] = useState<string>(""); // yyyy-mm-dd
+  const [createTargetId, setCreateTargetId] = useState<string>("");
+  const [creating, setCreating] = useState<boolean>(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+  const [createdOk, setCreatedOk] = useState(false);
+  const createdOkTimer = useRef<number | null>(null);
+
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const createPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const duplicateTitleWarning = useMemo(() => {
+    return recentlyAssignedSameTitle(
+      rowsByRep[createRepId] || [],
+      createRepId,
+      createTitle
+    );
+  }, [rowsByRep, createRepId, createTitle]);
+
+  // Helper: jump to create panel and prefill fields
+  function jumpToCreateAndPrefill(args: {
+    repId: string;
+    type?: Assignment["type"];
+    title?: string;
+  }) {
+    setCreateRepId(args.repId);
+    if (args.type) setCreateType(args.type);
+    if (args.title) setCreateTitle(args.title);
+    // Scroll and focus
+    setTimeout(() => {
+      createPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      titleInputRef.current?.focus();
+    }, 50);
+  }
+
+  // Consume ?rep_id=... and ?create_type, ?create_title for the create panel (prefill)
+  useEffect(() => {
+    if (!repIdFromUrl) return;
+    setCreateRepId(repIdFromUrl);
+    if (createTypeFromUrl && (["custom", "sparring", "call_review"] as string[]).includes(createTypeFromUrl)) {
+      setCreateType(createTypeFromUrl as Assignment["type"]);
+    }
+    if (createTitleFromUrl) {
+      setCreateTitle(createTitleFromUrl);
+    }
+    // If manager came from Quick assign, keep momentum
+    titleInputRef.current?.focus();
+  }, [repIdFromUrl, createTypeFromUrl, createTitleFromUrl]);
+
+  // Consume #create-assignment anchor: scroll + focus title
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#create-assignment") return;
+
+    // Let the DOM paint first
+    const t = window.setTimeout(() => {
+      createPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      titleInputRef.current?.focus();
+    }, 50);
+
+    return () => window.clearTimeout(t);
+  }, []);
+
+  async function createAssignment() {
+    setCreateErr(null);
+    setCreatedOk(false);
+    if (createdOkTimer.current) {
+      window.clearTimeout(createdOkTimer.current);
+      createdOkTimer.current = null;
+    }
+
+    const repId = (createRepId || "").trim();
+    const title = (createTitle || "").trim();
+
+    if (!repId) {
+      setCreateErr("pick_rep");
+      return;
+    }
+    if (!title) {
+      setCreateErr("title_required");
+      titleInputRef.current?.focus();
+      return;
+    }
+
+    setCreating(true);
+    try {
+      // Manager create endpoint (API): expects rep_id, type, title, optional due_at, optional target_id
+      const due_at = createDueAt ? buildDueAtIso(createDueAt) : null;
+      const target_id =
+        createType === "custom" ? null : createTargetId ? createTargetId.trim() : null;
+
+      const res = await proxyFetch("/api/proxy/v1/assignments/manager", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rep_id: repId, type: createType, title, due_at, target_id }),
+      });
+
+      const txt = await res.text();
+      let json: any = null;
+      try {
+        json = txt ? JSON.parse(txt) : null;
+      } catch {
+        // ignore
+      }
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || `request_failed_${res.status}`);
+      }
+
+      setCreatedOk(true);
+      createdOkTimer.current = window.setTimeout(() => setCreatedOk(false), 1500);
+
+      // Reset minimal fields (keep rep + type for rapid entry)
+      setCreateTitle("");
+      setCreateTargetId("");
+      setCreateDueAt("");
+
+      // Refresh data so the new assignment shows immediately
+      await load();
+
+      // Keep the flow fast
+      titleInputRef.current?.focus();
+    } catch (e: any) {
+      setCreateErr(e?.message || "create_failed");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [filter, setFilter] = useState<"open" | "completed7d" | "overdue">("open");
+  const [filter, setFilter] = useState<"open" | "completed7d" | "overdue">(
+    filterFromUrl as any
+  );
+  const [q, setQ] = useState<string>(qFromUrl);
+  const [perRepLimit, setPerRepLimit] = useState<number>(Number(limitFromUrl) || 25);
+
+  // expanded state → localStorage (not URL)
+  const EXP_KEY = "admin_assignments_expanded_v1";
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    return safeJsonParse<Record<string, boolean>>(
+      window.localStorage.getItem(EXP_KEY),
+      {}
+    );
+  });
+
+  // Row actions
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  // ---------------------------
+  // Day 19: Bulk manager actions + confirmations
+  // ---------------------------
+  type BulkActionKind = "assign_stale_drill" | "clear_overdue_noise";
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkKind, setBulkKind] = useState<BulkActionKind | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ ok: number; fail: number } | null>(null);
+  const [bulkErr, setBulkErr] = useState<string | null>(null);
+
+  function closeBulk() {
+    setBulkOpen(false);
+    setBulkKind(null);
+    setBulkBusy(false);
+    setBulkResult(null);
+    setBulkErr(null);
+  }
+
+  function openBulk(kind: BulkActionKind) {
+    setBulkKind(kind);
+    setBulkOpen(true);
+    setBulkBusy(false);
+    setBulkResult(null);
+    setBulkErr(null);
+  }
+
+  function getOverdueAssignmentsAll(): Array<{ repId: string; a: Assignment }> {
+    const out: Array<{ repId: string; a: Assignment }> = [];
+    for (const repId of Object.keys(rowsByRep)) {
+      for (const a of rowsByRep[repId] || []) {
+        if (isOverdue(a)) out.push({ repId, a });
+      }
+    }
+    return out;
+  }
+
+  function getStaleRepIds(): string[] {
+    const ids = (signals?.stale_reps_7d || []).map((r) => r.rep_id).filter(Boolean);
+    return Array.from(new Set(ids));
+  }
+
+  async function createManagerAssignment(args: {
+    repId: string;
+    type: Assignment["type"];
+    title: string;
+    dueAtIso?: string | null;
+    targetId?: string | null;
+  }) {
+    const res = await proxyFetch("/api/proxy/v1/assignments/manager", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rep_id: args.repId,
+        type: args.type,
+        title: args.title,
+        due_at: args.dueAtIso ?? null,
+        target_id: args.targetId ?? null,
+      }),
+    });
+
+    await readJsonOrThrow(res);
+  }
+
+  async function patchManagerAssignment(assignmentId: string, body: any) {
+    const res = await proxyFetch(`/api/proxy/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    await readJsonOrThrow(res);
+  }
+
+  async function runBulkAction() {
+    if (!bulkKind) return;
+
+    setBulkErr(null);
+    setBulkResult(null);
+    setBulkBusy(true);
+
+    let ok = 0;
+    let fail = 0;
+
+    try {
+      if (bulkKind === "assign_stale_drill") {
+        const staleRepIds = getStaleRepIds();
+        if (staleRepIds.length === 0) {
+          setBulkErr("No stale reps to assign.");
+          setBulkBusy(false);
+          return;
+        }
+
+        const due_at = buildDueAtIso(todayYmd());
+        for (const repId of staleRepIds) {
+          try {
+            await createManagerAssignment({
+              repId,
+              type: "sparring",
+              title: "Run 1 sparring drill today",
+              dueAtIso: due_at,
+              targetId: null,
+            });
+            ok++;
+          } catch {
+            fail++;
+          }
+        }
+      }
+
+      if (bulkKind === "clear_overdue_noise") {
+        const overdue = getOverdueAssignmentsAll();
+        if (overdue.length === 0) {
+          setBulkErr("No overdue assignments found.");
+          setBulkBusy(false);
+          return;
+        }
+
+        const due_at = buildDueAtIso(todayYmd());
+        for (const item of overdue) {
+          try {
+            await patchManagerAssignment(item.a.id, { due_at });
+            ok++;
+          } catch {
+            fail++;
+          }
+        }
+      }
+
+      setBulkResult({ ok, fail });
+      setActionMsg(
+        bulkKind === "assign_stale_drill"
+          ? `Assigned drills ✓ (${ok} ok, ${fail} failed)`
+          : `Rescheduled overdue ✓ (${ok} ok, ${fail} failed)`
+      );
+
+      await load();
+      window.setTimeout(() => setActionMsg(null), 1500);
+    } catch (e: any) {
+      setBulkErr(e?.message || "bulk_failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const bulkPreview = useMemo(() => {
+    const stale = getStaleRepIds();
+    const overdue = getOverdueAssignmentsAll();
+    return {
+      staleRepCount: stale.length,
+      overdueCount: overdue.length,
+    };
+  }, [signals, rowsByRep]);
+
+  function toggleExpanded(repId: string) {
+    setExpanded((prev) => ({ ...prev, [repId]: !prev[repId] }));
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(EXP_KEY, JSON.stringify(expanded));
+  }, [expanded]);
+
+  function updateUrl(next: {
+    rep_id?: string;
+    filter?: string;
+    q?: string;
+    limit?: string;
+  }) {
+    const nextSp = new URLSearchParams(searchParams.toString());
+    if ("rep_id" in next) writeParam(nextSp, "rep_id", next.rep_id ?? "");
+    if ("filter" in next) writeParam(nextSp, "filter", next.filter ?? "open");
+    if ("q" in next) writeParam(nextSp, "q", next.q ?? "");
+    if ("limit" in next) writeParam(nextSp, "limit", next.limit ?? "");
+    router.replace(`${pathname}?${nextSp.toString()}`);
+  }
+
+  function norm(s: any) {
+    return String(s || "").toLowerCase();
+  }
+
+  function matches(rep: Rep, a: Assignment, query: string) {
+    const qq = norm(query).trim();
+    if (!qq) return true;
+    return norm(rep.name).includes(qq) || norm(a.title).includes(qq) || norm(a.type).includes(qq);
+  }
+
+  async function markComplete(assignmentId: string) {
+    setActionMsg(null);
+    setActioningId(assignmentId);
+    try {
+      const res = await proxyFetch(`/api/proxy/v1/assignments/${encodeURIComponent(assignmentId)}/complete`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+      });
+      await readJsonOrThrow(res);
+      setActionMsg("Marked complete ✓");
+      await load();
+    } catch (e: any) {
+      setActionMsg(e?.message || "complete_failed");
+    } finally {
+      setActioningId(null);
+      window.setTimeout(() => setActionMsg(null), 1500);
+    }
+  }
+
+  async function setDueToday(assignmentId: string) {
+    setActionMsg(null);
+    setActioningId(assignmentId);
+    try {
+      const due_at = buildDueAtIso(todayYmd());
+      const res = await proxyFetch(`/api/proxy/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ due_at }),
+      });
+      await readJsonOrThrow(res);
+      setActionMsg("Due set to today ✓");
+      await load();
+    } catch (e: any) {
+      setActionMsg(e?.message || "reschedule_failed");
+    } finally {
+      setActioningId(null);
+      window.setTimeout(() => setActionMsg(null), 1500);
+    }
+  }
+
+  function nudgeRep(repId: string, assignmentId: string) {
+    // Placeholder for Slack/email later
+    setActionMsg(`Nudge queued (stub) · rep ${repId.slice(0, 6)}…`);
+    window.setTimeout(() => setActionMsg(null), 1500);
+    // eslint-disable-next-line no-console
+    console.log("NUDGE_REP_STUB", { repId, assignmentId });
+  }
 
   async function load() {
     setErr(null);
@@ -218,6 +699,13 @@ export default function AdminAssignmentsClient() {
       const repsData = await getJson<{ ok: true; reps: Rep[] }>("/api/proxy/v1/admin/reps");
       const repList = repsData.reps || [];
       setReps(repList);
+      // If URL asked for a rep, prefer it. Otherwise default to first rep.
+      setCreateRepId((prev) => {
+        const wanted = repIdFromUrl || prev;
+        if (wanted && repList.some((r) => r.id === wanted)) return wanted;
+        if (prev && repList.some((r) => r.id === prev)) return prev;
+        return repList[0]?.id || "";
+      });
 
       // 3) Signals (lightweight, high value)
       const sig = await getJson<{ ok: true; signals: Signals }>("/api/proxy/v1/assignments/manager/signals");
@@ -266,6 +754,44 @@ export default function AdminAssignmentsClient() {
     return { assigned, completed, overdue };
   }, [flat]);
 
+  const confidence = useMemo(() => {
+    const repIds = reps.map((r) => r.id);
+
+    let overdueRepCount = 0;
+    let staleRepCount = 0;
+    let stuckRepCount = 0;
+    let openRepCount = 0;
+
+    const staleSet = new Set((signals?.stale_reps_7d || []).map((r) => r.rep_id));
+
+    for (const repId of repIds) {
+      const raw = rowsByRep[repId] || [];
+      const open = raw.filter((a) => String(a.status).toLowerCase() === "assigned");
+      const overdue = raw.filter((a) => isOverdue(a));
+      const stale = staleSet.has(repId);
+
+      if (open.length > 0) openRepCount++;
+      if (overdue.length > 0) overdueRepCount++;
+      if (stale) staleRepCount++;
+
+      if (overdue.length > 0 || stale) stuckRepCount++;
+    }
+
+    const staleNames = (signals?.stale_reps_7d || [])
+      .map((r) => r.name)
+      .filter(Boolean)
+      .slice(0, 6);
+
+    return {
+      openRepCount,
+      overdueRepCount,
+      staleRepCount,
+      stuckRepCount,
+      staleNames,
+      staleTotal: (signals?.stale_reps_7d || []).length,
+    };
+  }, [reps, rowsByRep, signals]);
+
   const sortedReps = useMemo(() => {
     // Sort managers' view by "stuck first": overdue → stale (7d) → open count → name
     return [...reps].sort((a, b) => {
@@ -289,7 +815,14 @@ export default function AdminAssignmentsClient() {
   }, [reps, rowsByRep, signals]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <div className="mx-auto max-w-6xl p-6 flex min-h-screen flex-col">
+      {/* Debug: confirms the correct component is rendering */}
+      <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-neutral-800 bg-neutral-950 px-3 py-1 text-xs text-neutral-400">
+        <span className="font-semibold text-neutral-200">AdminAssignmentsClient</span>
+        <span>v2</span>
+        <span className="text-neutral-600">•</span>
+        <span className="text-neutral-500">has Show/Expand controls</span>
+      </div>
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Admin · Assignments</h1>
@@ -316,11 +849,153 @@ export default function AdminAssignmentsClient() {
           {err === "forbidden_not_manager" ? "You don’t have manager access for this page." : err}
         </div>
       )}
+      {actionMsg && !err && (
+        <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-300">
+          {actionMsg}
+        </div>
+      )}
 
       {loading ? (
         <div className="mt-6 text-sm text-neutral-400">Loading…</div>
       ) : (
-        <>
+        <div className="mt-6 flex-1 overflow-hidden flex flex-col">
+          {/* Create panel */}
+          <div
+            id="create-assignment"
+            ref={createPanelRef}
+            className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="text-sm font-semibold">Create assignment</div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  Prefills from <span className="text-neutral-300">?rep_id=</span> and focuses title on
+                  <span className="text-neutral-300"> #create-assignment</span>.
+                </div>
+              </div>
+
+              <div className="text-xs text-neutral-500">
+                Tip: sparring/call_review can carry an optional target id (persona id / call id).
+              </div>
+            </div>
+
+            {createErr && (
+              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                {createErr === "pick_rep" ? "Pick a rep" : createErr === "title_required" ? "Title is required" : createErr}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
+              <div className="md:col-span-3">
+                <label className="text-xs text-neutral-500">Rep</label>
+                <select
+                  value={createRepId}
+                  onChange={(e) => setCreateRepId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                >
+                  {reps.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="text-xs text-neutral-500">Type</label>
+                <select
+                  value={createType}
+                  onChange={(e) => setCreateType(e.target.value as any)}
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                >
+                  <option value="custom">custom</option>
+                  <option value="sparring">sparring</option>
+                  <option value="call_review">call_review</option>
+                </select>
+                {createType === "sparring" ? (
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    Persona is optional. If left blank, the default sparring persona will be used.
+                  </div>
+                ) : createType === "call_review" ? (
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    Call ID is optional. If left blank, the rep can choose a call to review.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="md:col-span-4">
+                <label className="text-xs text-neutral-500">Title</label>
+                <input
+                  ref={titleInputRef}
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder="e.g. Run 1 sparring drill today"
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+                {duplicateTitleWarning ? (
+                  <div className="mt-1 text-[11px] text-amber-300">
+                    ⚠️ Similar assignment was created for this rep in the last 24h.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="text-xs text-neutral-500">Due (optional)</label>
+                <input
+                  type="date"
+                  value={createDueAt}
+                  onChange={(e) => setCreateDueAt(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+              </div>
+
+              {createType === "custom" ? null : (
+                <div className="md:col-span-1">
+                  <label className="text-xs text-neutral-500">{targetLabel(createType)}</label>
+                  <input
+                    value={createTargetId}
+                    onChange={(e) => setCreateTargetId(e.target.value)}
+                    placeholder={targetPlaceholder(createType)}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <div className="text-xs">
+                {createdOk ? (
+                  <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-200">
+                    Created ✓
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateTitle("");
+                    setCreateTargetId("");
+                    setCreateDueAt("");
+                    setCreateErr(null);
+                    titleInputRef.current?.focus();
+                  }}
+                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+                >
+                  Clear
+                </button>
+
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={createAssignment}
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                >
+                  {creating ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
           {/* Signals */}
           <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
             <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
@@ -349,71 +1024,219 @@ export default function AdminAssignmentsClient() {
             </div>
           </div>
 
-          {signals?.stale_reps_7d?.length ? (
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-sm font-semibold">Stale reps (7d)</div>
-              <div className="mt-2 text-sm text-neutral-300">
-                {signals.stale_reps_7d.map((r) => r.name).join(", ")}
+
+                    {/* Manager confidence signals (fast answers, no dashboards) */}
+          <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-neutral-200">Manager confidence</div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  Quick reality check: who’s stuck, who’s active, and where to focus.
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                  Reps w/ open:{" "}
+                  <span className="font-semibold text-neutral-100">{confidence.openRepCount}</span>
+                </span>
+
+                <span
+                  className={
+                    confidence.overdueRepCount > 0
+                      ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                  }
+                >
+                  Overdue reps: <span className="font-semibold">{confidence.overdueRepCount}</span>
+                </span>
+
+                <span
+                  className={
+                    confidence.staleRepCount > 0
+                      ? "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200"
+                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                  }
+                >
+                  Stale reps (7d): <span className="font-semibold">{confidence.staleRepCount}</span>
+                </span>
+
+                <span
+                  className={
+                    confidence.stuckRepCount > 0
+                      ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                  }
+                >
+                  Stuck total: <span className="font-semibold">{confidence.stuckRepCount}</span>
+                </span>
               </div>
             </div>
-          ) : null}
 
-          <div className="mt-6 flex items-center gap-2">
-            <button
-              onClick={() => setFilter("open")}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
-                filter === "open"
-                  ? "bg-white text-black"
-                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-              }`}
-            >
-              Assigned
-            </button>
+            {confidence.staleTotal > 0 ? (
+              <div className="mt-2 text-xs text-neutral-500">
+                Stale reps (no completions in 7d):{" "}
+                <span className="text-neutral-200">
+                  {confidence.staleNames.join(", ")}
+                  {confidence.staleTotal > confidence.staleNames.length ? "…" : ""}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-neutral-500">
+                No stale reps detected in the last 7 days.
+              </div>
+            )}
 
-            <button
-              onClick={() => setFilter("completed7d")}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
-                filter === "completed7d"
-                  ? "bg-white text-black"
-                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-              }`}
-            >
-              Completed (7d)
-            </button>
+            <div className="mt-3 text-xs text-neutral-500">
+              Interpretation: <span className="text-neutral-200">Overdue</span> = immediate follow-up,{" "}
+              <span className="text-neutral-200">Stale</span> = assign 1 drill today to restart momentum.
+            </div>
 
-            <button
-              onClick={() => setFilter("overdue")}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
-                filter === "overdue"
-                  ? "bg-white text-black"
-                  : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-              }`}
-            >
-              Overdue
-            </button>
+            {confidence.stuckRepCount === 0 && (
+              <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
+                Momentum looks healthy — no reps are currently stuck. Nice work keeping the system clean.
+              </div>
+            )}
+
+            {/* Day 19: Bulk actions */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openBulk("assign_stale_drill")}
+                className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200"
+              >
+                Assign 1 drill to all stale reps
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openBulk("clear_overdue_noise")}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+              >
+                Clear overdue noise (set due today)
+              </button>
+
+              <div className="text-xs text-neutral-500">
+                Preview: <span className="text-neutral-200">{bulkPreview.staleRepCount}</span> stale reps,{' '}
+                <span className="text-neutral-200">{bulkPreview.overdueCount}</span> overdue items
+              </div>
+            </div>
+          </div>
+
+          {/* Controls: always visible */}
+          <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setFilter("open");
+                  updateUrl({ filter: "open" });
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "open"
+                    ? "bg-white text-black"
+                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+                  }`}
+              >
+                Assigned
+              </button>
+
+              <button
+                onClick={() => {
+                  setFilter("completed7d");
+                  updateUrl({ filter: "completed7d" });
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "completed7d"
+                    ? "bg-white text-black"
+                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+                  }`}
+              >
+                Completed (7d)
+              </button>
+
+              <button
+                onClick={() => {
+                  setFilter("overdue");
+                  updateUrl({ filter: "overdue" });
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "overdue"
+                    ? "bg-white text-black"
+                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
+                  }`}
+              >
+                Overdue
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Search</span>
+                <input
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    updateUrl({ q: e.target.value });
+                  }}
+                  placeholder="rep, title, type…"
+                  className="w-full md:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Show</span>
+                <select
+                  value={String(perRepLimit)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setPerRepLimit(v);
+                    updateUrl({ limit: String(v) });
+                  }}
+                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                >
+                  <option value={"25"}>25</option>
+                  <option value={"50"}>50</option>
+                  <option value={"100"}>100</option>
+                  <option value={String(Number.POSITIVE_INFINITY)}>All</option>
+                </select>
+                <span className="text-xs text-neutral-500">per rep</span>
+              </div>
+            </div>
           </div>
 
           {/* Rep panels */}
-          <div className="mt-8 space-y-6">
+          <div className="mt-6 flex-1 overflow-y-auto pr-2 space-y-6 max-h-[65vh] rounded-2xl border border-neutral-900 bg-neutral-950/20 p-3">
             {sortedReps.map((rep) => {
               const raw = rowsByRep[rep.id] || [];
               const list =
                 filter === "open"
                   ? raw.filter((a) => String(a.status).toLowerCase() === "assigned")
                   : filter === "completed7d"
-                  ? raw.filter((a) => String(a.status).toLowerCase() === "completed" && completedLast7d(a))
-                  : raw.filter((a) => isOverdue(a));
-              if (!list.length) return null;
+                    ? raw.filter((a) => String(a.status).toLowerCase() === "completed" && completedLast7d(a))
+                    : raw.filter((a) => isOverdue(a));
 
               const open = raw.filter((a) => String(a.status).toLowerCase() === "assigned");
               const done = raw.filter((a) => String(a.status).toLowerCase() === "completed");
 
               const sig = repStuckSignal({ rep, raw, signals });
 
+              const filtered = list
+                .filter((a) => matches(rep, a, q))
+                .slice(0, Number.isFinite(perRepLimit) ? perRepLimit : list.length);
+
+              // Auto-expand if this rep is stuck or if searching
+              const shouldExpand =
+                expanded[rep.id] ?? (sig.tone === "danger" || sig.tone === "warn" || !!q.trim());
+
+              if (!filtered.length) return null;
+
               return (
                 <section
                   key={rep.id}
-                  className={["rounded-2xl border p-4", stuckSectionClass(sig.tone)].join(" ")}
+                  className={[
+                    "rounded-2xl border p-4",
+                    stuckSectionClass(sig.tone),
+                    // Extra subtle cue (no full-card tint)
+                    sig.tone === "danger" ? "shadow-[0_0_0_1px_rgba(239,68,68,0.10)]" : "",
+                    sig.tone === "warn" ? "shadow-[0_0_0_1px_rgba(245,158,11,0.10)]" : "",
+                  ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -427,15 +1250,69 @@ export default function AdminAssignmentsClient() {
                     </div>
 
                     <div className="shrink-0 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(rep.id)}
+                        className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                      >
+                        {shouldExpand ? "Collapse list" : "Expand list"}
+                      </button>
+
                       {stuckPill(sig)}
 
                       {(sig.tone === "danger" || sig.tone === "warn") ? (
-                        <Link
-                          href={`/admin/assignments?rep_id=${encodeURIComponent(rep.id)}#create-assignment`}
-                          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
-                        >
-                          Quick assign
-                        </Link>
+                        <>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            onClick={() =>
+                              jumpToCreateAndPrefill({
+                                repId: rep.id,
+                                type: "sparring",
+                                title: "Run 1 sparring drill today",
+                              })
+                            }
+                          >
+                            Assign sparring drill today
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            onClick={() =>
+                              jumpToCreateAndPrefill({
+                                repId: rep.id,
+                                type: "call_review",
+                                title: "Review a sales call today",
+                              })
+                            }
+                          >
+                            Assign call review today
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            onClick={() =>
+                              jumpToCreateAndPrefill({
+                                repId: rep.id,
+                                type: "custom",
+                                title: "Follow up on current assignment",
+                              })
+                            }
+                          >
+                            Assign follow-up task
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            onClick={() =>
+                              jumpToCreateAndPrefill({
+                                repId: rep.id,
+                              })
+                            }
+                          >
+                            Quick assign
+                          </button>
+                        </>
                       ) : null}
                     </div>
                   </div>
@@ -451,42 +1328,83 @@ export default function AdminAssignmentsClient() {
                     );
                   })()}
 
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="text-xs text-neutral-500">
-                        <tr>
-                          <th className="py-2 pr-3">Title</th>
-                          <th className="py-2 pr-3">Type</th>
-                          <th className="py-2 pr-3">Status</th>
-                          <th className="py-2 pr-3">Due</th>
-                          <th className="py-2 pr-3">Created</th>
-                        </tr>
-                      </thead>
-
-                      <tbody className="align-top">
-                        {list.map((a) => {
-                          const overdue = isOverdue(a);
-                          return (
-                            <tr
-                              key={a.id}
-                              className={[
-                                "border-t border-neutral-900",
-                                overdue ? "bg-red-500/5" : "",
-                              ].join(" ")}
-                            >
-                              <td className="py-2 pr-3">
-                                <div className="font-semibold text-neutral-200">{a.title || "(Untitled)"}</div>
-                              </td>
-                              <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
-                              <td className="py-2 pr-3">{statusPill(a.status, overdue)}</td>
-                              <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
-                              <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="mt-3 text-xs text-neutral-500">
+                    Showing {filtered.length} of {list.filter((a) => matches(rep, a, q)).length} matching
+                    {Number.isFinite(perRepLimit) ? ` (max ${perRepLimit})` : ""}
                   </div>
+
+                  {shouldExpand ? (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="text-xs text-neutral-500">
+                          <tr>
+                            <th className="py-2 pr-3">Title</th>
+                            <th className="py-2 pr-3">Type</th>
+                            <th className="py-2 pr-3">Status</th>
+                            <th className="py-2 pr-3">Due</th>
+                            <th className="py-2 pr-3">Created</th>
+                            <th className="py-2 pr-0 text-right">Actions</th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="align-top">
+                          {filtered.map((a) => {
+                            const overdue = isOverdue(a);
+                            return (
+                              <tr
+                                key={a.id}
+                                className={[
+                                  "border-t border-neutral-900",
+                                  overdue ? "bg-red-500/5" : "",
+                                ].join(" ")}
+                              >
+                                <td className="py-2 pr-3">
+                                  <div className="font-semibold text-neutral-200">{a.title || "(Untitled)"}</div>
+                                </td>
+                                <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
+                                <td className="py-2 pr-3">{statusPill(a.status, overdue)}</td>
+                                <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
+                                <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
+                                <td className="py-2 pr-0">
+                                  {String(a.status).toLowerCase() === "completed" ? null : (
+                                    <div className="flex items-center justify-end gap-2">
+                                      {a.type === "custom" ? (
+                                        <button
+                                          type="button"
+                                          disabled={actioningId === a.id}
+                                          onClick={() => markComplete(a.id)}
+                                          className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                                        >
+                                          {actioningId === a.id ? "…" : "Complete"}
+                                        </button>
+                                      ) : null}
+
+                                      <button
+                                        type="button"
+                                        disabled={actioningId === a.id}
+                                        onClick={() => setDueToday(a.id)}
+                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 disabled:opacity-50"
+                                      >
+                                        Due today
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => nudgeRep(rep.id, a.id)}
+                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                                      >
+                                        Nudge
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
                 </section>
               );
             })}
@@ -498,7 +1416,64 @@ export default function AdminAssignmentsClient() {
               </div>
             ) : null}
           </div>
-        </>
+        </div>
+      )}
+      {/* Bulk confirmation modal */}
+      {bulkOpen && bulkKind && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-200">Confirm bulk action</div>
+
+            <div className="mt-2 text-sm text-neutral-400">
+              {bulkKind === "assign_stale_drill" ? (
+                <>
+                  This will create <span className="text-neutral-200">1 sparring drill</span> for each stale rep.
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Affects: <span className="text-neutral-200">{bulkPreview.staleRepCount}</span> reps
+                  </div>
+                </>
+              ) : (
+                <>
+                  This will set <span className="text-neutral-200">all overdue assignments</span> to be due today.
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Affects: <span className="text-neutral-200">{bulkPreview.overdueCount}</span> assignments
+                  </div>
+                </>
+              )}
+            </div>
+
+            {bulkErr && (
+              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                {bulkErr}
+              </div>
+            )}
+
+            {bulkResult && (
+              <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Done ✓ ({bulkResult.ok} ok, {bulkResult.fail} failed)
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeBulk}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={runBulkAction}
+                className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+              >
+                {bulkBusy ? "Running…" : "Confirm & run"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
