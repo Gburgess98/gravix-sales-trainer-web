@@ -59,6 +59,17 @@ type Assignment = {
 };
 type ObjectionDatum = { objection: string; count: number };
 
+type ManagerTrustResp = {
+  ok: true;
+  managerId: string;
+  trust: {
+    overdue: number;
+    assigned_7d: number;
+    completed_7d: number;
+    stale_reps: string[];
+  };
+};
+
 // Recharts (client-only)
 const ResponsiveContainer = nextDynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 const BarChart = nextDynamic(() => import('recharts').then(m => m.BarChart), { ssr: false });
@@ -87,6 +98,8 @@ export default function CrmOverviewPage() {
   const [sumDueSoon, setSumDueSoon] = useState<number>(0);
   const [sumDone7d, setSumDone7d] = useState<number>(0);
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
+  const [trust, setTrust] = useState<ManagerTrustResp | null>(null);
+  const [loadingTrust, setLoadingTrust] = useState<boolean>(true);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -143,6 +156,30 @@ export default function CrmOverviewPage() {
       }
     })();
     return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingTrust(true);
+      try {
+        const resp = await fetchJsonWithRetry<ManagerTrustResp>(
+          "/api/proxy/v1/assignments/manager/trust"
+        );
+        if (!alive) return;
+        // tolerate any shape issues
+        if (resp && (resp as any).ok) setTrust(resp);
+        else setTrust(null);
+      } catch (e) {
+        if (alive) setTrust(null);
+        console.debug("Manager trust load failed", e);
+      } finally {
+        if (alive) setLoadingTrust(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
   useEffect(() => {
   let alive = true;
@@ -293,6 +330,37 @@ export default function CrmOverviewPage() {
             <Sparkline className="text-amber-400" data={trends?.avgScore} />
           </div>
         </div>
+      </div>
+
+      {/* Manager Trust (optional surface) */}
+      <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm text-neutral-200">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm font-medium">Manager Trust</div>
+          <Link
+            href="/admin/assignments"
+            className="text-xs underline opacity-80 hover:opacity-100"
+          >
+            Open assignments admin
+          </Link>
+        </div>
+
+        {loadingTrust ? (
+          <div className="mt-2 h-5 w-64 animate-pulse rounded bg-white/10" />
+        ) : !trust?.trust ? (
+          <div className="mt-2 text-sm text-neutral-400">No trust signal available.</div>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-300">
+            <span>
+              🔴 Overdue: <span className="tabular-nums">{trust.trust.overdue ?? 0}</span>
+            </span>
+            <span>
+              ✅ Completed (7d): <span className="tabular-nums">{trust.trust.completed_7d ?? 0}</span>
+            </span>
+            <span>
+              💤 Stale reps: <span className="tabular-nums">{(trust.trust.stale_reps || []).length}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Manager Cards: Assignments + Top Objections */}

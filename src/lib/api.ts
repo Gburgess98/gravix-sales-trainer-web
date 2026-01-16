@@ -14,7 +14,6 @@ let _cachedUid: string | null = null;
 let _cachedToken: string | null = null;
 let _cachedAt = 0;
 
-
 type BrowserAuth = { uid: string | null; token: string | null };
 
 function tryDecodeJwtSub(token: string | null): string | null {
@@ -221,16 +220,16 @@ export type CallDetail = any & {
 export type CallsPageResp<T = any> = {
   ok: boolean;
   items: T[];
-  calls?: T[];              // server may send "calls"; we normalize to items
+  calls?: T[]; // server may send "calls"; we normalize to items
   nextCursor: string | null;
 };
 
 export type PinRow = any;
 
 export type ScoreHistoryItem = {
-  score: number;           // unified field used by sparkline
-  created_at: string;      // ISO
-  rubric?: string | null;  // optional
+  score: number; // unified field used by sparkline
+  created_at: string; // ISO
+  rubric?: string | null; // optional
 };
 
 export type ContactHit = {
@@ -266,23 +265,18 @@ async function jfetch<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getAdminConfig(): Promise<AdminConfig> {
-  const j = await jfetch<{ ok: true; config: AdminConfig }>(
-    `${PROXY}/v1/admin/config`
-  );
+  const j = await jfetch<{ ok: true; config: AdminConfig }>(`${PROXY}/v1/admin/config`);
   return j.config;
 }
 
 export async function patchAdminConfig(
   patch: Partial<Pick<AdminConfig, "streak_threshold" | "xp_multiplier" | "comeback_bonus">>
 ): Promise<AdminConfig> {
-  const j = await jfetch<{ ok: true; config: AdminConfig }>(
-    `${PROXY}/v1/admin/config`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    }
-  );
+  const j = await jfetch<{ ok: true; config: AdminConfig }>(`${PROXY}/v1/admin/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
   return j.config;
 }
 
@@ -300,9 +294,7 @@ export type AdminRepRow = {
 
 export async function listAdminReps(): Promise<{ ok: true; reps: AdminRepRow[] }> {
   const url = `${PROXY}/v1/admin/reps`;
-  return await jfetch<{ ok: true; reps: AdminRepRow[] }>(url, {
-    method: "GET",
-  });
+  return await jfetch<{ ok: true; reps: AdminRepRow[] }>(url, { method: "GET" });
 }
 
 export async function patchAdminRepTier(
@@ -343,9 +335,7 @@ export async function getCall(callId: string): Promise<{ call: CallDetail }> {
 
 /** (Legacy) simple list – kept for compatibility if anything still calls it */
 export async function listRecentCalls(limit = 20): Promise<{ calls: any[] }> {
-  const j = await jfetch<{ ok: true; items?: any[]; calls?: any[] }>(
-    `${PROXY}/v1/calls?limit=${limit}`
-  );
+  const j = await jfetch<{ ok: true; items?: any[]; calls?: any[] }>(`${PROXY}/v1/calls?limit=${limit}`);
   return { calls: j.calls || j.items || [] };
 }
 
@@ -356,9 +346,7 @@ export async function getCallsPage(limit = 10, cursor?: string | null, q?: strin
   if (cursor) qs.set("cursor", cursor);
   if (q) qs.set("q", q);
 
-  const j = await jfetch<CallsPageResp>(
-    `${PROXY}/v1/calls/paged?${qs.toString()}`
-  );
+  const j = await jfetch<CallsPageResp>(`${PROXY}/v1/calls/paged?${qs.toString()}`);
 
   // normalize shape
   return {
@@ -370,14 +358,11 @@ export async function getCallsPage(limit = 10, cursor?: string | null, q?: strin
 
 /** Manually set score (admin / debug) */
 export async function setScore(callId: string, score: number, rubric?: any) {
-  const j = await jfetch<{ ok: true; call: any }>(
-    `${PROXY}/v1/calls/${encodeURIComponent(callId)}/score`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score_overall: score, rubric }),
-    }
-  );
+  const j = await jfetch<{ ok: true; call: any }>(`${PROXY}/v1/calls/${encodeURIComponent(callId)}/score`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ score_overall: score, rubric }),
+  });
   return j.call;
 }
 
@@ -405,14 +390,11 @@ export async function finalizeSignedUpload(body: {
   size?: number;
   sha256?: string;
 }) {
-  const j = await jfetch<{ ok: true; callId: string; jobId: string }>(
-    `${PROXY}/v1/upload/finalize`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const j = await jfetch<{ ok: true; callId: string; jobId: string }>(`${PROXY}/v1/upload/finalize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   return j;
 }
 
@@ -421,9 +403,7 @@ export async function finalizeSignedUpload(body: {
 // -------------------------------
 
 export async function listPins(callId: string): Promise<{ pins: PinRow[] }> {
-  const j = await jfetch<{ ok: true; pins: PinRow[] }>(
-    `${PROXY}/v1/pins?callId=${encodeURIComponent(callId)}`
-  );
+  const j = await jfetch<{ ok: true; pins: PinRow[] }>(`${PROXY}/v1/pins?callId=${encodeURIComponent(callId)}`);
   return { pins: j.pins || [] };
 }
 
@@ -437,9 +417,7 @@ export async function createPin(input: { callId: string; t: number; note: string
 }
 
 export async function deletePin(pinId: string) {
-  await jfetch<{ ok: true }>(`${PROXY}/v1/pins/${encodeURIComponent(pinId)}`, {
-    method: "DELETE",
-  });
+  await jfetch<{ ok: true }>(`${PROXY}/v1/pins/${encodeURIComponent(pinId)}`, { method: "DELETE" });
   return true;
 }
 
@@ -448,9 +426,7 @@ export async function deletePin(pinId: string) {
 // -------------------------------
 
 export async function getScoreHistory(callId: string, limit = 24): Promise<ScoreHistoryItem[]> {
-  const j = await jfetch<{ ok: true; items: any[] }>(
-    `${PROXY}/v1/calls/${encodeURIComponent(callId)}/scores?limit=${limit}`
-  );
+  const j = await jfetch<{ ok: true; items: any[] }>(`${PROXY}/v1/calls/${encodeURIComponent(callId)}/scores?limit=${limit}`);
 
   // Normalize to { score, created_at }
   const items = (j.items || []).map((r: any) => ({
@@ -468,9 +444,7 @@ export async function getScoreHistory(callId: string, limit = 24): Promise<Score
 
 export async function searchContacts(query: string, limit = 12) {
   const qs = new URLSearchParams({ query, limit: String(limit) });
-  const r = await jfetch<{ ok: true; items: ContactHit[] }>(
-    `${PROXY}/v1/crm/contacts?${qs.toString()}`
-  );
+  const r = await jfetch<{ ok: true; items: ContactHit[] }>(`${PROXY}/v1/crm/contacts?${qs.toString()}`);
   return r.items;
 }
 
@@ -490,9 +464,7 @@ export async function getCrmLink(callId: string) {
 
 /** Optional: latest job for a call (if your API exposes it) */
 export async function getLatestJobForCall(callId: string) {
-  const j = await jfetch<{ ok: true; job: any }>(
-    `${PROXY}/v1/calls/${encodeURIComponent(callId)}/jobs/latest`
-  );
+  const j = await jfetch<{ ok: true; job: any }>(`${PROXY}/v1/calls/${encodeURIComponent(callId)}/jobs/latest`);
   return j.job;
 }
 
@@ -534,10 +506,7 @@ export type SparringSessionSummary = {
   created_at: string;
 };
 
-export async function getSparringSessionsByRep(
-  repId: string,
-  limit: number = 5
-): Promise<SparringSessionSummary[]> {
+export async function getSparringSessionsByRep(repId: string, limit: number = 5): Promise<SparringSessionSummary[]> {
   if (!repId) return [];
 
   const params = new URLSearchParams({
@@ -552,8 +521,7 @@ export async function getSparringSessionsByRep(
   }>(`${PROXY}/v1/sparring/sessions?${params.toString()}`);
 
   if (!res || (res as any).ok === false) {
-    const msg =
-      (res && (res as any).error) || "Failed to load sparring sessions";
+    const msg = (res && (res as any).error) || "Failed to load sparring sessions";
     throw new Error(msg);
   }
 
@@ -581,8 +549,7 @@ export async function scoreSparring(transcript: string, personaId: string) {
   });
 
   if (!res || (res as any).ok === false) {
-    const msg =
-      (res && (res as any).error) || "Failed to score sparring session";
+    const msg = (res && (res as any).error) || "Failed to score sparring session";
     throw new Error(msg);
   }
 
@@ -596,18 +563,14 @@ export async function logSparringSession(body: {
   totalScore?: number | null;
   xpAwarded?: number | null;
 }) {
-  const res = await apiFetchJson<{ ok: boolean; session: any }>(
-    `${PROXY}/v1/sparring/log`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await apiFetchJson<{ ok: boolean; session: any }>(`${PROXY}/v1/sparring/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
   if (!res || (res as any).ok === false) {
-    const msg =
-      (res && (res as any).error) || "Failed to log sparring session";
+    const msg = (res && (res as any).error) || "Failed to log sparring session";
     throw new Error(msg);
   }
 
@@ -636,10 +599,7 @@ export async function apiGet<T = ApiJson>(path: string, init: RequestInit = {}) 
     cache: init.cache ?? "no-store",
   });
 
-  const json = await fetchJsonWithRetry<any>(
-    `/api/proxy${urlPath}`,
-    finalInit
-  );
+  const json = await fetchJsonWithRetry<any>(`/api/proxy${urlPath}`, finalInit);
 
   if (!json?.ok) {
     throw new Error(json?.error || json?.message || "request_failed");
@@ -648,11 +608,7 @@ export async function apiGet<T = ApiJson>(path: string, init: RequestInit = {}) 
   return json as T;
 }
 
-export async function apiPost<T = ApiJson>(
-  path: string,
-  body: any,
-  init: RequestInit = {}
-) {
+export async function apiPost<T = ApiJson>(path: string, body: any, init: RequestInit = {}) {
   const urlPath = normaliseProxyPath(path);
 
   const headers = new Headers(init.headers);
@@ -669,10 +625,7 @@ export async function apiPost<T = ApiJson>(
     body: JSON.stringify(body ?? {}),
   });
 
-  const json = await fetchJsonWithRetry<any>(
-    `/api/proxy${urlPath}`,
-    finalInit
-  );
+  const json = await fetchJsonWithRetry<any>(`/api/proxy${urlPath}`, finalInit);
 
   if (!json?.ok) {
     throw new Error(json?.error || json?.message || "request_failed");
@@ -680,6 +633,7 @@ export async function apiPost<T = ApiJson>(
 
   return json as T;
 }
+
 // ------------------------------
 // Convenience proxy helpers (safe to use from pages)
 // ------------------------------
@@ -702,7 +656,7 @@ export async function proxyFetch(path: string, init: RequestInit = {}) {
     cache: init.cache ?? "no-store",
   });
 
-  return fetch(`/api/proxy${urlPath}`, finalInit);
+  return fetchWithProxyAuth(`/api/proxy${urlPath}`, finalInit);
 }
 
 export async function proxyGet<T = ApiJson>(path: string, init: RequestInit = {}) {
@@ -714,11 +668,7 @@ export async function proxyGet<T = ApiJson>(path: string, init: RequestInit = {}
   return json as T;
 }
 
-export async function proxyPost<T = ApiJson>(
-  path: string,
-  body: any,
-  init: RequestInit = {}
-) {
+export async function proxyPost<T = ApiJson>(path: string, body: any, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
@@ -737,20 +687,16 @@ export async function proxyPost<T = ApiJson>(
 }
 
 // ------------------------------
-// Browser-only auth helper (for places that still call fetch directly)
+// Proxy fetch wrapper (THE ONLY allowed way to call the proxy)
 // ------------------------------
 
 function isProxyUrl(u: string) {
   return u.startsWith("/api/proxy/") || u === "/api/proxy" || u.startsWith("/api/proxy?");
 }
 
-/**
- * Use this when you have legacy code doing `fetch('/api/proxy/...')`.
- * It attaches the same browser auth headers as the rest of this module.
- */
-export async function fetchWithProxyAuth(url: string, init: RequestInit = {}) {
+async function fetchWithProxyAuth(url: string, init: RequestInit = {}) {
+  // Non-proxy call: just pass through
   if (!isProxyUrl(url)) {
-    // Non-proxy call: just pass through (still include credentials if caller set them)
     return fetch(url, init);
   }
 
@@ -763,10 +709,11 @@ export async function fetchWithProxyAuth(url: string, init: RequestInit = {}) {
   return fetch(url, finalInit);
 }
 
-/**
- * Same as `fetchWithProxyAuth`, but accepts a `/v1/...` path and prefixes `/api/proxy`.
- */
-export async function fetchProxy(path: string, init: RequestInit = {}) {
+async function fetchProxy(path: string, init: RequestInit = {}) {
   const urlPath = normaliseProxyPath(path);
   return fetchWithProxyAuth(`/api/proxy${urlPath}`, init);
 }
+
+// Guardrail:
+// - Do NOT export fetchProxy / fetchWithProxyAuth
+// - All callers must use proxyFetch / proxyGet / proxyPost

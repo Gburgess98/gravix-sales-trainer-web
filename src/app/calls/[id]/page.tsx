@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRef as useRefReact } from 'react';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
 import AuthGate from '@/components/AuthGate';
 import ScoreHistory from '@/components/ScoreHistory';
@@ -102,6 +103,7 @@ const toast = useToast();
   const pathname = usePathname();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const autoCompletedRef = useRef(false);
 
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
@@ -371,7 +373,7 @@ async function deleteAssignment(id: string) {
       try {
         const res = await getCallViaProxy(callId);
         if (cancelled) return;
-                setCallMeta(res.call);
+        setCallMeta(res.call);
 
         if (res?.call?.signedAudioUrl && res.call.signedAudioUrl !== audioUrl) {
           setAudioUrl(res.call.signedAudioUrl);
@@ -386,6 +388,18 @@ async function deleteAssignment(id: string) {
             if (!cancelled) setHistory(h);
           } catch (e: any) {
             if (!cancelled) setHistErr(e?.message || "Failed to load score history");
+          }
+          // --- Auto-complete assignment on call review score (momentum loop)
+          if (!autoCompletedRef.current && assignmentId) {
+            try {
+              autoCompletedRef.current = true;
+              await fetchJsonWithRetry(`/api/proxy/v1/assignments/${encodeURIComponent(assignmentId)}/complete`, {
+                method: 'PATCH',
+              });
+              toast('Assignment completed via call review ✓');
+            } catch (e) {
+              console.error('auto-complete assignment failed', e);
+            }
           }
         }
       } catch {

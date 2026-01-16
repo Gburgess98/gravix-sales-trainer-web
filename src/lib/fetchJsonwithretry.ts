@@ -10,6 +10,23 @@ export type RetryOptions = {
   maxMs?: number;
 };
 
+type NormalisedError = Error & {
+  status?: number;
+  code?: string;
+  body?: any;
+};
+
+function normaliseError(e: any, fallbackMsg: string): NormalisedError {
+  const err: NormalisedError =
+    e instanceof Error ? e : new Error(fallbackMsg);
+
+  if (typeof e?.status === "number") err.status = e.status;
+  if (typeof e?.code === "string") err.code = e.code;
+  if (typeof e?.body !== "undefined") err.body = e.body;
+
+  return err;
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -97,30 +114,34 @@ export async function fetchJsonWithRetry<T = any>(
       const data = isJson && text ? JSON.parse(text) : (text as unknown as T);
 
       if (!res.ok) {
-        const msg = isJson && data && (data as any).error
-          ? (data as any).error
-          : `${res.status} ${res.statusText}`;
-        const err: any = new Error(msg);
-        err.status = res.status;
-        err.body = data;
-        throw err;
+        throw normaliseError(
+          {
+            status: res.status,
+            body: data,
+            message:
+              isJson && data && (data as any).error
+                ? (data as any).error
+                : `${res.status} ${res.statusText}`,
+          },
+          "request_failed"
+        );
       }
 
       return data as T;
     } catch (e: any) {
-      lastErr = e;
-      const status = e?.status as number | undefined;
+      lastErr = normaliseError(e, "network_error");
+      const status = lastErr?.status as number | undefined;
       const retriable =
-        e?.name === "FetchError" ||
-        e?.code === "ECONNRESET" ||
-        e?.code === "ETIMEDOUT" ||
+        lastErr?.name === "FetchError" ||
+        lastErr?.code === "ECONNRESET" ||
+        lastErr?.code === "ETIMEDOUT" ||
         (status && status >= 500);
 
       if (i < attempts - 1 && retriable) {
         await sleep(backoffDelay(i, baseMs, maxMs));
         continue;
       }
-      throw e;
+      throw lastErr;
     }
   }
 
