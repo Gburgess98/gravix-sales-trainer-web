@@ -586,7 +586,7 @@ export default function SparringSessionPage() {
         text: t.text,
       }));
 
-      const r = await proxyFetch("/v1/whisperer/preview", {
+      const r = await proxyFetch("/api/proxy/v1/whisperer/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -683,6 +683,58 @@ export default function SparringSessionPage() {
     setWhispererLoading(false);
     lastWhisperedBuyerTurnIdRef.current = null;
     lastWhisperedBuyerTextRef.current = null;
+
+    // Special route: /sparring/default
+// Used as a launch shortcut from Assignments when we don't yet have a session id.
+// Create a new session, then replace the route with /sparring/<sessionId>?assignmentId=...
+if (id === "default") {
+  (async () => {
+    try {
+      // Try to pick a real persona id (first available). Fallback to a known default.
+      let personaId = "price_sensitive";
+      try {
+        const pr = await proxyFetch("/api/proxy/v1/personas", { cache: "no-store" });
+        const pdata: any = await pr.json().catch(() => null);
+        const personas: any[] = Array.isArray(pdata?.personas)
+          ? pdata.personas
+          : Array.isArray(pdata)
+            ? pdata
+            : [];
+        if (personas.length > 0 && typeof personas[0]?.id === "string") {
+          personaId = personas[0].id;
+        }
+      } catch {
+        // ignore persona list failures; use fallback
+      }
+
+      const body: any = { personaId, difficulty: "normal" };
+
+      const r = await proxyFetch("/api/proxy/v1/sparring/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data: any = await r.json().catch(() => null);
+      if (!r.ok || !data || data.ok === false || !data.session?.id) {
+        throw new Error(data?.error || `${r.status} ${r.statusText}`);
+      }
+
+      // Preserve assignment context in the URL so scoring can auto-complete it
+      const q = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
+      router.replace(`/sparring/${encodeURIComponent(data.session.id)}${q}`);
+    } catch (e: any) {
+      console.error("[sparring/default] failed to create session", e);
+      if (!alive) return;
+      setError(e?.message || "Failed to start sparring session.");
+      setLoading(false);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}
 
     fetchJsonWithRetry(`/api/proxy/v1/sparring/sessions/${id}`)
       .then((res: any) => {
@@ -834,7 +886,7 @@ export default function SparringSessionPage() {
       // Use plain fetch here to avoid any legacy "expected JSON array"
       // assumptions inside fetchJsonWithRetry. This endpoint returns
       // an object: { ok, session, total, xp_awarded, flags, summary }.
-      const res = await proxyFetch("/v1/sparring/score", {
+      const res = await proxyFetch("/api/proxy/v1/sparring/score", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
