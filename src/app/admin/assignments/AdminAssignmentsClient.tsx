@@ -33,6 +33,15 @@ type Signals = {
   stale_reps_7d: { rep_id: string; name: string; tier?: string }[];
 };
 
+type Trust = {
+  completion_rate_24h: number;
+  completion_rate_7d: number;
+  auto_completed_24h: number;
+  auto_completed_7d: number;
+  top_stuck_reason: string;
+  needs_help_today: { rep_id: string; name?: string | null; overdue: number; open: number }[];
+};
+
 type StuckSignal = {
   label: string;
   tone: "danger" | "warn" | "neutral";
@@ -284,6 +293,7 @@ export default function AdminAssignmentsClient() {
   const [reps, setReps] = useState<Rep[]>([]);
   const [rowsByRep, setRowsByRep] = useState<Record<string, Assignment[]>>({});
   const [signals, setSignals] = useState<Signals | null>(null);
+  const [trust, setTrust] = useState<Trust | null>(null);
 
   const searchParams = useSearchParams();
   const sp = new URLSearchParams(searchParams.toString());
@@ -638,6 +648,11 @@ export default function AdminAssignmentsClient() {
     return norm(rep.name).includes(qq) || norm(a.title).includes(qq) || norm(a.type).includes(qq);
   }
 
+  function repNameById(repId: string) {
+    const r = reps.find((x) => x.id === repId);
+    return r?.name || repId;
+  }
+
   async function markComplete(assignmentId: string) {
     setActionMsg(null);
     setActioningId(assignmentId);
@@ -686,6 +701,48 @@ export default function AdminAssignmentsClient() {
     console.log("NUDGE_REP_STUB", { repId, assignmentId });
   }
 
+  // Helper: fetch manager assignments for a rep with paging/limit
+  async function fetchManagerAssignmentsForRep(
+    repId: string,
+    perRepLimit: number,
+    getJson: <T>(path: string) => Promise<T>
+  ): Promise<Assignment[]> {
+    const wantAll = !Number.isFinite(perRepLimit);
+
+    const pageLimit = wantAll ? 200 : Math.max(1, Math.min(200, perRepLimit));
+
+    let cursor: string | null = null;
+    let out: Assignment[] = [];
+
+    // Defensive hard cap so a single rep can't DOS the UI.
+    const HARD_MAX = wantAll ? 2000 : pageLimit;
+
+    while (true) {
+      const qs = new URLSearchParams();
+      qs.set("rep_id", repId);
+      qs.set("limit", String(pageLimit));
+      if (cursor) qs.set("cursor", cursor);
+
+      const resp: any = await getJson(`/api/proxy/v1/assignments/manager?${qs.toString()}`);
+
+      const list: Assignment[] = (resp.assignments || resp.items || []).slice(0);
+      out.push(...list);
+
+      const next: string | null = resp.nextCursor ?? null;
+      if (!wantAll) break;
+      if (!next) break;
+      if (out.length >= HARD_MAX) break;
+
+      cursor = next;
+    }
+
+    if (!wantAll) {
+      return out.slice(0, pageLimit);
+    }
+
+    return out;
+  }
+
   async function load() {
     setErr(null);
     setLoading(true);
@@ -711,15 +768,31 @@ export default function AdminAssignmentsClient() {
       const sig = await getJson<{ ok: true; signals: Signals }>("/api/proxy/v1/assignments/manager/signals");
       setSignals(sig.signals);
 
+      // 3b) Trust (v2) — compact manager answers
+      try {
+        const t = await getJson<{ ok: true } & { [k: string]: any }>("/api/proxy/v1/assignments/manager/trust");
+        // tolerate slightly different server shapes (trust fields may be at root)
+        const payload = (t as any).trust ? (t as any).trust : t;
+        setTrust({
+          completion_rate_24h: Number(payload.completion_rate_24h ?? 0),
+          completion_rate_7d: Number(payload.completion_rate_7d ?? 0),
+          auto_completed_24h: Number(payload.auto_completed_24h ?? 0),
+          auto_completed_7d: Number(payload.auto_completed_7d ?? 0),
+          top_stuck_reason: String(payload.top_stuck_reason ?? "—"),
+          needs_help_today: Array.isArray(payload.needs_help_today) ? payload.needs_help_today : [],
+        });
+      } catch {
+        // Don't fail the page if trust endpoint isn't available yet.
+        setTrust(null);
+      }
+
       // 4) Assignments per rep (manager-scoped)
-      // Endpoint you already have: GET /v1/assignments/manager?rep_id=...
+      // Server-side paging: /v1/assignments/manager?rep_id=&limit=&cursor=
       const entries = await Promise.all(
         repList.map(async (r) => {
           try {
-            const a = await getJson<{ ok: true; assignments: Assignment[] }>(
-              `/api/proxy/v1/assignments/manager?rep_id=${encodeURIComponent(r.id)}`
-            );
-            return [r.id, a.assignments || []] as const;
+            const list = await fetchManagerAssignmentsForRep(r.id, perRepLimit, getJson);
+            return [r.id, list] as const;
           } catch (e) {
             // If an individual rep fetch fails, don’t nuke the whole page.
             return [r.id, []] as const;
@@ -1025,7 +1098,87 @@ export default function AdminAssignmentsClient() {
           </div>
 
 
-                    {/* Manager confidence signals (fast answers, no dashboards) */}
+          {/* Trust Dashboard v2 (no graphs, just answers) */}
+          <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-neutral-200">Trust</div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  10-second answers: is it working, what’s stuck, who needs help.
+                </div>
+              </div>
+
+              <div className="text-xs text-neutral-500">
+                {trust ? (
+                  <>
+                    Top stuck reason: <span className="text-neutral-200">{trust.top_stuck_reason || "—"}</span>
+                  </>
+                ) : (
+                  <>Trust metrics unavailable</>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="text-xs text-neutral-500">Completion rate (24h)</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {trust ? `${Math.round((trust.completion_rate_24h || 0) * 100)}%` : "—"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="text-xs text-neutral-500">Completion rate (7d)</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {trust ? `${Math.round((trust.completion_rate_7d || 0) * 100)}%` : "—"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="text-xs text-neutral-500">Auto-completed (24h)</div>
+                <div className="mt-1 text-2xl font-semibold">{trust ? trust.auto_completed_24h : "—"}</div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="text-xs text-neutral-500">Auto-completed (7d)</div>
+                <div className="mt-1 text-2xl font-semibold">{trust ? trust.auto_completed_7d : "—"}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="text-xs font-semibold text-neutral-200">Who needs help today</div>
+              <div className="mt-1 text-xs text-neutral-500">Top 5 reps with overdue/open load.</div>
+
+              {!trust ? (
+                <div className="mt-2 text-sm text-neutral-500">—</div>
+              ) : trust.needs_help_today.length === 0 ? (
+                <div className="mt-2 text-sm text-neutral-500">No reps flagged.</div>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {trust.needs_help_today.slice(0, 5).map((r) => {
+                    const name = (r as any).name || repNameById(r.rep_id);
+                    const overdue = Number((r as any).overdue ?? 0);
+                    const open = Number((r as any).open ?? 0);
+                    return (
+                      <div key={r.rep_id} className="flex items-center justify-between gap-3 text-sm">
+                        <div className="text-neutral-200">{name}</div>
+                        <div className="text-neutral-400">
+                          <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>
+                            {overdue} overdue
+                          </span>
+                          <span className="text-neutral-600"> · </span>
+                          <span className="text-neutral-300">{open} open</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+
+          {/* Manager confidence signals (fast answers, no dashboards) */}
           <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
@@ -1223,7 +1376,7 @@ export default function AdminAssignmentsClient() {
 
               // Auto-expand if this rep is stuck or if searching
               const shouldExpand =
-                expanded[rep.id] ?? (sig.tone === "danger" || sig.tone === "warn" || !!q.trim());
+                expanded[rep.id] ?? (sig.tone === "danger" || sig.tone === "warn");
 
               if (!filtered.length) return null;
 

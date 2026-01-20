@@ -45,7 +45,7 @@ function ymdLocal(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function computeCompletionStreak(done: Assignment[]) {
+function computeCompletionStreak(done: Assignment[], localDays?: Set<string>) {
   // Consecutive days ending today where user completed >=1 assignment (local date)
   const days = new Set<string>();
   for (const a of done) {
@@ -53,6 +53,10 @@ function computeCompletionStreak(done: Assignment[]) {
     const t = new Date(a.completed_at);
     if (Number.isNaN(t.getTime())) continue;
     days.add(ymdLocal(t));
+  }
+
+  if (localDays && localDays.size) {
+    for (const d of localDays) days.add(d);
   }
 
   let streak = 0;
@@ -68,6 +72,42 @@ function computeCompletionStreak(done: Assignment[]) {
     streak,
     hasCompletedToday: days.has(ymdLocal(new Date())),
   };
+}
+const COMPLETED_DAYS_KEY = "gst:completedDays";
+
+function readLocalCompletedDays(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(COMPLETED_DAYS_KEY);
+    const arr = raw ? (JSON.parse(raw) as any) : [];
+    if (!Array.isArray(arr)) return new Set();
+    const out = new Set<string>();
+    for (const v of arr) {
+      if (typeof v === "string" && v.length === 10) out.add(v);
+    }
+    return out;
+  } catch {
+    return new Set();
+  }
+}
+
+function writeLocalCompletedDays(days: Set<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    // Keep it bounded (last ~45 days) so it never grows unbounded.
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 45);
+    const cutoffKey = ymdLocal(cutoff);
+
+    const arr = Array.from(days)
+      .filter((d) => typeof d === "string" && d >= cutoffKey)
+      .sort();
+
+    window.localStorage.setItem(COMPLETED_DAYS_KEY, JSON.stringify(arr));
+  } catch {
+    // ignore
+  }
 }
 
 function focusIdAttr(id: string) {
@@ -314,6 +354,7 @@ export default function AssignmentsClient() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const lastCompletedIdRef = useRef<string | null>(null);
   const [snoozes, setSnoozes] = useState<Record<string, number>>({});
+  const [localCompletedDays, setLocalCompletedDays] = useState<Set<string>>(new Set());
 
   async function load() {
     setErr(null);
@@ -330,6 +371,7 @@ export default function AssignmentsClient() {
 
   useEffect(() => {
     setSnoozes(readSnoozes());
+    setLocalCompletedDays(readLocalCompletedDays());
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -351,7 +393,7 @@ export default function AssignmentsClient() {
 
   const hasActiveSnoozes = activeSnoozedCount > 0;
   const done = useMemo(() => rows.filter((r) => r.status === "completed"), [rows]);
-  const streak = useMemo(() => computeCompletionStreak(done), [done]);
+  const streak = useMemo(() => computeCompletionStreak(done, localCompletedDays), [done, localCompletedDays]);
 
   const momentum = useMemo(() => {
     const openCount = open.length;
@@ -416,6 +458,15 @@ export default function AssignmentsClient() {
       showToast("success", "Completed ✓ (+XP soon)");
       lastCompletedIdRef.current = id;
 
+      // Local streak/progress: record today immediately (even if server write is delayed)
+      const todayKey = ymdLocal(new Date());
+      setLocalCompletedDays((prevDays) => {
+        const next = new Set(prevDays);
+        next.add(todayKey);
+        writeLocalCompletedDays(next);
+        return next;
+      });
+
       // sync with server truth
       await load();
 
@@ -449,37 +500,59 @@ export default function AssignmentsClient() {
           <h1 className="text-xl font-semibold">My Assignments</h1>
           <p className="text-sm text-neutral-400">Complete tasks set by your manager.</p>
 
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
-              Streak:{" "}
-              <span className="font-semibold text-neutral-100">{streak.streak}</span>
-              <span className="text-neutral-500">{" "}day{streak.streak === 1 ? "" : "s"}</span>
-            </span>
-
-            {streak.hasCompletedToday ? (
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                You’re back on track ✓
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+                Streak:{" "}
+                <span className="font-semibold text-neutral-100">{streak.streak}</span>
+                <span className="text-neutral-500">{" "}day{streak.streak === 1 ? "" : "s"}</span>
               </span>
-            ) : (
-              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
-                Complete 1 task today to keep momentum
-              </span>
-            )}
 
-            {hasActiveSnoozes && (
-              <button
-                type="button"
-                onClick={() => {
-                  writeSnoozes({});
-                  setSnoozes({});
-                  showToast("success", "Cleared snoozed tasks");
+              {streak.hasCompletedToday ? (
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                  You’re back on track ✓
+                </span>
+              ) : (
+                <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
+                  Complete 1 task today to keep momentum
+                </span>
+              )}
+
+              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+                Today:{" "}
+                <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
+                <span className="text-neutral-500"> / {momentum.openCount} open</span>
+              </span>
+
+              {hasActiveSnoozes && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    writeSnoozes({});
+                    setSnoozes({});
+                    showToast("success", "Cleared snoozed tasks");
+                  }}
+                  className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900"
+                  title="Clear snoozed custom tasks"
+                >
+                  Snoozed: {activeSnoozedCount} (clear)
+                </button>
+              )}
+            </div>
+
+            <div className="h-2 w-full overflow-hidden rounded-full border border-neutral-800 bg-black">
+              <div
+                className="h-full rounded-full bg-white/60"
+                style={{
+                  width:
+                    momentum.openCount > 0
+                      ? `${Math.min(100, Math.round((momentum.completedTodayCount / momentum.openCount) * 100))}%`
+                      : momentum.completedTodayCount > 0
+                        ? "100%"
+                        : "0%",
                 }}
-                className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900"
-                title="Clear snoozed custom tasks"
-              >
-                Snoozed: {activeSnoozedCount} (clear)
-              </button>
-            )}
+              />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
