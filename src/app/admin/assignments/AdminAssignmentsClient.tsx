@@ -278,6 +278,7 @@ function writeParam(sp: URLSearchParams, key: string, value: string | null) {
   return sp;
 }
 
+
 function safeJsonParse<T>(v: string | null, fallback: T): T {
   if (!v) return fallback;
   try {
@@ -285,6 +286,18 @@ function safeJsonParse<T>(v: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    (v || "").trim()
+  );
+}
+
+function normaliseOptionalUuid(v: string) {
+  const t = (v || "").trim();
+  if (!t) return null;
+  return isUuid(t) ? t : "__INVALID__";
 }
 
 export default function AdminAssignmentsClient() {
@@ -397,10 +410,21 @@ export default function AdminAssignmentsClient() {
     try {
       // Manager create endpoint (API): expects rep_id, type, title, optional due_at, optional target_id
       const due_at = createDueAt ? buildDueAtIso(createDueAt) : null;
-      const target_id =
-        createType === "custom" ? null : createTargetId ? createTargetId.trim() : null;
 
-      const res = await proxyFetch("/api/proxy/v1/assignments/manager", {
+      const targetNorm = createType === "custom" ? null : normaliseOptionalUuid(createTargetId);
+      if (targetNorm === "__INVALID__") {
+        setCreateErr(
+          createType === "sparring"
+            ? "Persona ID must be a UUID (leave blank to use the default persona)."
+            : "Call ID must be a UUID (leave blank to let the rep choose a call)."
+        );
+        setCreating(false);
+        return;
+      }
+
+      const target_id = targetNorm; // null or valid UUID
+
+      const res = await proxyFetch("/api/proxy/v1/assignments", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ rep_id: repId, type: createType, title, due_at, target_id }),
@@ -510,7 +534,7 @@ export default function AdminAssignmentsClient() {
     dueAtIso?: string | null;
     targetId?: string | null;
   }) {
-    const res = await proxyFetch("/api/proxy/v1/assignments/manager", {
+    const res = await proxyFetch("/api/proxy/v1/assignments", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -954,7 +978,13 @@ export default function AdminAssignmentsClient() {
 
             {createErr && (
               <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {createErr === "pick_rep" ? "Pick a rep" : createErr === "title_required" ? "Title is required" : createErr}
+                {createErr === "pick_rep"
+                  ? "Pick a rep"
+                  : createErr === "title_required"
+                    ? "Title is required"
+                    : createErr === "request_failed_404"
+                      ? "Not found (create endpoint missing)"
+                      : createErr}
               </div>
             )}
 
@@ -978,7 +1008,13 @@ export default function AdminAssignmentsClient() {
                 <label className="text-xs text-neutral-500">Type</label>
                 <select
                   value={createType}
-                  onChange={(e) => setCreateType(e.target.value as any)}
+                  onChange={(e) => {
+                    const v = e.target.value as any;
+                    setCreateType(v);
+                    setCreateErr(null);
+                    setCreatedOk(false);
+                    if (v === "custom") setCreateTargetId("");
+                  }}
                   className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                 >
                   <option value="custom">custom</option>
@@ -1001,7 +1037,10 @@ export default function AdminAssignmentsClient() {
                 <input
                   ref={titleInputRef}
                   value={createTitle}
-                  onChange={(e) => setCreateTitle(e.target.value)}
+                  onChange={(e) => {
+                    setCreateTitle(e.target.value);
+                    if (createErr) setCreateErr(null);
+                  }}
                   placeholder="e.g. Run 1 sparring drill today"
                   className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                 />
@@ -1023,14 +1062,24 @@ export default function AdminAssignmentsClient() {
               </div>
 
               {createType === "custom" ? null : (
-                <div className="md:col-span-1">
-                  <label className="text-xs text-neutral-500">{targetLabel(createType)}</label>
+                <div className="md:col-span-3">
+                  <label className="text-xs text-neutral-500">
+                    {createType === "sparring" ? "Persona (optional)" : "Call id (optional)"}
+                  </label>
                   <input
                     value={createTargetId}
-                    onChange={(e) => setCreateTargetId(e.target.value)}
-                    placeholder={targetPlaceholder(createType)}
+                    onChange={(e) => {
+                      setCreateTargetId(e.target.value);
+                      if (createErr) setCreateErr(null);
+                    }}
+                    placeholder={createType === "sparring" ? "persona id (optional)" : "call id (optional)"}
                     className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                   />
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    {createType === "sparring"
+                      ? "Optional persona id; leave blank to use the default persona."
+                      : "Optional call id; leave blank to let the rep pick a call."}
+                  </div>
                 </div>
               )}
             </div>
@@ -1060,7 +1109,7 @@ export default function AdminAssignmentsClient() {
 
                 <button
                   type="button"
-                  disabled={creating}
+                  disabled={creating || !createRepId || !createTitle.trim()}
                   onClick={createAssignment}
                   className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
                 >
