@@ -292,6 +292,7 @@ function priorityBucket(a: Assignment) {
   return 3;
 }
 
+
 function compareAssignments(a: Assignment, b: Assignment) {
   const pa = priorityBucket(a);
   const pb = priorityBucket(b);
@@ -311,6 +312,14 @@ function compareAssignments(a: Assignment, b: Assignment) {
   const aCreated = new Date(a.created_at).getTime();
   const bCreated = new Date(b.created_at).getTime();
   return aCreated - bCreated;
+}
+
+function sparringHref(assignmentId: string, personaId: string | null) {
+  // Sparring route is /sparring/[personaId].
+  // If the assignment is missing a personaId, we fall back to "default" so reps can still start.
+  // The sparring page can then decide how to resolve/default the persona.
+  const pid = personaId && personaId.trim().length > 0 ? personaId : "default";
+  return `/sparring/${encodeURIComponent(pid)}?assignmentId=${encodeURIComponent(assignmentId)}`;
 }
 
 
@@ -621,15 +630,18 @@ export default function AssignmentsClient() {
             </div>
 
             {todayFocus.type === "sparring" ? (
-              <Link
-                href={`/sparring?assignment=${encodeURIComponent(
-                  todayFocus.id
-                )}&assignmentId=${encodeURIComponent(todayFocus.id)}${todayFocus.target_id ? `&persona=${encodeURIComponent(todayFocus.target_id)}` : ""
-                  }`}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
-              >
-                Start now
-              </Link>
+              <div className="flex flex-col items-end gap-2">
+                <Link
+                  href={sparringHref(todayFocus.id, todayFocus.target_id)}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                  title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
+                >
+                  Start now
+                </Link>
+                {!todayFocus.target_id ? (
+                  <div className="text-[11px] text-neutral-500">No persona set · using default</div>
+                ) : null}
+              </div>
             ) : todayFocus.type === "call_review" && todayFocus.target_id ? (
               <Link
                 href={`/calls/${encodeURIComponent(
@@ -783,13 +795,18 @@ export default function AssignmentsClient() {
                       </div>
 
                       {a.type === "sparring" ? (
-                        <Link
-                          href={`/sparring?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}${a.target_id ? `&persona=${encodeURIComponent(a.target_id)}` : ""
-                            }`}
-                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
-                        >
-                          Start sparring
-                        </Link>
+                        <div className="flex flex-col items-end gap-1">
+                          <Link
+                            href={sparringHref(a.id, a.target_id)}
+                            className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                            title={a.target_id ? undefined : "No persona set on this assignment — using default."}
+                          >
+                            Start sparring
+                          </Link>
+                          {!a.target_id ? (
+                            <div className="text-[11px] text-neutral-500">No persona · default</div>
+                          ) : null}
+                        </div>
                       ) : a.type === "call_review" && a.target_id ? (
                         <Link
                           href={`/calls/${encodeURIComponent(a.target_id)}?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}&callId=${encodeURIComponent(a.target_id)}`}
