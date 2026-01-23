@@ -479,6 +479,22 @@ export default function SparringSessionPage() {
   }, [searchParams]);
   const launchedFromAssignments = Boolean(assignmentId);
   const [assignmentAutoCompleted, setAssignmentAutoCompleted] = useState(false);
+  const [postAction, setPostAction] = useState<null | {
+    strongest: string;
+    improve: string;
+    xpGained: number;
+  }>(null);
+
+  // Rep Momentum Chain v1
+  const momentumNext = useMemo(() => {
+    if (!postAction || !session) return null;
+
+    return {
+      personaId: session.persona_id ?? null,
+      difficulty: session.difficulty ?? session.meta?.difficulty ?? "normal",
+      focus: postAction.improve,
+    };
+  }, [postAction, session]);
 
   const [session, setSession] = useState<SparringSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -676,6 +692,7 @@ export default function SparringSessionPage() {
     setLoading(true);
     setError(null);
     setTurns([]); // Reset turns when navigating to a new session
+    setPostAction(null);
     // Reset per-session UI state so Restart/Replay creates a clean run
     setWhispererHits([]);
     setWhispersByTurnId({});
@@ -685,56 +702,56 @@ export default function SparringSessionPage() {
     lastWhisperedBuyerTextRef.current = null;
 
     // Special route: /sparring/default
-// Used as a launch shortcut from Assignments when we don't yet have a session id.
-// Create a new session, then replace the route with /sparring/<sessionId>?assignmentId=...
-if (id === "default") {
-  (async () => {
-    try {
-      // Try to pick a real persona id (first available). Fallback to a known default.
-      let personaId = "price_sensitive";
-      try {
-        const pr = await proxyFetch("/api/proxy/v1/personas", { cache: "no-store" });
-        const pdata: any = await pr.json().catch(() => null);
-        const personas: any[] = Array.isArray(pdata?.personas)
-          ? pdata.personas
-          : Array.isArray(pdata)
-            ? pdata
-            : [];
-        if (personas.length > 0 && typeof personas[0]?.id === "string") {
-          personaId = personas[0].id;
+    // Used as a launch shortcut from Assignments when we don't yet have a session id.
+    // Create a new session, then replace the route with /sparring/<sessionId>?assignmentId=...
+    if (id === "default") {
+      (async () => {
+        try {
+          // Try to pick a real persona id (first available). Fallback to a known default.
+          let personaId = "price_sensitive";
+          try {
+            const pr = await proxyFetch("/api/proxy/v1/personas", { cache: "no-store" });
+            const pdata: any = await pr.json().catch(() => null);
+            const personas: any[] = Array.isArray(pdata?.personas)
+              ? pdata.personas
+              : Array.isArray(pdata)
+                ? pdata
+                : [];
+            if (personas.length > 0 && typeof personas[0]?.id === "string") {
+              personaId = personas[0].id;
+            }
+          } catch {
+            // ignore persona list failures; use fallback
+          }
+
+          const body: any = { personaId, difficulty: "normal" };
+
+          const r = await proxyFetch("/api/proxy/v1/sparring/sessions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+          const data: any = await r.json().catch(() => null);
+          if (!r.ok || !data || data.ok === false || !data.session?.id) {
+            throw new Error(data?.error || `${r.status} ${r.statusText}`);
+          }
+
+          // Preserve assignment context in the URL so scoring can auto-complete it
+          const q = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
+          router.replace(`/sparring/${encodeURIComponent(data.session.id)}${q}`);
+        } catch (e: any) {
+          console.error("[sparring/default] failed to create session", e);
+          if (!alive) return;
+          setError(e?.message || "Failed to start sparring session.");
+          setLoading(false);
         }
-      } catch {
-        // ignore persona list failures; use fallback
-      }
+      })();
 
-      const body: any = { personaId, difficulty: "normal" };
-
-      const r = await proxyFetch("/api/proxy/v1/sparring/sessions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data: any = await r.json().catch(() => null);
-      if (!r.ok || !data || data.ok === false || !data.session?.id) {
-        throw new Error(data?.error || `${r.status} ${r.statusText}`);
-      }
-
-      // Preserve assignment context in the URL so scoring can auto-complete it
-      const q = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
-      router.replace(`/sparring/${encodeURIComponent(data.session.id)}${q}`);
-    } catch (e: any) {
-      console.error("[sparring/default] failed to create session", e);
-      if (!alive) return;
-      setError(e?.message || "Failed to start sparring session.");
-      setLoading(false);
+      return () => {
+        alive = false;
+      };
     }
-  })();
-
-  return () => {
-    alive = false;
-  };
-}
 
     fetchJsonWithRetry(`/api/proxy/v1/sparring/sessions/${id}`)
       .then((res: any) => {
@@ -876,6 +893,45 @@ if (id === "default") {
       window.clearTimeout(timerId);
     };
   }, [targetSeconds, session?.id]);
+  function buildSparringPostAction(payload: any) {
+    const xp =
+      typeof payload?.xp_awarded_total === "number"
+        ? payload.xp_awarded_total
+        : typeof payload?.xp_awarded === "number"
+          ? payload.xp_awarded
+          : 0;
+
+    const total =
+      typeof payload?.total === "number"
+        ? payload.total
+        : typeof payload?.session?.total_score === "number"
+          ? payload.session.total_score
+          : typeof payload?.session?.meta?.total === "number"
+            ? payload.session.meta.total
+            : null;
+
+    const flags: any[] = Array.isArray(payload?.session?.flags)
+      ? payload.session.flags
+      : Array.isArray(payload?.flags)
+        ? payload.flags
+        : [];
+
+    const strongest =
+      total !== null && total >= 85
+        ? "Clarity + control"
+        : total !== null && total >= 70
+          ? "Solid structure"
+          : "Effort + consistency";
+
+    const improve =
+      flags.find((f) => typeof f === "string" && f.toLowerCase().includes("filler"))
+        ? "Reduce filler + tighten answers"
+        : flags.find((f) => typeof f === "string" && f.toLowerCase().includes("close"))
+          ? "Stronger close — ask for the next step"
+          : "Ask sharper questions earlier";
+
+    return { strongest, improve, xpGained: xp };
+  }
   const handleScoreClick = async () => {
     if (!session || !session.id) return;
 
@@ -918,6 +974,8 @@ if (id === "default") {
       if (updated) {
         setSession(updated);
       }
+      // Day 23: Rep Feedback Loop — post-action summary
+      setPostAction(buildSparringPostAction(data));
 
       // If this sparring was launched from an Assignment, the API may auto-complete it.
       if (assignmentId) {
@@ -1282,7 +1340,7 @@ if (id === "default") {
           <button
             type="button"
             onClick={() => router.back()}
-            className="text-xs text-neutral-400 hover:text-neutral-200 mb-1"
+            className="text-xs text-neutral-400 hover:text-neutral-200 mb-1 transition-colors duration-150 active:scale-[0.98]"
           >
             ← Back
           </button>
@@ -1292,14 +1350,14 @@ if (id === "default") {
         {launchedFromAssignments ? (
           <Link
             href="/assignments"
-            className="text-xs rounded border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-emerald-200 hover:bg-emerald-500/15"
+            className="text-xs rounded border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-emerald-200 hover:bg-emerald-500/15 transition-all duration-150 active:scale-[0.98]"
           >
             Back to Assignments
           </Link>
         ) : (
           <Link
             href="/call-library"
-            className="text-xs rounded border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:bg-neutral-900"
+            className="text-xs rounded border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
           >
             Back to Call Library
           </Link>
@@ -1340,6 +1398,55 @@ if (id === "default") {
                     </span>
                   </div>
                 )}
+                {/* Post-action summary card: render after Top summary card */}
+                {isScored && postAction ? (
+                  <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+                      Post-action summary
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-sm">
+                      <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                        <div className="text-neutral-400">🎯 Strongest area today</div>
+                        <div className="mt-1 font-semibold text-neutral-100">{postAction.strongest}</div>
+                      </div>
+
+                      <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                        <div className="text-neutral-400">⚠️ One thing to improve</div>
+                        <div className="mt-1 font-semibold text-neutral-100">{postAction.improve}</div>
+                      </div>
+
+                      <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                        <div className="text-neutral-400">🔥 XP gained</div>
+                        <div className="mt-1 font-semibold text-neutral-100">+{postAction.xpGained}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {momentumNext && (
+                        <button
+                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98]"
+                          onClick={() => {
+                            const params = new URLSearchParams();
+                            if (momentumNext.personaId) params.set("persona", momentumNext.personaId);
+                            if (momentumNext.difficulty) params.set("difficulty", momentumNext.difficulty);
+                            if (momentumNext.focus) params.set("focus", momentumNext.focus);
+                            window.location.href = `/sparring/new?${params.toString()}`;
+                          }}
+                        >
+                          Practice this now →
+                        </button>
+                      )}
+
+                      <Link
+                        href="/sparring"
+                        className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                      >
+                        Choose different drill
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Opponent persona + professional profile */}
                 <div className="mt-2 flex flex-col gap-1 text-[11px] text-neutral-300">
@@ -1502,32 +1609,32 @@ if (id === "default") {
 
                 {/* Duration + Turns */}
                 <div className="flex items-center gap-3 text-[11px] text-neutral-400">
-                {getLastNRepMicroScores(turns, 5).length > 0 && (
-                  <div className="mt-1 w-full">
-                    <div className="flex items-center justify-end gap-2 text-[10px] text-neutral-400">
-                      <span className="opacity-70">Micro trend</span>
-                      {(() => {
-                        const scores = getLastNRepMicroScores(turns, 5);
-                        const t = microTrendLabel(scores);
-                        return <span className={microPillClasses(t.dir)}>{t.label}</span>;
-                      })()}
-                    </div>
+                  {getLastNRepMicroScores(turns, 5).length > 0 && (
+                    <div className="mt-1 w-full">
+                      <div className="flex items-center justify-end gap-2 text-[10px] text-neutral-400">
+                        <span className="opacity-70">Micro trend</span>
+                        {(() => {
+                          const scores = getLastNRepMicroScores(turns, 5);
+                          const t = microTrendLabel(scores);
+                          return <span className={microPillClasses(t.dir)}>{t.label}</span>;
+                        })()}
+                      </div>
 
-                    <div className="mt-1 flex items-end justify-end gap-[3px]">
-                      {getLastNRepMicroScores(turns, 5).map((v, idx) => {
-                        const h = Math.max(6, Math.min(18, Math.round(v / 6)));
-                        return (
-                          <div
-                            key={`microbar-${idx}`}
-                            className="w-2 rounded-sm bg-neutral-700/80"
-                            style={{ height: `${h}px` }}
-                            title={`Micro ${v}/100`}
-                          />
-                        );
-                      })}
+                      <div className="mt-1 flex items-end justify-end gap-[3px]">
+                        {getLastNRepMicroScores(turns, 5).map((v, idx) => {
+                          const h = Math.max(6, Math.min(18, Math.round(v / 6)));
+                          return (
+                            <div
+                              key={`microbar-${idx}`}
+                              className="w-2 rounded-sm bg-neutral-700/80"
+                              style={{ height: `${h}px` }}
+                              title={`Micro ${v}/100`}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
                   {durationSeconds !== null && (
                     <span>{formatDuration(durationSeconds)}</span>
                   )}
@@ -1575,7 +1682,7 @@ if (id === "default") {
                       onClick={handleScoreClick}
                       disabled={scoringBusy || isScored}
                       className={
-                        "inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black disabled:opacity-60" +
+                        "inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black disabled:opacity-60 transition-all duration-150 active:scale-[0.98]" +
                         (timerFinished && !isScored ? " animate-pulse" : "")
                       }
                     >
@@ -1588,7 +1695,7 @@ if (id === "default") {
                     <button
                       type="button"
                       onClick={onReplaySession}
-                      className="inline-flex items-center gap-1 rounded-full border border-emerald-500/70 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20"
+                      className="inline-flex items-center gap-1 rounded-full border border-emerald-500/70 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.98]"
                     >
                       <span>Restart drill (new session)</span>
                       <span aria-hidden="true">↻</span>
@@ -1754,7 +1861,7 @@ if (id === "default") {
                                     setInput(line);
                                     window.setTimeout(() => inputRef.current?.focus(), 0);
                                   }}
-                                  className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200 hover:bg-emerald-500/20"
+                                  className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.98]"
                                 >
                                   Insert suggested line
                                 </button>
@@ -1766,7 +1873,7 @@ if (id === "default") {
                                     setInput(line.length > 110 ? line.slice(0, 110).trim() + "…" : line);
                                     window.setTimeout(() => inputRef.current?.focus(), 0);
                                   }}
-                                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] font-medium text-neutral-200 hover:bg-neutral-800"
+                                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] font-medium text-neutral-200 hover:bg-neutral-800 transition-all duration-150 active:scale-[0.98]"
                                 >
                                   Insert shorter
                                 </button>
@@ -1887,7 +1994,7 @@ if (id === "default") {
                   type="button"
                   onClick={onSend}
                   disabled={composerDisabled || !input.trim()}
-                  className="rounded-md border border-emerald-500 bg-emerald-600 px-3 py-2 text-xs font-medium text-black disabled:opacity-40"
+                  className="rounded-md border border-emerald-500 bg-emerald-600 px-3 py-2 text-xs font-medium text-black disabled:opacity-40 transition-all duration-150 active:scale-[0.98]"
                 >
                   {sending ? "Sending…" : "Send"}
                 </button>
@@ -2149,7 +2256,7 @@ if (id === "default") {
           </div>
         </div>
       )}
-    <style jsx global>{`
+      <style jsx global>{`
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(2px); }
         to { opacity: 1; transform: translateY(0); }

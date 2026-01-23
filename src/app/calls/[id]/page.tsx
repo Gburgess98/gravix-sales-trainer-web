@@ -1,7 +1,7 @@
 // web/src/app/calls/[id]/page.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useRef as useRefReact } from 'react';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
 import AuthGate from '@/components/AuthGate';
@@ -131,6 +131,24 @@ const toast = useToast();
   // Score history
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
   const [histErr, setHistErr] = useState<string | null>(null);
+  const [postAction, setPostAction] = useState<null | {
+    strongest: string;
+    improve: string;
+    xpGained: number;
+  }>(null);
+
+  // Rep Momentum Chain v1 — Call Reviews
+  const momentumNext = useMemo(() => {
+    if (!postAction) return null;
+
+    // extract weakest focus label (string-safe)
+    const focus = postAction.improve?.replace(/^Improve your\s+/i, "") || null;
+
+    return {
+      focus,
+      difficulty: "normal",
+    };
+  }, [postAction]);
 
   const [assignee, setAssignee] = useState<string>("");
   const [quickDrill, setQuickDrill] = useState<string>("");
@@ -255,11 +273,70 @@ useEffect(() => {
   }, [callId, assigneeUserId, drillId, notes, loadAssignments, toast, assignmentId]);
 
 
+  function pickBestWorstFromScores(obj: any) {
+    if (!obj || typeof obj !== "object") return null;
+
+    const keys = ["intro", "discovery", "pitch", "objection", "close", "overall"];
+    const pairs: { k: string; v: number }[] = [];
+
+    for (const k of keys) {
+      const v = (obj as any)[k];
+      if (typeof v === "number" && Number.isFinite(v)) pairs.push({ k, v });
+    }
+
+    if (!pairs.length) return null;
+
+    pairs.sort((a, b) => b.v - a.v);
+    const best = pairs[0];
+    const worst = pairs[pairs.length - 1];
+
+    const label = (k: string) =>
+      k === "intro"
+        ? "Opening"
+        : k === "discovery"
+          ? "Discovery"
+          : k === "pitch"
+            ? "Pitch"
+            : k === "objection"
+              ? "Objection handling"
+              : k === "close"
+                ? "Close"
+                : "Overall";
+
+    return { best: label(best.k), worst: label(worst.k) };
+  }
+
+  function buildCallPostAction(payload: any) {
+    const xp =
+      typeof payload?.xp_awarded_total === "number"
+        ? payload.xp_awarded_total
+        : typeof payload?.xp_awarded === "number"
+          ? payload.xp_awarded
+          : 0;
+
+    const scores =
+      payload?.call?.scores ||
+      payload?.call?.score_breakdown ||
+      payload?.call?.rubric ||
+      payload?.scores ||
+      null;
+
+    const bw = pickBestWorstFromScores(scores);
+
+    const strongest = bw?.best || "Structure + momentum";
+    const improve = bw?.worst
+      ? `Improve your ${bw.worst.toLowerCase()}`
+      : "Ask 2 more discovery questions before pitching";
+
+    return { strongest, improve, xpGained: xp };
+  }
+
   // ------- Data loaders -------
 
   // Call (once)
   useEffect(() => {
     if (!callId) return;
+    setPostAction(null);
     let alive = true;
 
     (async () => {
@@ -386,6 +463,8 @@ async function deleteAssignment(id: string) {
           try {
             const h = await getScoreHistory(callId, 8);
             if (!cancelled) setHistory(h);
+            // Day 23: Rep Feedback Loop — build post-action summary
+            setPostAction(buildCallPostAction({ call: res.call }));
           } catch (e: any) {
             if (!cancelled) setHistErr(e?.message || "Failed to load score history");
           }
@@ -837,6 +916,59 @@ async function deleteAssignment(id: string) {
             )}
           </div>
         </section>
+        {postAction ? (
+          <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+              Post-action summary
+            </div>
+
+            <div className="mt-3 grid gap-2 text-sm">
+              <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                <div className="text-neutral-400">🎯 Strongest area today</div>
+                <div className="mt-1 font-semibold text-neutral-100">
+                  {postAction.strongest}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                <div className="text-neutral-400">⚠️ One thing to improve</div>
+                <div className="mt-1 font-semibold text-neutral-100">
+                  {postAction.improve}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-800 bg-black p-3">
+                <div className="text-neutral-400">🔥 XP gained</div>
+                <div className="mt-1 font-semibold text-neutral-100">
+                  +{postAction.xpGained}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {momentumNext && momentumNext.focus && (
+                <button
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set("focus", momentumNext.focus);
+                    params.set("source", "call-review");
+                    window.location.href = `/sparring/new?${params.toString()}`;
+                  }}
+                >
+                  Practice this now →
+                </button>
+              )}
+
+              <a
+                href="/calls"
+                className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900"
+              >
+                Review another call
+              </a>
+            </div>
+          </section>
+        ) : null}
 
         {/* Rubric (if available) */}
         {callMeta?.rubric ? (

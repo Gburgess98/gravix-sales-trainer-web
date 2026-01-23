@@ -29,6 +29,17 @@ type CompleteResponse = {
   assignment: Assignment;
 };
 
+type RepsMeResponse = {
+  ok: true;
+  me: {
+    id: string;
+    name?: string | null;
+    tier?: string | null;
+    xp_total?: number | null;
+    xp_today?: number | null;
+  };
+};
+
 function fmt(dt?: string | null) {
   if (!dt) return "—";
   try {
@@ -73,7 +84,32 @@ function computeCompletionStreak(done: Assignment[], localDays?: Set<string>) {
     hasCompletedToday: days.has(ymdLocal(new Date())),
   };
 }
+
 const COMPLETED_DAYS_KEY = "gst:completedDays";
+const ASSIGNMENTS_REFRESH_KEY = "gst:assignmentsRefresh";
+const STREAK_STATE_KEY = "gst:streakState";
+
+function ymdLocalYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return ymdLocal(d);
+}
+
+function bumpAssignmentsRefresh(reason: string = "") {
+  if (typeof window === "undefined") return;
+  try {
+    const payload = JSON.stringify({ t: Date.now(), reason });
+    window.localStorage.setItem(ASSIGNMENTS_REFRESH_KEY, payload);
+    // BroadcastChannel is more reliable than storage events within the same tab.
+    if ("BroadcastChannel" in window) {
+      const ch = new BroadcastChannel("gst:assignments");
+      ch.postMessage({ type: "refresh", reason, t: Date.now() });
+      ch.close();
+    }
+  } catch {
+    // ignore
+  }
+}
 
 function readLocalCompletedDays(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -173,8 +209,8 @@ function isOverdue(a: Assignment) {
 
 function openCardClass(a: Assignment) {
   // Rep view: strong urgency for overdue (red wash + left bar)
-  const base = "rounded-xl border bg-neutral-950 p-4";
-  if (!isOverdue(a)) return `${base} border-neutral-800`;
+  const base = "rounded-xl border bg-neutral-950 p-4 transition-colors duration-150";
+  if (!isOverdue(a)) return `${base} border-neutral-800 hover:border-neutral-700`;
   return `${base} border-red-500/40 bg-red-500/10 border-l-4 border-l-red-500/70`;
 }
 
@@ -283,6 +319,19 @@ function isSameLocalDay(dt?: string | null) {
   );
 }
 
+function isSameLocalDayFrom(dt?: string | null, from?: Date) {
+  if (!dt) return false;
+  const d = new Date(dt);
+  if (Number.isNaN(d.getTime())) return false;
+
+  const base = from ?? new Date();
+  return (
+    d.getFullYear() === base.getFullYear() &&
+    d.getMonth() === base.getMonth() &&
+    d.getDate() === base.getDate()
+  );
+}
+
 function priorityBucket(a: Assignment) {
   // 0 = overdue, 1 = due today, 2 = due later, 3 = no due date
   const late = daysLate(a.due_at);
@@ -320,6 +369,17 @@ function sparringHref(assignmentId: string, personaId: string | null) {
   // The sparring page can then decide how to resolve/default the persona.
   const pid = personaId && personaId.trim().length > 0 ? personaId : "default";
   return `/sparring/${encodeURIComponent(pid)}?assignmentId=${encodeURIComponent(assignmentId)}`;
+}
+
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+      <div className="h-3 w-24 rounded bg-neutral-800" />
+      <div className="mt-3 h-5 w-2/3 rounded bg-neutral-800" />
+      <div className="mt-2 h-3 w-1/2 rounded bg-neutral-900" />
+      <div className="mt-4 h-9 w-28 rounded bg-neutral-800" />
+    </div>
+  );
 }
 
 
@@ -364,6 +424,19 @@ export default function AssignmentsClient() {
   const lastCompletedIdRef = useRef<string | null>(null);
   const [snoozes, setSnoozes] = useState<Record<string, number>>({});
   const [localCompletedDays, setLocalCompletedDays] = useState<Set<string>>(new Set());
+  const [xp, setXp] = useState<{ today: number; total: number } | null>(null);
+
+  async function loadXp() {
+    try {
+      const r = await proxyJson<RepsMeResponse>("/v1/reps/me");
+      const today = Number(r?.me?.xp_today ?? 0) || 0;
+      const total = Number(r?.me?.xp_total ?? 0) || 0;
+      setXp({ today, total });
+    } catch {
+      // XP is non-critical; avoid breaking the page if endpoint isn't mounted yet.
+      setXp(null);
+    }
+  }
 
   async function load() {
     setErr(null);
@@ -382,6 +455,60 @@ export default function AssignmentsClient() {
     setSnoozes(readSnoozes());
     setLocalCompletedDays(readLocalCompletedDays());
     void load();
+    void loadXp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Instant refresh hook: when sparring/call pages complete an assignment they can
+  // bump localStorage/BroadcastChannel, and this page will reload immediately.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key !== ASSIGNMENTS_REFRESH_KEY) return;
+      // best-effort refresh
+      void load();
+      void loadXp();
+      if (ev.newValue) {
+        try {
+          const parsed = JSON.parse(ev.newValue);
+          const reason = typeof parsed?.reason === "string" ? parsed.reason : "";
+          if (reason) showToast("success", reason);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+
+    let ch: BroadcastChannel | null = null;
+    if ("BroadcastChannel" in window) {
+      ch = new BroadcastChannel("gst:assignments");
+      ch.onmessage = (msg) => {
+        const data: any = (msg as any)?.data;
+        if (data?.type !== "refresh") return;
+        void load();
+        void loadXp();
+        const reason = typeof data?.reason === "string" ? data.reason : "";
+        if (reason) showToast("success", reason);
+      };
+    }
+
+    // Also refresh when the tab becomes visible again.
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void load();
+        void loadXp();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVis);
+      if (ch) ch.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -404,6 +531,9 @@ export default function AssignmentsClient() {
   const done = useMemo(() => rows.filter((r) => r.status === "completed"), [rows]);
   const streak = useMemo(() => computeCompletionStreak(done, localCompletedDays), [done, localCompletedDays]);
 
+  const [streakWarn, setStreakWarn] = useState<string | null>(null);
+  const [streakResetMsg, setStreakResetMsg] = useState<string | null>(null);
+
   const momentum = useMemo(() => {
     const openCount = open.length;
 
@@ -412,6 +542,7 @@ export default function AssignmentsClient() {
 
     const completed7d = done.filter((a) => isWithinLastDays(a.completed_at, 7)).length;
     const completedTodayCount = done.filter((a) => isSameLocalDay(a.completed_at)).length;
+    const assignedTodayCount = rows.filter((a) => isSameLocalDayFrom(a.created_at)).length;
 
     // simple completion rate over last 7 days: completed / (completed + still-open)
     const denom = completed7d + openCount;
@@ -423,9 +554,59 @@ export default function AssignmentsClient() {
       dueTodayCount,
       completed7d,
       completedTodayCount,
+      assignedTodayCount,
       completionRate7d,
     };
-  }, [open, done]);
+  }, [open, done, rows]);
+
+  // Day 23 Task 3: Streak enforcement effect (warn + reset)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Warn if they have open work, have a streak, and haven't completed today.
+    if (open.length > 0 && streak.streak > 0 && !streak.hasCompletedToday) {
+      setStreakWarn("Finish one task to keep your streak alive");
+    } else {
+      setStreakWarn(null);
+    }
+
+    // Reset message if yesterday they had a streak (>0) and today it's 0.
+    // We persist yesterday's streak to localStorage so we can detect a break.
+    try {
+      const todayKey = ymdLocal(new Date());
+      const yesterdayKey = ymdLocalYesterday();
+
+      const raw = window.localStorage.getItem(STREAK_STATE_KEY);
+      const prev = raw ? JSON.parse(raw) : null;
+
+      const prevYmd = typeof prev?.ymd === "string" ? prev.ymd : null;
+      const prevStreak = typeof prev?.streak === "number" ? prev.streak : null;
+
+      // Only show reset message once, on the first render of a new day.
+      // Condition: yesterday had streak > 0, today streak is 0, and no completion today.
+      const broke =
+        prevYmd === yesterdayKey &&
+        typeof prevStreak === "number" &&
+        prevStreak > 0 &&
+        streak.streak === 0 &&
+        !streak.hasCompletedToday;
+
+      if (broke) {
+        setStreakResetMsg("Streak reset. Let’s restart strong today.");
+      } else {
+        setStreakResetMsg(null);
+      }
+
+      // Persist today's streak state (idempotent).
+      window.localStorage.setItem(
+        STREAK_STATE_KEY,
+        JSON.stringify({ ymd: todayKey, streak: streak.streak, t: Date.now() })
+      );
+    } catch {
+      // storage errors should never break UI
+      setStreakResetMsg(null);
+    }
+  }, [open.length, streak.streak, streak.hasCompletedToday]);
 
   // Today’s Focus should match the same prioritisation we use for the Open list.
   // (overdue → due today → due later → no due date, then earliest due / oldest created)
@@ -465,6 +646,7 @@ export default function AssignmentsClient() {
       );
 
       showToast("success", "Completed ✓ (+XP soon)");
+      bumpAssignmentsRefresh("Assignment completed ✓");
       lastCompletedIdRef.current = id;
 
       // Local streak/progress: record today immediately (even if server write is delayed)
@@ -478,6 +660,7 @@ export default function AssignmentsClient() {
 
       // sync with server truth
       await load();
+      await loadXp();
 
       // Auto-focus next assignment (Today’s Focus after refresh)
       window.setTimeout(() => {
@@ -507,7 +690,7 @@ export default function AssignmentsClient() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">My Assignments</h1>
-          <p className="text-sm text-neutral-400">Complete tasks set by your manager.</p>
+          <p className="text-sm text-neutral-400">Clear tasks, fast wins. Keep your streak alive.</p>
 
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -523,7 +706,7 @@ export default function AssignmentsClient() {
                 </span>
               ) : (
                 <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
-                  Complete 1 task today to keep momentum
+                  Complete 1 task today to keep your streak
                 </span>
               )}
 
@@ -531,6 +714,11 @@ export default function AssignmentsClient() {
                 Today:{" "}
                 <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
                 <span className="text-neutral-500"> / {momentum.openCount} open</span>
+              </span>
+
+              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+                XP today: <span className="font-semibold text-neutral-100">{xp?.today ?? 0}</span>
+                <span className="text-neutral-500"> · total {xp?.total ?? 0}</span>
               </span>
 
               {hasActiveSnoozes && (
@@ -541,7 +729,7 @@ export default function AssignmentsClient() {
                     setSnoozes({});
                     showToast("success", "Cleared snoozed tasks");
                   }}
-                  className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900"
+                  className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
                   title="Clear snoozed custom tasks"
                 >
                   Snoozed: {activeSnoozedCount} (clear)
@@ -562,13 +750,106 @@ export default function AssignmentsClient() {
                 }}
               />
             </div>
+            {!loading && (
+              <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Daily Win</div>
+                    <div className="mt-1 text-xs text-neutral-500">Next best action (takes 2 mins)</div>
+
+                    {streakWarn ? (
+                      <div className="mt-2 rounded-lg border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+                        {streakWarn}
+                      </div>
+                    ) : null}
+
+                    {streakResetMsg ? (
+                      <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200">
+                        {streakResetMsg}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                        ✅ Completed today: <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
+                        <span className="text-neutral-500"> / {momentum.assignedTodayCount}</span>
+                      </span>
+
+                      <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                        🔥 Streak: <span className="font-semibold text-neutral-100">{streak.streak}</span>
+                        <span className="text-neutral-500"> day{streak.streak === 1 ? "" : "s"}</span>
+                      </span>
+
+                      {todayFocus ? (
+                        <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                          🎯 <span className="font-semibold text-neutral-100">{todayFocus.title || "(Untitled)"}</span>
+                          <span className="text-neutral-500"> · {focusReason(todayFocus)}</span>
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-400">
+                          🎯 All done — nothing open.
+                        </span>
+                      )}
+                    </div>
+
+                    {todayFocus ? (
+                      <div className="mt-2 text-sm text-neutral-400">
+                        <span className="text-neutral-200">{nextBestAction(todayFocus)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {todayFocus ? (
+                    todayFocus.type === "sparring" ? (
+                      <div className="flex flex-col items-end gap-2">
+                        <Link
+                          href={sparringHref(todayFocus.id, todayFocus.target_id)}
+                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                          title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
+                        >
+                          Start sparring
+                        </Link>
+                        {!todayFocus.target_id ? (
+                          <div className="text-[11px] text-neutral-500">No persona · default</div>
+                        ) : null}
+                      </div>
+                    ) : todayFocus.type === "call_review" ? (
+                      todayFocus.target_id ? (
+                        <Link
+                          href={`/calls/${encodeURIComponent(todayFocus.target_id)}?assignment=${encodeURIComponent(todayFocus.id)}&assignmentId=${encodeURIComponent(todayFocus.id)}&callId=${encodeURIComponent(todayFocus.target_id)}`}
+                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                        >
+                          Start review
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/calls?assignment=${encodeURIComponent(todayFocus.id)}&assignmentId=${encodeURIComponent(todayFocus.id)}`}
+                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                          title="Rep can choose a call"
+                        >
+                          Pick a call
+                        </Link>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => complete(todayFocus.id)}
+                        disabled={savingId === todayFocus.id}
+                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
+                      </button>
+                    )
+                  ) : null}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={load}
-            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
           >
             Refresh
           </button>
@@ -633,7 +914,7 @@ export default function AssignmentsClient() {
               <div className="flex flex-col items-end gap-2">
                 <Link
                   href={sparringHref(todayFocus.id, todayFocus.target_id)}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
                   title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
                 >
                   Start now
@@ -651,7 +932,7 @@ export default function AssignmentsClient() {
                 )}&assignmentId=${encodeURIComponent(todayFocus.id)}&callId=${encodeURIComponent(
                   todayFocus.target_id
                 )}`}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
               >
                 Review call
               </Link>
@@ -660,7 +941,7 @@ export default function AssignmentsClient() {
                 <button
                   onClick={() => complete(todayFocus.id)}
                   disabled={savingId === todayFocus.id}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
                 >
                   {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
                 </button>
@@ -675,7 +956,7 @@ export default function AssignmentsClient() {
                       setSnoozes(next);
                       showToast("success", "Snoozed for 24h");
                     }}
-                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
                   >
                     Snooze 24h
                   </button>
@@ -752,14 +1033,30 @@ export default function AssignmentsClient() {
       )}
 
       {loading ? (
-        <div className="mt-6 text-sm text-neutral-400">Loading…</div>
+        <div className="mt-6 space-y-3">
+          <div className="text-sm text-neutral-400">Loading assignments…</div>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : (
-        <div className="mt-6 space-y-8">
+        <div className="mt-6 space-y-8 transition-opacity duration-200 opacity-100">
           <section>
             <h2 className="text-sm font-semibold text-neutral-200">Open</h2>
             <div className="mt-3 space-y-3">
               {open.length === 0 ? (
-                <div className="text-sm text-neutral-500">No open assignments.</div>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-300">
+                  <div className="font-semibold">No assignments right now</div>
+                  <div className="mt-1 text-neutral-500">When your manager assigns a drill or review, it’ll appear here.</div>
+                  <div className="mt-3">
+                    <Link
+                      href="/sparring"
+                      className="inline-flex rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
+                    >
+                      Go to Sparring
+                    </Link>
+                  </div>
+                </div>
               ) : (
                 open.map((a) => (
                   <div
@@ -798,7 +1095,7 @@ export default function AssignmentsClient() {
                         <div className="flex flex-col items-end gap-1">
                           <Link
                             href={sparringHref(a.id, a.target_id)}
-                            className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                            className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
                             title={a.target_id ? undefined : "No persona set on this assignment — using default."}
                           >
                             Start sparring
@@ -810,7 +1107,7 @@ export default function AssignmentsClient() {
                       ) : a.type === "call_review" && a.target_id ? (
                         <Link
                           href={`/calls/${encodeURIComponent(a.target_id)}?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}&callId=${encodeURIComponent(a.target_id)}`}
-                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
                         >
                           Open call review
                         </Link>
@@ -818,7 +1115,7 @@ export default function AssignmentsClient() {
                         <button
                           onClick={() => complete(a.id)}
                           disabled={savingId === a.id}
-                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
                         >
                           {savingId === a.id ? "Saving…" : "Mark complete"}
                         </button>
@@ -834,7 +1131,10 @@ export default function AssignmentsClient() {
             <h2 className="text-sm font-semibold text-neutral-200">Completed</h2>
             <div className="mt-3 space-y-3">
               {done.length === 0 ? (
-                <div className="text-sm text-neutral-500">Nothing completed yet.</div>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-300">
+                  <div className="font-semibold">No completions yet</div>
+                  <div className="mt-1 text-neutral-500">Finish one task to start your streak and see progress here.</div>
+                </div>
               ) : (
                 done.map((a) => (
                   <div key={a.id} className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-4">
