@@ -34,12 +34,13 @@ type Signals = {
 };
 
 type Trust = {
-  completion_rate_24h: number;
-  completion_rate_7d: number;
-  auto_completed_24h: number;
-  auto_completed_7d: number;
-  top_stuck_reason: string;
-  needs_help_today: { rep_id: string; name?: string | null; overdue: number; open: number }[];
+  // All fields optional because the API payload may evolve.
+  completion_rate_24h?: number;
+  completion_rate_7d?: number;
+  auto_completed_24h?: number;
+  auto_completed_7d?: number;
+  top_stuck_reason?: string;
+  needs_help_today?: { rep_id: string; name?: string | null; overdue?: number; open?: number }[];
 };
 
 type StuckSignal = {
@@ -200,6 +201,33 @@ function todayYmd() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function endOfTodayIso() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
+function daysAgoIso(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+function safeTypeLabel(t: any) {
+  return t === "sparring"
+    ? "Sparring"
+    : t === "call_review"
+      ? "Call review"
+      : t === "custom"
+        ? "Custom"
+        : String(t || "Unknown");
+}
+
+function isAutoCompletedBy(v: any) {
+  const s = String(v || "").toLowerCase();
+  return s === "sparring" || s === "call_review" || s === "auto" || s === "system";
+}
+
 async function readJsonOrThrow(res: Response) {
   const txt = await res.text();
   let json: any = null;
@@ -308,6 +336,80 @@ export default function AdminAssignmentsClient() {
   const [signals, setSignals] = useState<Signals | null>(null);
   const [trust, setTrust] = useState<Trust | null>(null);
 
+  // Trust panel: never crash on missing/changed fields
+  const trustSafe = trust ?? {};
+  const completion24h = Number((trustSafe as any).completion_rate_24h ?? 0);
+  const completion7d = Number((trustSafe as any).completion_rate_7d ?? 0);
+  const autoCompleted24h = Number((trustSafe as any).auto_completed_24h ?? 0);
+  const autoCompleted7d = Number((trustSafe as any).auto_completed_7d ?? 0);
+  const topStuckReason = String((trustSafe as any).top_stuck_reason ?? "—");
+  const needsHelpToday = useMemo(() => {
+    return Array.isArray((trustSafe as any).needs_help_today)
+      ? ((trustSafe as any).needs_help_today as any[])
+      : [];
+  }, [trustSafe]);
+
+  const [helpStreak2Plus, setHelpStreak2Plus] = useState<
+    Array<{ rep_id: string; name?: string | null; days: number }>
+  >([]);
+  const helpStreakSigRef = useRef<string>("[]");
+
+  useEffect(() => {
+    try {
+      const ymd = todayYmd();
+      const key = "gravix:trust_help_streaks";
+      const raw = localStorage.getItem(key);
+      const prev = raw ? JSON.parse(raw) : { ymd: null, streaks: {} as Record<string, number> };
+
+      if (prev?.ymd === ymd) {
+        const streaks = prev?.streaks || {};
+        const arr = Object.entries(streaks)
+          .filter(([, days]) => Number(days) >= 2)
+          .map(([rep_id, days]) => {
+            const rep = (needsHelpToday || []).find((r: any) => String(r?.rep_id) === String(rep_id));
+            return { rep_id, name: rep?.name ?? null, days: Number(days) };
+          })
+          .sort((a, b) => b.days - a.days);
+
+        const sig = JSON.stringify(arr);
+        if (sig !== helpStreakSigRef.current) {
+          helpStreakSigRef.current = sig;
+          setHelpStreak2Plus(arr);
+        }
+        return;
+      }
+
+      const prevStreaks: Record<string, number> =
+        prev?.streaks && typeof prev.streaks === "object" ? prev.streaks : {};
+
+      const todayIds = new Set((needsHelpToday || []).map((r: any) => String(r?.rep_id)).filter(Boolean));
+
+      const nextStreaks: Record<string, number> = {};
+      for (const id of todayIds) nextStreaks[id] = (prevStreaks[id] || 0) + 1;
+
+      localStorage.setItem(key, JSON.stringify({ ymd, streaks: nextStreaks }));
+
+      const arr = Object.entries(nextStreaks)
+        .filter(([, days]) => Number(days) >= 2)
+        .map(([rep_id, days]) => {
+          const rep = (needsHelpToday || []).find((r: any) => String(r?.rep_id) === String(rep_id));
+          return { rep_id, name: rep?.name ?? null, days: Number(days) };
+        })
+        .sort((a, b) => b.days - a.days);
+
+      const sig = JSON.stringify(arr);
+      if (sig !== helpStreakSigRef.current) {
+        helpStreakSigRef.current = sig;
+        setHelpStreak2Plus(arr);
+      }
+    } catch {
+      if (helpStreakSigRef.current !== "[]") {
+        helpStreakSigRef.current = "[]";
+        setHelpStreak2Plus([]);
+      }
+    }
+  }, [needsHelpToday]);
+
   const searchParams = useSearchParams();
   const sp = new URLSearchParams(searchParams.toString());
 
@@ -341,15 +443,41 @@ export default function AdminAssignmentsClient() {
     );
   }, [rowsByRep, createRepId, createTitle]);
 
+  const createTargetValidation = useMemo(() => {
+    // Only validate for sparring/call_review. Custom ignores target.
+    if (createType === "custom") {
+      return { invalid: false, message: null as string | null };
+    }
+
+    const norm = normaliseOptionalUuid(createTargetId);
+    if (norm === "__INVALID__") {
+      return {
+        invalid: true,
+        message:
+          createType === "sparring"
+            ? "Persona ID must be a UUID (leave blank to use the default persona)."
+            : "Call ID must be a UUID (leave blank to let the rep choose a call).",
+      };
+    }
+
+    return { invalid: false, message: null as string | null };
+  }, [createType, createTargetId]);
+
   // Helper: jump to create panel and prefill fields
   function jumpToCreateAndPrefill(args: {
     repId: string;
     type?: Assignment["type"];
     title?: string;
+    dueYmd?: string;
   }) {
     setCreateRepId(args.repId);
     if (args.type) setCreateType(args.type);
-    if (args.title) setCreateTitle(args.title);
+    if (args.title != null) setCreateTitle(args.title);
+    if (args.dueYmd != null) setCreateDueAt(args.dueYmd);
+
+    // Safety: do not carry target_id when pre-filling (prevents wrong-target creation)
+    setCreateTargetId("");
+
     // Scroll and focus
     setTimeout(() => {
       createPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -411,18 +539,14 @@ export default function AdminAssignmentsClient() {
       // Manager create endpoint (API): expects rep_id, type, title, optional due_at, optional target_id
       const due_at = createDueAt ? buildDueAtIso(createDueAt) : null;
 
-      const targetNorm = createType === "custom" ? null : normaliseOptionalUuid(createTargetId);
-      if (targetNorm === "__INVALID__") {
-        setCreateErr(
-          createType === "sparring"
-            ? "Persona ID must be a UUID (leave blank to use the default persona)."
-            : "Call ID must be a UUID (leave blank to let the rep choose a call)."
-        );
+      if (createTargetValidation.invalid) {
+        setCreateErr(createTargetValidation.message || "invalid_target_id");
         setCreating(false);
         return;
       }
 
-      const target_id = targetNorm; // null or valid UUID
+      const targetNorm = createType === "custom" ? null : normaliseOptionalUuid(createTargetId);
+      const target_id = targetNorm && targetNorm !== "__INVALID__" ? targetNorm : null;
 
       const res = await proxyFetch("/api/proxy/v1/assignments", {
         method: "POST",
@@ -430,17 +554,7 @@ export default function AdminAssignmentsClient() {
         body: JSON.stringify({ rep_id: repId, type: createType, title, due_at, target_id }),
       });
 
-      const txt = await res.text();
-      let json: any = null;
-      try {
-        json = txt ? JSON.parse(txt) : null;
-      } catch {
-        // ignore
-      }
-
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || `request_failed_${res.status}`);
-      }
+      await readJsonOrThrow(res);
 
       setCreatedOk(true);
       createdOkTimer.current = window.setTimeout(() => setCreatedOk(false), 1500);
@@ -461,6 +575,50 @@ export default function AdminAssignmentsClient() {
       setCreating(false);
     }
   }
+
+  // --- Trust Dashboard v2 action handlers ---
+  function prefillSparringForRep(repId: string) {
+    setCreateErr(null);
+    setCreatedOk(false);
+
+    setCreateRepId(repId);
+    setCreateType("sparring");
+    setCreateTitle("Sparring drill");
+    setCreateTargetId(""); // default persona
+    setCreateDueAt(todayYmd());
+
+    setTimeout(() => {
+      createPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      titleInputRef.current?.focus();
+    }, 50);
+  }
+
+  async function setTopOverdueDueToday(repId: string) {
+    try {
+      setCreateErr(null);
+
+      const repRows = rowsByRep[repId] || [];
+      const overdue = repRows
+        .filter((a) => a.status !== "completed" && a.due_at)
+        .filter((a) => new Date(a.due_at as string) < new Date())
+        .sort((a, b) => new Date(a.due_at as string).getTime() - new Date(b.due_at as string).getTime());
+
+      if (!overdue.length) return;
+
+      const top = overdue[0];
+      const res = await proxyFetch(`/api/proxy/v1/assignments/manager/${top.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ due_at: endOfTodayIso() }),
+      });
+
+      await readJsonOrThrow(res);
+      await load();
+    } catch (e: any) {
+      setCreateErr(e?.message || "patch_failed");
+    }
+  }
+
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -717,12 +875,48 @@ export default function AdminAssignmentsClient() {
     }
   }
 
-  function nudgeRep(repId: string, assignmentId: string) {
-    // Placeholder for Slack/email later
-    setActionMsg(`Nudge queued (stub) · rep ${repId.slice(0, 6)}…`);
-    window.setTimeout(() => setActionMsg(null), 1500);
-    // eslint-disable-next-line no-console
-    console.log("NUDGE_REP_STUB", { repId, assignmentId });
+  async function nudgeRep(repId: string, assignmentId: string) {
+    setActionMsg(null);
+    setActioningId(assignmentId);
+    try {
+      const res = await proxyFetch(`/api/proxy/v1/assignments/${encodeURIComponent(assignmentId)}/nudge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+
+      await readJsonOrThrow(res);
+
+      setActionMsg("Nudge sent ✓");
+      await load();
+    } catch (e: any) {
+      setActionMsg(e?.message || "nudge_failed");
+    } finally {
+      setActioningId(null);
+      window.setTimeout(() => setActionMsg(null), 1500);
+    }
+  }
+
+  function nudgeTopForRep(repId: string) {
+    const repRows = rowsByRep[repId] || [];
+
+    // Prefer top overdue (earliest due), else first open.
+    const overdue = repRows
+      .filter((a) => String(a.status).toLowerCase() !== "completed" && a.due_at)
+      .filter((a) => new Date(a.due_at as string) < new Date())
+      .sort((a, b) => new Date(a.due_at as string).getTime() - new Date(b.due_at as string).getTime());
+
+    const open = repRows
+      .filter((a) => String(a.status).toLowerCase() === "assigned")
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    const target = overdue[0] || open[0] || null;
+    if (!target) {
+      setActionMsg("No open assignment to nudge");
+      window.setTimeout(() => setActionMsg(null), 1500);
+      return;
+    }
+
+    void nudgeRep(repId, target.id);
   }
 
   // Helper: fetch manager assignments for a rep with paging/limit
@@ -795,15 +989,16 @@ export default function AdminAssignmentsClient() {
       // 3b) Trust (v2) — compact manager answers
       try {
         const t = await getJson<{ ok: true } & { [k: string]: any }>("/api/proxy/v1/assignments/manager/trust");
-        // tolerate slightly different server shapes (trust fields may be at root)
+        // tolerate different server shapes (trust fields may be at root or nested)
         const payload = (t as any).trust ? (t as any).trust : t;
+
         setTrust({
-          completion_rate_24h: Number(payload.completion_rate_24h ?? 0),
-          completion_rate_7d: Number(payload.completion_rate_7d ?? 0),
-          auto_completed_24h: Number(payload.auto_completed_24h ?? 0),
-          auto_completed_7d: Number(payload.auto_completed_7d ?? 0),
-          top_stuck_reason: String(payload.top_stuck_reason ?? "—"),
-          needs_help_today: Array.isArray(payload.needs_help_today) ? payload.needs_help_today : [],
+          completion_rate_24h: payload?.completion_rate_24h,
+          completion_rate_7d: payload?.completion_rate_7d,
+          auto_completed_24h: payload?.auto_completed_24h,
+          auto_completed_7d: payload?.auto_completed_7d,
+          top_stuck_reason: payload?.top_stuck_reason,
+          needs_help_today: payload?.needs_help_today,
         });
       } catch {
         // Don't fail the page if trust endpoint isn't available yet.
@@ -850,6 +1045,104 @@ export default function AdminAssignmentsClient() {
     const overdue = flat.filter((a) => isOverdue(a)).length;
     return { assigned, completed, overdue };
   }, [flat]);
+
+  const trustPatterns = useMemo(() => {
+    const list = Array.isArray(flat) ? flat : [];
+    const sinceIso = daysAgoIso(7);
+
+    const recent = list.filter((a) => {
+      const created = a?.created_at ? new Date(a.created_at).toISOString() : null;
+      return created ? created >= sinceIso : true;
+    });
+
+    const missed = recent.filter((a) => {
+      if (String(a?.status).toLowerCase() === "completed") return false;
+      if (!a?.due_at) return false;
+      return new Date(a.due_at) < new Date();
+    });
+
+    const missedByType: Record<string, number> = {};
+    for (const a of missed) {
+      const k = String(a?.type || "unknown");
+      missedByType[k] = (missedByType[k] || 0) + 1;
+    }
+
+    let mostMissedType: string | null = null;
+    let mostMissedCount = 0;
+    for (const [k, v] of Object.entries(missedByType)) {
+      if (v > mostMissedCount) {
+        mostMissedType = k;
+        mostMissedCount = v;
+      }
+    }
+
+    const completedRecent = recent.filter((a) => String(a?.status).toLowerCase() === "completed");
+    let auto = 0;
+    let manual = 0;
+    for (const a of completedRecent) {
+      if (isAutoCompletedBy(a?.completed_by)) auto++;
+      else manual++;
+    }
+
+    const total = auto + manual;
+    const autoPct = total > 0 ? Math.round((auto / total) * 100) : null;
+
+    return {
+      mostMissedType,
+      mostMissedCount,
+      auto,
+      manual,
+      autoPct,
+      totalCompleted7d: total,
+    };
+  }, [flat]);
+
+  const weeklyReview = useMemo(() => {
+    const list = Array.isArray(flat) ? flat : [];
+    const sinceIso = daysAgoIso(7);
+
+    const recent = list.filter((a) => {
+      const createdIso = a?.created_at ? new Date(a.created_at).toISOString() : null;
+      return createdIso ? createdIso >= sinceIso : true;
+    });
+
+    // Completed in window
+    const completed = recent.filter((a) => String(a?.status).toLowerCase() === "completed");
+
+    // “Improved” = most completed assignment type (7d)
+    const completedByType: Record<string, number> = {};
+    for (const a of completed) {
+      const k = String(a?.type || "unknown");
+      completedByType[k] = (completedByType[k] || 0) + 1;
+    }
+
+    let improvedType: string | null = null;
+    let improvedCount = 0;
+    for (const [k, v] of Object.entries(completedByType)) {
+      if (v > improvedCount) {
+        improvedType = k;
+        improvedCount = v;
+      }
+    }
+
+    // “Ignored” = most missed assignment type (7d) from trustPatterns
+    const ignoredType = trustPatterns?.mostMissedType ?? null;
+
+    // “Focus” rules:
+    // 1) If ignored exists → focus ignored
+    // 2) Else if reps needing help 2+ days → focus sparring
+    // 3) Else fallback to improved (or sparring)
+    const focusType =
+      ignoredType || (helpStreak2Plus.length ? "sparring" : improvedType || "sparring");
+
+    return {
+      improvedType,
+      improvedCount,
+      ignoredType,
+      focusType,
+      repeatHelpCount: helpStreak2Plus.length,
+    };
+  }, [flat, trustPatterns, helpStreak2Plus]);
 
   const confidence = useMemo(() => {
     const repIds = reps.map((r) => r.id);
@@ -930,7 +1223,7 @@ export default function AdminAssignmentsClient() {
           <button
             type="button"
             onClick={load}
-            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
           >
             Refresh
           </button>
@@ -987,6 +1280,11 @@ export default function AdminAssignmentsClient() {
                       : createErr}
               </div>
             )}
+            {createTargetValidation.invalid ? (
+              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                {createTargetValidation.message}
+              </div>
+            ) : null}
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
               <div className="md:col-span-3">
@@ -1102,16 +1400,16 @@ export default function AdminAssignmentsClient() {
                     setCreateErr(null);
                     titleInputRef.current?.focus();
                   }}
-                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
+                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                 >
                   Clear
                 </button>
 
                 <button
                   type="button"
-                  disabled={creating || !createRepId || !createTitle.trim()}
+                  disabled={creating || !createRepId || !createTitle.trim() || createTargetValidation.invalid}
                   onClick={createAssignment}
-                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
                 >
                   {creating ? "Creating…" : "Create"}
                 </button>
@@ -1160,7 +1458,7 @@ export default function AdminAssignmentsClient() {
               <div className="text-xs text-neutral-500">
                 {trust ? (
                   <>
-                    Top stuck reason: <span className="text-neutral-200">{trust.top_stuck_reason || "—"}</span>
+                    Top stuck reason: <span className="text-neutral-200">{topStuckReason}</span>
                   </>
                 ) : (
                   <>Trust metrics unavailable</>
@@ -1172,26 +1470,103 @@ export default function AdminAssignmentsClient() {
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                 <div className="text-xs text-neutral-500">Completion rate (24h)</div>
                 <div className="mt-1 text-2xl font-semibold">
-                  {trust ? `${Math.round((trust.completion_rate_24h || 0) * 100)}%` : "—"}
+                  {trust ? `${Math.round(completion24h * 100)}%` : "—"}
                 </div>
               </div>
 
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                 <div className="text-xs text-neutral-500">Completion rate (7d)</div>
                 <div className="mt-1 text-2xl font-semibold">
-                  {trust ? `${Math.round((trust.completion_rate_7d || 0) * 100)}%` : "—"}
+                  {trust ? `${Math.round(completion7d * 100)}%` : "—"}
                 </div>
               </div>
 
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                 <div className="text-xs text-neutral-500">Auto-completed (24h)</div>
-                <div className="mt-1 text-2xl font-semibold">{trust ? trust.auto_completed_24h : "—"}</div>
+                <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted24h : "—"}</div>
               </div>
 
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                 <div className="text-xs text-neutral-500">Auto-completed (7d)</div>
-                <div className="mt-1 text-2xl font-semibold">{trust ? trust.auto_completed_7d : "—"}</div>
+                <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted7d : "—"}</div>
               </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="text-xs font-semibold text-neutral-200">Patterns (7d)</div>
+              <div className="mt-1 text-xs text-neutral-500">Lightweight trends computed client-side.</div>
+
+              <div className="mt-2 grid gap-2">
+                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                  <div className="text-neutral-300">Most missed assignment type</div>
+                  <div className="text-neutral-100">
+                    {trustPatterns.mostMissedType
+                      ? `${safeTypeLabel(trustPatterns.mostMissedType)} (${trustPatterns.mostMissedCount})`
+                      : "—"}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                  <div className="text-neutral-300">Auto-completed vs manual</div>
+                  <div className="text-neutral-100">
+                    {trustPatterns.totalCompleted7d > 0
+                      ? `${trustPatterns.auto} / ${trustPatterns.manual} (${trustPatterns.autoPct}% auto)`
+                      : "—"}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                  <div className="text-neutral-300">Reps needing help 2+ days</div>
+                  <div className="text-neutral-100">{helpStreak2Plus.length ? `${helpStreak2Plus.length} reps` : "—"}</div>
+                </div>
+
+                {helpStreak2Plus.length ? (
+                  <div className="text-xs text-neutral-500">
+                    {helpStreak2Plus.slice(0, 3).map((r) => (
+                      <span key={r.rep_id} className="mr-3">
+                        {r.name || r.rep_id}: {r.days}d
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Manager Weekly Review Panel v1 (read-only) */}
+            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="text-xs font-semibold text-neutral-200">Weekly review</div>
+              <div className="mt-1 text-xs text-neutral-500">
+                This week’s summary (computed from visible assignments)
+              </div>
+
+              <div className="mt-3 space-y-2 text-sm text-neutral-300">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                  <div className="text-neutral-300">You improved</div>
+                  <div className="text-neutral-100">
+                    {weeklyReview.improvedType
+                      ? `${safeTypeLabel(weeklyReview.improvedType)} (${weeklyReview.improvedCount})`
+                      : "—"}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                  <div className="text-neutral-300">You ignored</div>
+                  <div className="text-neutral-100">
+                    {weeklyReview.ignoredType ? safeTypeLabel(weeklyReview.ignoredType) : "—"}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                  <div className="text-neutral-300">Focus next week</div>
+                  <div className="text-neutral-100">{safeTypeLabel(weeklyReview.focusType)}</div>
+                </div>
+              </div>
+
+              {weeklyReview.repeatHelpCount >= 2 ? (
+                <div className="mt-2 text-xs text-amber-300">
+                  Heads-up: {weeklyReview.repeatHelpCount} reps have needed help 2+ days in a row.
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
@@ -1200,23 +1575,48 @@ export default function AdminAssignmentsClient() {
 
               {!trust ? (
                 <div className="mt-2 text-sm text-neutral-500">—</div>
-              ) : trust.needs_help_today.length === 0 ? (
+              ) : needsHelpToday.length === 0 ? (
                 <div className="mt-2 text-sm text-neutral-500">No reps flagged.</div>
               ) : (
                 <div className="mt-2 space-y-2">
-                  {trust.needs_help_today.slice(0, 5).map((r) => {
-                    const name = (r as any).name || repNameById(r.rep_id);
-                    const overdue = Number((r as any).overdue ?? 0);
-                    const open = Number((r as any).open ?? 0);
+                  {needsHelpToday.slice(0, 5).map((r: any) => {
+                    const name = (r?.name as any) || repNameById(String(r?.rep_id || ""));
+                    const overdue = Number(r?.overdue ?? 0);
+                    const open = Number(r?.open ?? 0);
                     return (
-                      <div key={r.rep_id} className="flex items-center justify-between gap-3 text-sm">
-                        <div className="text-neutral-200">{name}</div>
-                        <div className="text-neutral-400">
-                          <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>
-                            {overdue} overdue
-                          </span>
-                          <span className="text-neutral-600"> · </span>
-                          <span className="text-neutral-300">{open} open</span>
+                      <div key={String(r?.rep_id || name)} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <div className="text-neutral-200">{name}</div>
+                          <div className="text-neutral-400">
+                            <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>
+                              {overdue} overdue
+                            </span>
+                            <span className="text-neutral-600"> · </span>
+                            <span className="text-neutral-300">{open} open</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => prefillSparringForRep(String(r.rep_id))}
+                            className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                          >
+                            Assign sparring
+                          </button>
+
+                          <button
+                            onClick={() => void setTopOverdueDueToday(String(r.rep_id))}
+                            className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                          >
+                            Set due today
+                          </button>
+
+                          <button
+                            onClick={() => nudgeTopForRep(String(r.rep_id))}
+                            className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                          >
+                            Nudge
+                          </button>
                         </div>
                       </div>
                     );
@@ -1305,7 +1705,7 @@ export default function AdminAssignmentsClient() {
               <button
                 type="button"
                 onClick={() => openBulk("assign_stale_drill")}
-                className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200"
+                className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
               >
                 Assign 1 drill to all stale reps
               </button>
@@ -1313,7 +1713,7 @@ export default function AdminAssignmentsClient() {
               <button
                 type="button"
                 onClick={() => openBulk("clear_overdue_noise")}
-                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
               >
                 Clear overdue noise (set due today)
               </button>
@@ -1326,79 +1726,81 @@ export default function AdminAssignmentsClient() {
           </div>
 
           {/* Controls: always visible */}
-          <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setFilter("open");
-                  updateUrl({ filter: "open" });
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "open"
-                    ? "bg-white text-black"
-                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-                  }`}
-              >
-                Assigned
-              </button>
-
-              <button
-                onClick={() => {
-                  setFilter("completed7d");
-                  updateUrl({ filter: "completed7d" });
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "completed7d"
-                    ? "bg-white text-black"
-                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-                  }`}
-              >
-                Completed (7d)
-              </button>
-
-              <button
-                onClick={() => {
-                  setFilter("overdue");
-                  updateUrl({ filter: "overdue" });
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold ${filter === "overdue"
-                    ? "bg-white text-black"
-                    : "border border-neutral-800 bg-neutral-950 text-neutral-200"
-                  }`}
-              >
-                Overdue
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500">Search</span>
-                <input
-                  value={q}
-                  onChange={(e) => {
-                    setQ(e.target.value);
-                    updateUrl({ q: e.target.value });
+                <button
+                  onClick={() => {
+                    setFilter("open");
+                    updateUrl({ filter: "open" });
                   }}
-                  placeholder="rep, title, type…"
-                  className="w-full md:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                />
+                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "open"
+                      ? "bg-white text-black hover:brightness-95"
+                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                    }`}
+                >
+                  Assigned
+                </button>
+
+                <button
+                  onClick={() => {
+                    setFilter("completed7d");
+                    updateUrl({ filter: "completed7d" });
+                  }}
+                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "completed7d"
+                      ? "bg-white text-black hover:brightness-95"
+                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                    }`}
+                >
+                  Completed (7d)
+                </button>
+
+                <button
+                  onClick={() => {
+                    setFilter("overdue");
+                    updateUrl({ filter: "overdue" });
+                  }}
+                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "overdue"
+                      ? "bg-white text-black hover:brightness-95"
+                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                    }`}
+                >
+                  Overdue
+                </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500">Show</span>
-                <select
-                  value={String(perRepLimit)}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setPerRepLimit(v);
-                    updateUrl({ limit: String(v) });
-                  }}
-                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                >
-                  <option value={"25"}>25</option>
-                  <option value={"50"}>50</option>
-                  <option value={"100"}>100</option>
-                  <option value={String(Number.POSITIVE_INFINITY)}>All</option>
-                </select>
-                <span className="text-xs text-neutral-500">per rep</span>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-neutral-500">Search</span>
+                  <input
+                    value={q}
+                    onChange={(e) => {
+                      setQ(e.target.value);
+                      updateUrl({ q: e.target.value });
+                    }}
+                    placeholder="rep, title, type…"
+                    className="h-9 w-full md:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-neutral-500">Show</span>
+                  <select
+                    value={String(perRepLimit)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setPerRepLimit(v);
+                      updateUrl({ limit: String(v) });
+                    }}
+                    className="h-9 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  >
+                    <option value={"25"}>25</option>
+                    <option value={"50"}>50</option>
+                    <option value={"100"}>100</option>
+                    <option value={String(Number.POSITIVE_INFINITY)}>All</option>
+                  </select>
+                  <span className="text-xs text-neutral-500">per rep</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1455,7 +1857,7 @@ export default function AdminAssignmentsClient() {
                       <button
                         type="button"
                         onClick={() => toggleExpanded(rep.id)}
-                        className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                        className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                       >
                         {shouldExpand ? "Collapse list" : "Expand list"}
                       </button>
@@ -1466,7 +1868,7 @@ export default function AdminAssignmentsClient() {
                         <>
                           <button
                             type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                             onClick={() =>
                               jumpToCreateAndPrefill({
                                 repId: rep.id,
@@ -1479,7 +1881,7 @@ export default function AdminAssignmentsClient() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                             onClick={() =>
                               jumpToCreateAndPrefill({
                                 repId: rep.id,
@@ -1492,7 +1894,7 @@ export default function AdminAssignmentsClient() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                             onClick={() =>
                               jumpToCreateAndPrefill({
                                 repId: rep.id,
@@ -1505,7 +1907,7 @@ export default function AdminAssignmentsClient() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                             onClick={() =>
                               jumpToCreateAndPrefill({
                                 repId: rep.id,
@@ -1568,14 +1970,31 @@ export default function AdminAssignmentsClient() {
                                 <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
                                 <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
                                 <td className="py-2 pr-0">
-                                  {String(a.status).toLowerCase() === "completed" ? null : (
+                                  {String(a.status).toLowerCase() === "completed" ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          jumpToCreateAndPrefill({
+                                            repId: rep.id,
+                                            type: a.type,
+                                            title: a.title || "",
+                                            dueYmd: todayYmd(),
+                                          })
+                                        }
+                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                      >
+                                        Assign again
+                                      </button>
+                                    </div>
+                                  ) : (
                                     <div className="flex items-center justify-end gap-2">
                                       {a.type === "custom" ? (
                                         <button
                                           type="button"
                                           disabled={actioningId === a.id}
                                           onClick={() => markComplete(a.id)}
-                                          className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                                          className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
                                         >
                                           {actioningId === a.id ? "…" : "Complete"}
                                         </button>
@@ -1585,17 +2004,18 @@ export default function AdminAssignmentsClient() {
                                         type="button"
                                         disabled={actioningId === a.id}
                                         onClick={() => setDueToday(a.id)}
-                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 disabled:opacity-50"
+                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                                       >
                                         Due today
                                       </button>
 
                                       <button
                                         type="button"
+                                        disabled={actioningId === a.id}
                                         onClick={() => nudgeRep(rep.id, a.id)}
-                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                                       >
-                                        Nudge
+                                        {actioningId === a.id ? "…" : "Nudge"}
                                       </button>
                                     </div>
                                   )}
