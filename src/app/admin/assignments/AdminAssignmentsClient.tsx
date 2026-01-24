@@ -328,7 +328,14 @@ function normaliseOptionalUuid(v: string) {
   return isUuid(t) ? t : "__INVALID__";
 }
 
-export default function AdminAssignmentsClient() {
+type AdminAssignmentsView = "overview" | "queue" | "create";
+
+type AdminAssignmentsClientProps = {
+  initialView?: AdminAssignmentsView;
+};
+
+export default function AdminAssignmentsClient(props: AdminAssignmentsClientProps) {
+  const view: AdminAssignmentsView = props.initialView ?? "overview";
   const router = useRouter();
   const pathname = usePathname();
   const [reps, setReps] = useState<Rep[]>([]);
@@ -503,7 +510,11 @@ export default function AdminAssignmentsClient() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.location.hash !== "#create-assignment") return;
-
+    // If user deep-links the create anchor while on another view, route them to the create page.
+    if (view !== "create") {
+      router.replace("/admin/assignments/create#create-assignment");
+      return;
+    }
     // Let the DOM paint first
     const t = window.setTimeout(() => {
       createPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -511,7 +522,7 @@ export default function AdminAssignmentsClient() {
     }, 50);
 
     return () => window.clearTimeout(t);
-  }, []);
+  }, [view]);
 
   async function createAssignment() {
     setCreateErr(null);
@@ -1234,6 +1245,49 @@ export default function AdminAssignmentsClient() {
         </div>
       </div>
 
+      {/* Day 25: Admin IA split (Overview / Queue / Create) */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Link
+          href="/admin/assignments"
+          className={
+            "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
+            (view === "overview"
+              ? "bg-white text-black hover:brightness-95"
+              : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
+          }
+        >
+          Overview
+        </Link>
+
+        <Link
+          href="/admin/assignments/queue"
+          className={
+            "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
+            (view === "queue"
+              ? "bg-white text-black hover:brightness-95"
+              : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
+          }
+        >
+          Queue
+        </Link>
+
+        <Link
+          href="/admin/assignments/create"
+          className={
+            "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
+            (view === "create"
+              ? "bg-white text-black hover:brightness-95"
+              : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
+          }
+        >
+          Create
+        </Link>
+
+        <div className="ml-auto text-xs text-neutral-500">
+          View: <span className="text-neutral-200">{view}</span>
+        </div>
+      </div>
+
       {err && (
         <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
           {err === "forbidden_not_manager" ? "You don’t have manager access for this page." : err}
@@ -1246,855 +1300,781 @@ export default function AdminAssignmentsClient() {
       )}
 
       {loading ? (
-        <div className="mt-6 text-sm text-neutral-400">Loading…</div>
+        <div className="mt-6 text-sm text-neutral-400">Loading {view}…</div>
       ) : (
         <div className="mt-6 flex-1 overflow-hidden flex flex-col">
           {/* Create panel */}
-          <div
-            id="create-assignment"
-            ref={createPanelRef}
-            className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <div className="text-sm font-semibold">Create assignment</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Prefills from <span className="text-neutral-300">?rep_id=</span> and focuses title on
-                  <span className="text-neutral-300"> #create-assignment</span>.
+          {view === "create" ? (
+            <div
+              id="create-assignment"
+              ref={createPanelRef}
+              className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Create assignment</div>
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Prefills from <span className="text-neutral-300">?rep_id=</span> and focuses title on
+                    <span className="text-neutral-300"> #create-assignment</span>.
+                  </div>
+                </div>
+
+                <div className="text-xs text-neutral-500">
+                  Tip: sparring/call_review can carry an optional target id (persona id / call id).
                 </div>
               </div>
 
-              <div className="text-xs text-neutral-500">
-                Tip: sparring/call_review can carry an optional target id (persona id / call id).
-              </div>
-            </div>
-
-            {createErr && (
-              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {createErr === "pick_rep"
-                  ? "Pick a rep"
-                  : createErr === "title_required"
-                    ? "Title is required"
-                    : createErr === "request_failed_404"
-                      ? "Not found (create endpoint missing)"
-                      : createErr}
-              </div>
-            )}
-            {createTargetValidation.invalid ? (
-              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {createTargetValidation.message}
-              </div>
-            ) : null}
-
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
-              <div className="md:col-span-3">
-                <label className="text-xs text-neutral-500">Rep</label>
-                <select
-                  value={createRepId}
-                  onChange={(e) => setCreateRepId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                >
-                  {reps.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-xs text-neutral-500">Type</label>
-                <select
-                  value={createType}
-                  onChange={(e) => {
-                    const v = e.target.value as any;
-                    setCreateType(v);
-                    setCreateErr(null);
-                    setCreatedOk(false);
-                    if (v === "custom") setCreateTargetId("");
-                  }}
-                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                >
-                  <option value="custom">custom</option>
-                  <option value="sparring">sparring</option>
-                  <option value="call_review">call_review</option>
-                </select>
-                {createType === "sparring" ? (
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    Persona is optional. If left blank, the default sparring persona will be used.
-                  </div>
-                ) : createType === "call_review" ? (
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    Call ID is optional. If left blank, the rep can choose a call to review.
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="md:col-span-4">
-                <label className="text-xs text-neutral-500">Title</label>
-                <input
-                  ref={titleInputRef}
-                  value={createTitle}
-                  onChange={(e) => {
-                    setCreateTitle(e.target.value);
-                    if (createErr) setCreateErr(null);
-                  }}
-                  placeholder="e.g. Run 1 sparring drill today"
-                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                />
-                {duplicateTitleWarning ? (
-                  <div className="mt-1 text-[11px] text-amber-300">
-                    ⚠️ Similar assignment was created for this rep in the last 24h.
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-xs text-neutral-500">Due (optional)</label>
-                <input
-                  type="date"
-                  value={createDueAt}
-                  onChange={(e) => setCreateDueAt(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                />
-              </div>
-
-              {createType === "custom" ? null : (
-                <div className="md:col-span-3">
-                  <label className="text-xs text-neutral-500">
-                    {createType === "sparring" ? "Persona (optional)" : "Call id (optional)"}
-                  </label>
-                  <input
-                    value={createTargetId}
-                    onChange={(e) => {
-                      setCreateTargetId(e.target.value);
-                      if (createErr) setCreateErr(null);
-                    }}
-                    placeholder={createType === "sparring" ? "persona id (optional)" : "call id (optional)"}
-                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                  />
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    {createType === "sparring"
-                      ? "Optional persona id; leave blank to use the default persona."
-                      : "Optional call id; leave blank to let the rep pick a call."}
-                  </div>
+              {createErr && (
+                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {createErr === "pick_rep"
+                    ? "Pick a rep"
+                    : createErr === "title_required"
+                      ? "Title is required"
+                      : createErr === "request_failed_404"
+                        ? "Not found (create endpoint missing)"
+                        : createErr}
                 </div>
               )}
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <div className="text-xs">
-                {createdOk ? (
-                  <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-200">
-                    Created ✓
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateTitle("");
-                    setCreateTargetId("");
-                    setCreateDueAt("");
-                    setCreateErr(null);
-                    titleInputRef.current?.focus();
-                  }}
-                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                >
-                  Clear
-                </button>
-
-                <button
-                  type="button"
-                  disabled={creating || !createRepId || !createTitle.trim() || createTargetValidation.invalid}
-                  onClick={createAssignment}
-                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
-                >
-                  {creating ? "Creating…" : "Create"}
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Signals */}
-          <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Assigned (visible)</div>
-              <div className="mt-1 text-2xl font-semibold">{totals.assigned}</div>
-            </div>
-
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Completed (visible)</div>
-              <div className="mt-1 text-2xl font-semibold">{totals.completed}</div>
-            </div>
-
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Overdue (visible)</div>
-              <div className="mt-1 text-2xl font-semibold">{totals.overdue}</div>
-            </div>
-
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Completion rate (7d)</div>
-              <div className="mt-1 text-2xl font-semibold">
-                {signals ? `${Math.round((signals.completion_rate_7d || 0) * 100)}%` : "—"}
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">
-                {signals ? `${signals.completed_7d}/${signals.assigned_7d} completed` : ""}
-              </div>
-            </div>
-          </div>
-
-
-          {/* Trust Dashboard v2 (no graphs, just answers) */}
-          <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-neutral-200">Trust</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  10-second answers: is it working, what’s stuck, who needs help.
-                </div>
-              </div>
-
-              <div className="text-xs text-neutral-500">
-                {trust ? (
-                  <>
-                    Top stuck reason: <span className="text-neutral-200">{topStuckReason}</span>
-                  </>
-                ) : (
-                  <>Trust metrics unavailable</>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="text-xs text-neutral-500">Completion rate (24h)</div>
-                <div className="mt-1 text-2xl font-semibold">
-                  {trust ? `${Math.round(completion24h * 100)}%` : "—"}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="text-xs text-neutral-500">Completion rate (7d)</div>
-                <div className="mt-1 text-2xl font-semibold">
-                  {trust ? `${Math.round(completion7d * 100)}%` : "—"}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="text-xs text-neutral-500">Auto-completed (24h)</div>
-                <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted24h : "—"}</div>
-              </div>
-
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="text-xs text-neutral-500">Auto-completed (7d)</div>
-                <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted7d : "—"}</div>
-              </div>
-            </div>
-
-            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs font-semibold text-neutral-200">Patterns (7d)</div>
-              <div className="mt-1 text-xs text-neutral-500">Lightweight trends computed client-side.</div>
-
-              <div className="mt-2 grid gap-2">
-                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
-                  <div className="text-neutral-300">Most missed assignment type</div>
-                  <div className="text-neutral-100">
-                    {trustPatterns.mostMissedType
-                      ? `${safeTypeLabel(trustPatterns.mostMissedType)} (${trustPatterns.mostMissedCount})`
-                      : "—"}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
-                  <div className="text-neutral-300">Auto-completed vs manual</div>
-                  <div className="text-neutral-100">
-                    {trustPatterns.totalCompleted7d > 0
-                      ? `${trustPatterns.auto} / ${trustPatterns.manual} (${trustPatterns.autoPct}% auto)`
-                      : "—"}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
-                  <div className="text-neutral-300">Reps needing help 2+ days</div>
-                  <div className="text-neutral-100">{helpStreak2Plus.length ? `${helpStreak2Plus.length} reps` : "—"}</div>
-                </div>
-
-                {helpStreak2Plus.length ? (
-                  <div className="text-xs text-neutral-500">
-                    {helpStreak2Plus.slice(0, 3).map((r) => (
-                      <span key={r.rep_id} className="mr-3">
-                        {r.name || r.rep_id}: {r.days}d
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {/* Manager Weekly Review Panel v1 (read-only) */}
-            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs font-semibold text-neutral-200">Weekly review</div>
-              <div className="mt-1 text-xs text-neutral-500">
-                This week’s summary (computed from visible assignments)
-              </div>
-
-              <div className="mt-3 space-y-2 text-sm text-neutral-300">
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                  <div className="text-neutral-300">You improved</div>
-                  <div className="text-neutral-100">
-                    {weeklyReview.improvedType
-                      ? `${safeTypeLabel(weeklyReview.improvedType)} (${weeklyReview.improvedCount})`
-                      : "—"}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                  <div className="text-neutral-300">You ignored</div>
-                  <div className="text-neutral-100">
-                    {weeklyReview.ignoredType ? safeTypeLabel(weeklyReview.ignoredType) : "—"}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                  <div className="text-neutral-300">Focus next week</div>
-                  <div className="text-neutral-100">{safeTypeLabel(weeklyReview.focusType)}</div>
-                </div>
-              </div>
-
-              {weeklyReview.repeatHelpCount >= 2 ? (
-                <div className="mt-2 text-xs text-amber-300">
-                  Heads-up: {weeklyReview.repeatHelpCount} reps have needed help 2+ days in a row.
+              {createTargetValidation.invalid ? (
+                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {createTargetValidation.message}
                 </div>
               ) : null}
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
+                <div className="md:col-span-3">
+                  <label className="text-xs text-neutral-500">Rep</label>
+                  <select
+                    value={createRepId}
+                    onChange={(e) => setCreateRepId(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  >
+                    {reps.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-neutral-500">Type</label>
+                  <select
+                    value={createType}
+                    onChange={(e) => {
+                      const v = e.target.value as any;
+                      setCreateType(v);
+                      setCreateErr(null);
+                      setCreatedOk(false);
+                      if (v === "custom") setCreateTargetId("");
+                    }}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  >
+                    <option value="custom">custom</option>
+                    <option value="sparring">sparring</option>
+                    <option value="call_review">call_review</option>
+                  </select>
+                  {createType === "sparring" ? (
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      Persona is optional. If left blank, the default sparring persona will be used.
+                    </div>
+                  ) : createType === "call_review" ? (
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      Call ID is optional. If left blank, the rep can choose a call to review.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="md:col-span-4">
+                  <label className="text-xs text-neutral-500">Title</label>
+                  <input
+                    ref={titleInputRef}
+                    value={createTitle}
+                    onChange={(e) => {
+                      setCreateTitle(e.target.value);
+                      if (createErr) setCreateErr(null);
+                    }}
+                    placeholder="e.g. Run 1 sparring drill today"
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  />
+                  {duplicateTitleWarning ? (
+                    <div className="mt-1 text-[11px] text-amber-300">
+                      ⚠️ Similar assignment was created for this rep in the last 24h.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-neutral-500">Due (optional)</label>
+                  <input
+                    type="date"
+                    value={createDueAt}
+                    onChange={(e) => setCreateDueAt(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  />
+                </div>
+
+                {createType === "custom" ? null : (
+                  <div className="md:col-span-3">
+                    <label className="text-xs text-neutral-500">
+                      {createType === "sparring" ? "Persona (optional)" : "Call id (optional)"}
+                    </label>
+                    <input
+                      value={createTargetId}
+                      onChange={(e) => {
+                        setCreateTargetId(e.target.value);
+                        if (createErr) setCreateErr(null);
+                      }}
+                      placeholder={createType === "sparring" ? "persona id (optional)" : "call id (optional)"}
+                      className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                    />
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      {createType === "sparring"
+                        ? "Optional persona id; leave blank to use the default persona."
+                        : "Optional call id; leave blank to let the rep pick a call."}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <div className="text-xs">
+                  {createdOk ? (
+                    <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-200">
+                      Created ✓
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateTitle("");
+                      setCreateTargetId("");
+                      setCreateDueAt("");
+                      setCreateErr(null);
+                      titleInputRef.current?.focus();
+                    }}
+                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                  >
+                    Clear
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={creating || !createRepId || !createTitle.trim() || createTargetValidation.invalid}
+                    onClick={createAssignment}
+                    className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                  >
+                    {creating ? "Creating…" : "Create"}
+                  </button>
+                </div>
+              </div>
             </div>
+          ) : null}
 
-            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs font-semibold text-neutral-200">Who needs help today</div>
-              <div className="mt-1 text-xs text-neutral-500">Top 5 reps with overdue/open load.</div>
+          {/* Signals */}
+          {view === "overview" ? (
+            <>
+              <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs text-neutral-500">Assigned (visible)</div>
+                  <div className="mt-1 text-2xl font-semibold">{totals.assigned}</div>
+                </div>
 
-              {!trust ? (
-                <div className="mt-2 text-sm text-neutral-500">—</div>
-              ) : needsHelpToday.length === 0 ? (
-                <div className="mt-2 text-sm text-neutral-500">No reps flagged.</div>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  {needsHelpToday.slice(0, 5).map((r: any) => {
-                    const name = (r?.name as any) || repNameById(String(r?.rep_id || ""));
-                    const overdue = Number(r?.overdue ?? 0);
-                    const open = Number(r?.open ?? 0);
-                    return (
-                      <div key={String(r?.rep_id || name)} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <div className="text-neutral-200">{name}</div>
-                          <div className="text-neutral-400">
-                            <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>
-                              {overdue} overdue
-                            </span>
-                            <span className="text-neutral-600"> · </span>
-                            <span className="text-neutral-300">{open} open</span>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs text-neutral-500">Completed (visible)</div>
+                  <div className="mt-1 text-2xl font-semibold">{totals.completed}</div>
+                </div>
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs text-neutral-500">Overdue (visible)</div>
+                  <div className="mt-1 text-2xl font-semibold">{totals.overdue}</div>
+                </div>
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs text-neutral-500">Completion rate (7d)</div>
+                  <div className="mt-1 text-2xl font-semibold">
+                    {signals ? `${Math.round((signals.completion_rate_7d || 0) * 100)}%` : "—"}
+                  </div>
+                  <div className="mt-1 text-xs text-neutral-500">
+                    {signals ? `${signals.completed_7d}/${signals.assigned_7d} completed` : ""}
+                  </div>
+                </div>
+              </div>
+
+              {/* Trust Dashboard v2 */}
+              <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-neutral-200">Trust</div>
+                    <div className="mt-1 text-xs text-neutral-500">
+                      10-second answers: is it working, what’s stuck, who needs help.
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-neutral-500">
+                    {trust ? (
+                      <>
+                        Top stuck reason: <span className="text-neutral-200">{topStuckReason}</span>
+                      </>
+                    ) : (
+                      <>Trust metrics unavailable</>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                    <div className="text-xs text-neutral-500">Completion rate (24h)</div>
+                    <div className="mt-1 text-2xl font-semibold">{trust ? `${Math.round(completion24h * 100)}%` : "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                    <div className="text-xs text-neutral-500">Completion rate (7d)</div>
+                    <div className="mt-1 text-2xl font-semibold">{trust ? `${Math.round(completion7d * 100)}%` : "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                    <div className="text-xs text-neutral-500">Auto-completed (24h)</div>
+                    <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted24h : "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                    <div className="text-xs text-neutral-500">Auto-completed (7d)</div>
+                    <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted7d : "—"}</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs font-semibold text-neutral-200">Patterns (7d)</div>
+                  <div className="mt-1 text-xs text-neutral-500">Lightweight trends computed client-side.</div>
+
+                  <div className="mt-2 grid gap-2">
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                      <div className="text-neutral-300">Most missed assignment type</div>
+                      <div className="text-neutral-100">
+                        {trustPatterns.mostMissedType
+                          ? `${safeTypeLabel(trustPatterns.mostMissedType)} (${trustPatterns.mostMissedCount})`
+                          : "—"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                      <div className="text-neutral-300">Auto-completed vs manual</div>
+                      <div className="text-neutral-100">
+                        {trustPatterns.totalCompleted7d > 0
+                          ? `${trustPatterns.auto} / ${trustPatterns.manual} (${trustPatterns.autoPct}% auto)`
+                          : "—"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm">
+                      <div className="text-neutral-300">Reps needing help 2+ days</div>
+                      <div className="text-neutral-100">{helpStreak2Plus.length ? `${helpStreak2Plus.length} reps` : "—"}</div>
+                    </div>
+
+                    {helpStreak2Plus.length ? (
+                      <div className="text-xs text-neutral-500">
+                        {helpStreak2Plus.slice(0, 3).map((r) => (
+                          <span key={r.rep_id} className="mr-3">
+                            {r.name || r.rep_id}: {r.days}d
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Manager Weekly Review Panel v1 (read-only) */}
+                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs font-semibold text-neutral-200">Weekly review</div>
+                  <div className="mt-1 text-xs text-neutral-500">This week’s summary (computed from visible assignments)</div>
+
+                  <div className="mt-3 space-y-2 text-sm text-neutral-300">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                      <div className="text-neutral-300">You improved</div>
+                      <div className="text-neutral-100">
+                        {weeklyReview.improvedType ? `${safeTypeLabel(weeklyReview.improvedType)} (${weeklyReview.improvedCount})` : "—"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                      <div className="text-neutral-300">You ignored</div>
+                      <div className="text-neutral-100">{weeklyReview.ignoredType ? safeTypeLabel(weeklyReview.ignoredType) : "—"}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                      <div className="text-neutral-300">Focus next week</div>
+                      <div className="text-neutral-100">{safeTypeLabel(weeklyReview.focusType)}</div>
+                    </div>
+                  </div>
+
+                  {weeklyReview.repeatHelpCount >= 2 ? (
+                    <div className="mt-2 text-xs text-amber-300">
+                      Heads-up: {weeklyReview.repeatHelpCount} reps have needed help 2+ days in a row.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="text-xs font-semibold text-neutral-200">Who needs help today</div>
+                  <div className="mt-1 text-xs text-neutral-500">Top 5 reps with overdue/open load.</div>
+
+                  {!trust ? (
+                    <div className="mt-2 text-sm text-neutral-500">—</div>
+                  ) : needsHelpToday.length === 0 ? (
+                    <div className="mt-2 text-sm text-neutral-500">No reps flagged.</div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {needsHelpToday.slice(0, 5).map((r: any) => {
+                        const name = (r?.name as any) || repNameById(String(r?.rep_id || ""));
+                        const overdue = Number(r?.overdue ?? 0);
+                        const open = Number(r?.open ?? 0);
+                        return (
+                          <div key={String(r?.rep_id || name)} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <div className="text-neutral-200">{name}</div>
+                              <div className="text-neutral-400">
+                                <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>{overdue} overdue</span>
+                                <span className="text-neutral-600"> · </span>
+                                <span className="text-neutral-300">{open} open</span>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                onClick={() => prefillSparringForRep(String(r.rep_id))}
+                                className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                              >
+                                Assign sparring
+                              </button>
+
+                              <button
+                                onClick={() => void setTopOverdueDueToday(String(r.rep_id))}
+                                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              >
+                                Set due today
+                              </button>
+
+                              <button
+                                onClick={() => nudgeTopForRep(String(r.rep_id))}
+                                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              >
+                                Nudge
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Manager confidence signals (fast answers, no dashboards) */}
+              <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-neutral-200">Manager confidence</div>
+                    <div className="mt-1 text-xs text-neutral-500">Quick reality check: who’s stuck, who’s active, and where to focus.</div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                      Reps w/ open: <span className="font-semibold text-neutral-100">{confidence.openRepCount}</span>
+                    </span>
+
+                    <span
+                      className={
+                        confidence.overdueRepCount > 0
+                          ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                          : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                      }
+                    >
+                      Overdue reps: <span className="font-semibold">{confidence.overdueRepCount}</span>
+                    </span>
+
+                    <span
+                      className={
+                        confidence.staleRepCount > 0
+                          ? "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200"
+                          : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                      }
+                    >
+                      Stale reps (7d): <span className="font-semibold">{confidence.staleRepCount}</span>
+                    </span>
+
+                    <span
+                      className={
+                        confidence.stuckRepCount > 0
+                          ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                          : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
+                      }
+                    >
+                      Stuck total: <span className="font-semibold">{confidence.stuckRepCount}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {confidence.staleTotal > 0 ? (
+                  <div className="mt-2 text-xs text-neutral-500">
+                    Stale reps (no completions in 7d):{" "}
+                    <span className="text-neutral-200">
+                      {confidence.staleNames.join(", ")}
+                      {confidence.staleTotal > confidence.staleNames.length ? "…" : ""}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-neutral-500">No stale reps detected in the last 7 days.</div>
+                )}
+
+                <div className="mt-3 text-xs text-neutral-500">
+                  Interpretation: <span className="text-neutral-200">Overdue</span> = immediate follow-up,{" "}
+                  <span className="text-neutral-200">Stale</span> = assign 1 drill today to restart momentum.
+                </div>
+
+                {confidence.stuckRepCount === 0 && (
+                  <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
+                    Momentum looks healthy — no reps are currently stuck. Nice work keeping the system clean.
+                  </div>
+                )}
+
+                {/* Day 19: Bulk actions */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openBulk("assign_stale_drill")}
+                    className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                  >
+                    Assign 1 drill to all stale reps
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openBulk("clear_overdue_noise")}
+                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                  >
+                    Clear overdue noise (set due today)
+                  </button>
+
+                  <div className="text-xs text-neutral-500">
+                    Preview: <span className="text-neutral-200">{bulkPreview.staleRepCount}</span> stale reps,{" "}
+                    <span className="text-neutral-200">{bulkPreview.overdueCount}</span> overdue items
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+          {/* Controls + Queue (Day 25) */}
+          {view === "queue" ? (
+            <>
+              <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setFilter("open");
+                        updateUrl({ filter: "open" });
+                      }}
+                      className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "open"
+                        ? "bg-white text-black hover:brightness-95"
+                        : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                        }`}
+                    >
+                      Assigned
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setFilter("completed7d");
+                        updateUrl({ filter: "completed7d" });
+                      }}
+                      className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "completed7d"
+                        ? "bg-white text-black hover:brightness-95"
+                        : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                        }`}
+                    >
+                      Completed (7d)
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setFilter("overdue");
+                        updateUrl({ filter: "overdue" });
+                      }}
+                      className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "overdue"
+                        ? "bg-white text-black hover:brightness-95"
+                        : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
+                        }`}
+                    >
+                      Overdue
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-neutral-500">Search</span>
+                      <input
+                        value={q}
+                        onChange={(e) => {
+                          setQ(e.target.value);
+                          updateUrl({ q: e.target.value });
+                        }}
+                        placeholder="rep, title, type…"
+                        className="h-9 w-full md:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-neutral-500">Show</span>
+                      <select
+                        value={String(perRepLimit)}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setPerRepLimit(v);
+                          updateUrl({ limit: String(v) });
+                        }}
+                        className="h-9 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                      >
+                        <option value={"25"}>25</option>
+                        <option value={"50"}>50</option>
+                        <option value={"100"}>100</option>
+                        <option value={String(Number.POSITIVE_INFINITY)}>All</option>
+                      </select>
+                      <span className="text-xs text-neutral-500">per rep</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rep panels */}
+              <div className="mt-6 flex-1 overflow-y-auto pr-2 space-y-6 max-h-[65vh] rounded-2xl border border-neutral-900 bg-neutral-950/20 p-3">
+                {sortedReps.map((rep) => {
+                  const raw = rowsByRep[rep.id] || [];
+                  const list =
+                    filter === "open"
+                      ? raw.filter((a) => String(a.status).toLowerCase() === "assigned")
+                      : filter === "completed7d"
+                        ? raw.filter((a) => String(a.status).toLowerCase() === "completed" && completedLast7d(a))
+                        : raw.filter((a) => isOverdue(a));
+
+                  const open = raw.filter((a) => String(a.status).toLowerCase() === "assigned");
+                  const done = raw.filter((a) => String(a.status).toLowerCase() === "completed");
+
+                  const sig = repStuckSignal({ rep, raw, signals });
+
+                  const filtered = list
+                    .filter((a) => matches(rep, a, q))
+                    .slice(0, Number.isFinite(perRepLimit) ? perRepLimit : list.length);
+
+                  const shouldExpand = expanded[rep.id] ?? (sig.tone === "danger" || sig.tone === "warn");
+
+                  if (!filtered.length) return null;
+
+                  return (
+                    <section
+                      key={rep.id}
+                      className={[
+                        "rounded-2xl border p-4",
+                        stuckSectionClass(sig.tone),
+                        sig.tone === "danger" ? "shadow-[0_0_0_1px_rgba(239,68,68,0.10)]" : "",
+                        sig.tone === "warn" ? "shadow-[0_0_0_1px_rgba(245,158,11,0.10)]" : "",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-base font-semibold">{rep.name || rep.id}</div>
+                          <div className="mt-1 text-xs text-neutral-500">
+                            Open: {open.length} · Completed: {done.length}
+                          </div>
+                          <div className="mt-1 text-xs text-neutral-400">
+                            <span className="font-semibold text-neutral-300">Why:</span> {sig.reason}
                           </div>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="shrink-0 flex items-center gap-2">
                           <button
-                            onClick={() => prefillSparringForRep(String(r.rep_id))}
-                            className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                            type="button"
+                            onClick={() => toggleExpanded(rep.id)}
+                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                           >
-                            Assign sparring
+                            {shouldExpand ? "Collapse list" : "Expand list"}
                           </button>
 
-                          <button
-                            onClick={() => void setTopOverdueDueToday(String(r.rep_id))}
-                            className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                          >
-                            Set due today
-                          </button>
+                          {stuckPill(sig)}
 
-                          <button
-                            onClick={() => nudgeTopForRep(String(r.rep_id))}
-                            className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                          >
-                            Nudge
-                          </button>
+                          {(sig.tone === "danger" || sig.tone === "warn") ? (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                onClick={() =>
+                                  jumpToCreateAndPrefill({
+                                    repId: rep.id,
+                                    type: "sparring",
+                                    title: "Run 1 sparring drill today",
+                                  })
+                                }
+                              >
+                                Assign sparring drill today
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                onClick={() =>
+                                  jumpToCreateAndPrefill({
+                                    repId: rep.id,
+                                    type: "call_review",
+                                    title: "Review a sales call today",
+                                  })
+                                }
+                              >
+                                Assign call review today
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                onClick={() =>
+                                  jumpToCreateAndPrefill({
+                                    repId: rep.id,
+                                    type: "custom",
+                                    title: "Follow up on current assignment",
+                                  })
+                                }
+                              >
+                                Assign follow-up task
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                onClick={() => jumpToCreateAndPrefill({ repId: rep.id })}
+                              >
+                                Quick assign
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
 
+                      {(() => {
+                        const suggestion = repNextAction({ rep, raw, signals });
+                        if (!suggestion) return null;
 
-          {/* Manager confidence signals (fast answers, no dashboards) */}
-          <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-neutral-200">Manager confidence</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Quick reality check: who’s stuck, who’s active, and where to focus.
-                </div>
-              </div>
+                        return (
+                          <div className="mt-2 text-xs text-neutral-400">
+                            Suggested next move: <span className="text-neutral-200">{suggestion}</span>
+                          </div>
+                        );
+                      })()}
 
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
-                  Reps w/ open:{" "}
-                  <span className="font-semibold text-neutral-100">{confidence.openRepCount}</span>
-                </span>
-
-                <span
-                  className={
-                    confidence.overdueRepCount > 0
-                      ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
-                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
-                  }
-                >
-                  Overdue reps: <span className="font-semibold">{confidence.overdueRepCount}</span>
-                </span>
-
-                <span
-                  className={
-                    confidence.staleRepCount > 0
-                      ? "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200"
-                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
-                  }
-                >
-                  Stale reps (7d): <span className="font-semibold">{confidence.staleRepCount}</span>
-                </span>
-
-                <span
-                  className={
-                    confidence.stuckRepCount > 0
-                      ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
-                      : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
-                  }
-                >
-                  Stuck total: <span className="font-semibold">{confidence.stuckRepCount}</span>
-                </span>
-              </div>
-            </div>
-
-            {confidence.staleTotal > 0 ? (
-              <div className="mt-2 text-xs text-neutral-500">
-                Stale reps (no completions in 7d):{" "}
-                <span className="text-neutral-200">
-                  {confidence.staleNames.join(", ")}
-                  {confidence.staleTotal > confidence.staleNames.length ? "…" : ""}
-                </span>
-              </div>
-            ) : (
-              <div className="mt-2 text-xs text-neutral-500">
-                No stale reps detected in the last 7 days.
-              </div>
-            )}
-
-            <div className="mt-3 text-xs text-neutral-500">
-              Interpretation: <span className="text-neutral-200">Overdue</span> = immediate follow-up,{" "}
-              <span className="text-neutral-200">Stale</span> = assign 1 drill today to restart momentum.
-            </div>
-
-            {confidence.stuckRepCount === 0 && (
-              <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
-                Momentum looks healthy — no reps are currently stuck. Nice work keeping the system clean.
-              </div>
-            )}
-
-            {/* Day 19: Bulk actions */}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => openBulk("assign_stale_drill")}
-                className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
-              >
-                Assign 1 drill to all stale reps
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openBulk("clear_overdue_noise")}
-                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-              >
-                Clear overdue noise (set due today)
-              </button>
-
-              <div className="text-xs text-neutral-500">
-                Preview: <span className="text-neutral-200">{bulkPreview.staleRepCount}</span> stale reps,{' '}
-                <span className="text-neutral-200">{bulkPreview.overdueCount}</span> overdue items
-              </div>
-            </div>
-          </div>
-
-          {/* Controls: always visible */}
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setFilter("open");
-                    updateUrl({ filter: "open" });
-                  }}
-                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "open"
-                      ? "bg-white text-black hover:brightness-95"
-                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
-                    }`}
-                >
-                  Assigned
-                </button>
-
-                <button
-                  onClick={() => {
-                    setFilter("completed7d");
-                    updateUrl({ filter: "completed7d" });
-                  }}
-                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "completed7d"
-                      ? "bg-white text-black hover:brightness-95"
-                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
-                    }`}
-                >
-                  Completed (7d)
-                </button>
-
-                <button
-                  onClick={() => {
-                    setFilter("overdue");
-                    updateUrl({ filter: "overdue" });
-                  }}
-                  className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "overdue"
-                      ? "bg-white text-black hover:brightness-95"
-                      : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
-                    }`}
-                >
-                  Overdue
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500">Search</span>
-                  <input
-                    value={q}
-                    onChange={(e) => {
-                      setQ(e.target.value);
-                      updateUrl({ q: e.target.value });
-                    }}
-                    placeholder="rep, title, type…"
-                    className="h-9 w-full md:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500">Show</span>
-                  <select
-                    value={String(perRepLimit)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setPerRepLimit(v);
-                      updateUrl({ limit: String(v) });
-                    }}
-                    className="h-9 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
-                  >
-                    <option value={"25"}>25</option>
-                    <option value={"50"}>50</option>
-                    <option value={"100"}>100</option>
-                    <option value={String(Number.POSITIVE_INFINITY)}>All</option>
-                  </select>
-                  <span className="text-xs text-neutral-500">per rep</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Rep panels */}
-          <div className="mt-6 flex-1 overflow-y-auto pr-2 space-y-6 max-h-[65vh] rounded-2xl border border-neutral-900 bg-neutral-950/20 p-3">
-            {sortedReps.map((rep) => {
-              const raw = rowsByRep[rep.id] || [];
-              const list =
-                filter === "open"
-                  ? raw.filter((a) => String(a.status).toLowerCase() === "assigned")
-                  : filter === "completed7d"
-                    ? raw.filter((a) => String(a.status).toLowerCase() === "completed" && completedLast7d(a))
-                    : raw.filter((a) => isOverdue(a));
-
-              const open = raw.filter((a) => String(a.status).toLowerCase() === "assigned");
-              const done = raw.filter((a) => String(a.status).toLowerCase() === "completed");
-
-              const sig = repStuckSignal({ rep, raw, signals });
-
-              const filtered = list
-                .filter((a) => matches(rep, a, q))
-                .slice(0, Number.isFinite(perRepLimit) ? perRepLimit : list.length);
-
-              // Auto-expand if this rep is stuck or if searching
-              const shouldExpand =
-                expanded[rep.id] ?? (sig.tone === "danger" || sig.tone === "warn");
-
-              if (!filtered.length) return null;
-
-              return (
-                <section
-                  key={rep.id}
-                  className={[
-                    "rounded-2xl border p-4",
-                    stuckSectionClass(sig.tone),
-                    // Extra subtle cue (no full-card tint)
-                    sig.tone === "danger" ? "shadow-[0_0_0_1px_rgba(239,68,68,0.10)]" : "",
-                    sig.tone === "warn" ? "shadow-[0_0_0_1px_rgba(245,158,11,0.10)]" : "",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-base font-semibold">{rep.name || rep.id}</div>
-                      <div className="mt-1 text-xs text-neutral-500">
-                        Open: {open.length} · Completed: {done.length}
+                      <div className="mt-3 text-xs text-neutral-500">
+                        Showing {filtered.length} of {list.filter((a) => matches(rep, a, q)).length} matching
+                        {Number.isFinite(perRepLimit) ? ` (max ${perRepLimit})` : ""}
                       </div>
-                      <div className="mt-1 text-xs text-neutral-400">
-                        <span className="font-semibold text-neutral-300">Why:</span> {sig.reason}
-                      </div>
-                    </div>
 
-                    <div className="shrink-0 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(rep.id)}
-                        className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                      >
-                        {shouldExpand ? "Collapse list" : "Expand list"}
-                      </button>
-
-                      {stuckPill(sig)}
-
-                      {(sig.tone === "danger" || sig.tone === "warn") ? (
-                        <>
-                          <button
-                            type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                            onClick={() =>
-                              jumpToCreateAndPrefill({
-                                repId: rep.id,
-                                type: "sparring",
-                                title: "Run 1 sparring drill today",
-                              })
-                            }
-                          >
-                            Assign sparring drill today
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                            onClick={() =>
-                              jumpToCreateAndPrefill({
-                                repId: rep.id,
-                                type: "call_review",
-                                title: "Review a sales call today",
-                              })
-                            }
-                          >
-                            Assign call review today
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                            onClick={() =>
-                              jumpToCreateAndPrefill({
-                                repId: rep.id,
-                                type: "custom",
-                                title: "Follow up on current assignment",
-                              })
-                            }
-                          >
-                            Assign follow-up task
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                            onClick={() =>
-                              jumpToCreateAndPrefill({
-                                repId: rep.id,
-                              })
-                            }
-                          >
-                            Quick assign
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  {(() => {
-                    const suggestion = repNextAction({ rep, raw, signals });
-                    if (!suggestion) return null;
-
-                    return (
-                      <div className="mt-2 text-xs text-neutral-400">
-                        Suggested next move:{" "}
-                        <span className="text-neutral-200">{suggestion}</span>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="mt-3 text-xs text-neutral-500">
-                    Showing {filtered.length} of {list.filter((a) => matches(rep, a, q)).length} matching
-                    {Number.isFinite(perRepLimit) ? ` (max ${perRepLimit})` : ""}
-                  </div>
-
-                  {shouldExpand ? (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="text-xs text-neutral-500">
-                          <tr>
-                            <th className="py-2 pr-3">Title</th>
-                            <th className="py-2 pr-3">Type</th>
-                            <th className="py-2 pr-3">Status</th>
-                            <th className="py-2 pr-3">Due</th>
-                            <th className="py-2 pr-3">Created</th>
-                            <th className="py-2 pr-0 text-right">Actions</th>
-                          </tr>
-                        </thead>
-
-                        <tbody className="align-top">
-                          {filtered.map((a) => {
-                            const overdue = isOverdue(a);
-                            return (
-                              <tr
-                                key={a.id}
-                                className={[
-                                  "border-t border-neutral-900",
-                                  overdue ? "bg-red-500/5" : "",
-                                ].join(" ")}
-                              >
-                                <td className="py-2 pr-3">
-                                  <div className="font-semibold text-neutral-200">{a.title || "(Untitled)"}</div>
-                                </td>
-                                <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
-                                <td className="py-2 pr-3">{statusPill(a.status, overdue)}</td>
-                                <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
-                                <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
-                                <td className="py-2 pr-0">
-                                  {String(a.status).toLowerCase() === "completed" ? (
-                                    <div className="flex items-center justify-end gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          jumpToCreateAndPrefill({
-                                            repId: rep.id,
-                                            type: a.type,
-                                            title: a.title || "",
-                                            dueYmd: todayYmd(),
-                                          })
-                                        }
-                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                      >
-                                        Assign again
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-end gap-2">
-                                      {a.type === "custom" ? (
-                                        <button
-                                          type="button"
-                                          disabled={actioningId === a.id}
-                                          onClick={() => markComplete(a.id)}
-                                          className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
-                                        >
-                                          {actioningId === a.id ? "…" : "Complete"}
-                                        </button>
-                                      ) : null}
-
-                                      <button
-                                        type="button"
-                                        disabled={actioningId === a.id}
-                                        onClick={() => setDueToday(a.id)}
-                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                      >
-                                        Due today
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        disabled={actioningId === a.id}
-                                        onClick={() => nudgeRep(rep.id, a.id)}
-                                        className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                      >
-                                        {actioningId === a.id ? "…" : "Nudge"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
+                      {shouldExpand ? (
+                        <div className="mt-4 overflow-x-auto">
+                          <table className="w-full text-left text-sm">
+                            <thead className="text-xs text-neutral-500">
+                              <tr>
+                                <th className="py-2 pr-3">Title</th>
+                                <th className="py-2 pr-3">Type</th>
+                                <th className="py-2 pr-3">Status</th>
+                                <th className="py-2 pr-3">Due</th>
+                                <th className="py-2 pr-3">Created</th>
+                                <th className="py-2 pr-0 text-right">Actions</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </section>
-              );
-            })}
+                            </thead>
 
-            {/* If nothing has been assigned at all */}
-            {sortedReps.every((r) => (rowsByRep[r.id] || []).length === 0) ? (
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-6 text-sm text-neutral-400">
-                No assignments found for your reps.
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
-      {/* Bulk confirmation modal */}
-      {bulkOpen && bulkKind && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="text-sm font-semibold text-neutral-200">Confirm bulk action</div>
+                            <tbody className="align-top">
+                              {filtered.map((a) => {
+                                const overdue = isOverdue(a);
+                                return (
+                                  <tr
+                                    key={a.id}
+                                    className={["border-t border-neutral-900", overdue ? "bg-red-500/5" : ""].join(" ")}
+                                  >
+                                    <td className="py-2 pr-3">
+                                      <div className="font-semibold text-neutral-200">{a.title || "(Untitled)"}</div>
+                                    </td>
+                                    <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
+                                    <td className="py-2 pr-3">{statusPill(a.status, overdue)}</td>
+                                    <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
+                                    <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
+                                    <td className="py-2 pr-0">
+                                      {String(a.status).toLowerCase() === "completed" ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              jumpToCreateAndPrefill({
+                                                repId: rep.id,
+                                                type: a.type,
+                                                title: a.title || "",
+                                                dueYmd: todayYmd(),
+                                              })
+                                            }
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                          >
+                                            Assign again
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-end gap-2">
+                                          {a.type === "custom" ? (
+                                            <button
+                                              type="button"
+                                              disabled={actioningId === a.id}
+                                              onClick={() => markComplete(a.id)}
+                                              className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                                            >
+                                              {actioningId === a.id ? "…" : "Complete"}
+                                            </button>
+                                          ) : null}
 
-            <div className="mt-2 text-sm text-neutral-400">
-              {bulkKind === "assign_stale_drill" ? (
-                <>
-                  This will create <span className="text-neutral-200">1 sparring drill</span> for each stale rep.
-                  <div className="mt-1 text-xs text-neutral-500">
-                    Affects: <span className="text-neutral-200">{bulkPreview.staleRepCount}</span> reps
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => setDueToday(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Due today
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => nudgeRep(rep.id, a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            {actioningId === a.id ? "…" : "Nudge"}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
+
+                {sortedReps.every((r) => (rowsByRep[r.id] || []).length === 0) ? (
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-6 text-sm text-neutral-400">
+                    No assignments found for your reps.
                   </div>
-                </>
-              ) : (
-                <>
-                  This will set <span className="text-neutral-200">all overdue assignments</span> to be due today.
-                  <div className="mt-1 text-xs text-neutral-500">
-                    Affects: <span className="text-neutral-200">{bulkPreview.overdueCount}</span> assignments
-                  </div>
-                </>
-              )}
-            </div>
-
-            {bulkErr && (
-              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {bulkErr}
+                ) : null}
               </div>
-            )}
-
-            {bulkResult && (
-              <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                Done ✓ ({bulkResult.ok} ok, {bulkResult.fail} failed)
-              </div>
-            )}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeBulk}
-                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
-              >
-                Close
-              </button>
-
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={runBulkAction}
-                className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
-              >
-                {bulkBusy ? "Running…" : "Confirm & run"}
-              </button>
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
       )}
     </div>

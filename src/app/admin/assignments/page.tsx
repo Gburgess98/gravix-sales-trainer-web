@@ -1,5 +1,5 @@
 import AdminAssignmentsClient from "./AdminAssignmentsClient";
 
 export default function AdminAssignmentsPage() {
-  return <AdminAssignmentsClient />;
+  return <AdminAssignmentsClient initialView="overview" />;
 }
