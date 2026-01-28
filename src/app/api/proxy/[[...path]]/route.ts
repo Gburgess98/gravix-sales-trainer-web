@@ -1,7 +1,6 @@
 // src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
-import { cookies as nextCookies } from "next/headers";
 
 // Ensure Node runtime so we can stream the request body
 
@@ -163,8 +162,7 @@ async function handle(req: NextRequest, context: any) {
         return res;
       }
 
-      const cookieStore = await nextCookies();
-      const cookieList = (cookieStore.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+      const cookieList = (req.cookies.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
 
       const hdrs = new Headers(req.headers);
       const headerUserId = (hdrs.get("x-user-id") || "").trim();
@@ -177,11 +175,14 @@ async function handle(req: NextRequest, context: any) {
         ? await getUserIdFromSupabaseCookies(req, cookieList)
         : "";
 
-      const devUid = (process.env.NEXT_PUBLIC_DEV_USER_ID || process.env.DEV_TEST_UID || "").trim();
-      const allowDevFallback =
-        process.env.NODE_ENV !== "production" &&
-        ((process.env.PROXY_DEV_FALLBACK || "") === "1" ||
-          (process.env.NEXT_PUBLIC_PROXY_DEV_FALLBACK || "") === "1");
+      const devUid = (
+        process.env.PROXY_DEV_X_USER_ID ||
+        process.env.NEXT_PUBLIC_DEV_USER_ID ||
+        process.env.DEV_TEST_UID ||
+        ""
+      ).trim();
+
+      const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
 
       const resolvedUserId =
         headerUserId ||
@@ -263,9 +264,8 @@ async function handle(req: NextRequest, context: any) {
       );
     }
 
-    // Next.js App Router: await cookies() once and reuse
-    const cookieStore = await nextCookies();
-    const cookieList = (cookieStore.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+    // Route handler: use request cookies
+    const cookieList = (req.cookies.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
 
     const target = buildTargetUrl(base, pathParts, req);
 
@@ -298,13 +298,14 @@ async function handle(req: NextRequest, context: any) {
       ? await getUserIdFromSupabaseCookies(req, cookieList)
       : "";
 
-    const devUid =
-      (process.env.NEXT_PUBLIC_DEV_USER_ID || process.env.DEV_TEST_UID || "").trim();
+    const devUid = (
+      process.env.PROXY_DEV_X_USER_ID ||
+      process.env.NEXT_PUBLIC_DEV_USER_ID ||
+      process.env.DEV_TEST_UID ||
+      ""
+    ).trim();
 
-    const allowDevFallback =
-      process.env.NODE_ENV !== "production" &&
-      ((process.env.PROXY_DEV_FALLBACK || "") === "1" ||
-        (process.env.NEXT_PUBLIC_PROXY_DEV_FALLBACK || "") === "1");
+    const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
 
     const resolvedUserId =
       headerUserId ||
@@ -323,7 +324,7 @@ async function handle(req: NextRequest, context: any) {
           ? "cookie"
           : usedDevUid
             ? "dev"
-            : "";
+            : "none";
 
     // Debug headers
     headers.set("x-proxy-auth-source", authSource);
