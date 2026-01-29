@@ -1,6 +1,9 @@
 import Link from "next/link";
 import ContactHeaderClient from "./ContactHeaderClient";
 import RepNotesClient from "./RepNotesClient";
+import AIBriefClient from "./AIBriefClient";
+import ContactAssignmentsClient from "./ContactAssignmentsClient";
+
 
 export default function ContactPage({ params }: { params: { id: string } }) {
   return (
@@ -40,9 +43,10 @@ export default function ContactPage({ params }: { params: { id: string } }) {
           <h2 className="mb-2 text-sm font-semibold text-neutral-200">
             Assignments
           </h2>
-          <p className="text-sm text-neutral-500">
+          <p className="mb-3 text-sm text-neutral-500">
             Open and completed assignments tied to this contact.
           </p>
+          <ContactAssignmentsClient contactId={params.id} />
         </div>
       </section>
 
@@ -62,9 +66,11 @@ export default function ContactPage({ params }: { params: { id: string } }) {
           <h2 className="mb-2 text-sm font-semibold text-neutral-200">
             AI Guidance
           </h2>
-          <p className="text-sm text-neutral-500">
-            AI-generated coaching based on call history, tone, objections, and outcomes.
+          <p className="mb-3 text-xs text-neutral-500">
+            Auto-generated sales brief based on notes and call history.
           </p>
+
+          <AIBriefClient contactId={params.id} />
         </div>
       </section>
 
