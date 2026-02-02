@@ -25,6 +25,11 @@ type ContactGetResponse = {
   error?: string;
 };
 
+type ContactHealth = {
+  status: "cold" | "warm" | "hot" | string;
+  score: number;
+  reasons?: string[];
+};
 
 function fmtAbsolute(iso?: string | null) {
   if (!iso) return "—";
@@ -82,7 +87,13 @@ function initials(name: string) {
   return (a + b).toUpperCase();
 }
 
-export default function ContactHeaderClient({ contactId }: { contactId: string }) {
+export default function ContactHeaderClient({
+  contactId,
+  health,
+}: {
+  contactId: string;
+  health?: ContactHealth | null;
+}) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [contact, setContact] = useState<CrmContact | null>(null);
@@ -181,6 +192,58 @@ export default function ContactHeaderClient({ contactId }: { contactId: string }
     }
   }
 
+  const healthStatus = (health?.status || "cold").toLowerCase();
+  const healthScore = typeof health?.score === "number" ? health!.score : null;
+
+  const healthPriority =
+    healthScore == null
+      ? null
+      : healthScore >= 70
+      ? "High"
+      : healthScore >= 40
+      ? "Medium"
+      : "Low";
+
+  function priorityPill() {
+    const base =
+      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold";
+    if (healthPriority === "High") {
+      return {
+        cls: `${base} border-red-800/60 bg-red-950/30 text-red-200`,
+        label: "High priority",
+      };
+    }
+    if (healthPriority === "Medium") {
+      return {
+        cls: `${base} border-amber-800/60 bg-amber-950/25 text-amber-200`,
+        label: "Medium priority",
+      };
+    }
+    return {
+      cls: `${base} border-neutral-800 bg-neutral-950 text-neutral-300`,
+      label: "Low priority",
+    };
+  }
+
+  const pp = healthPriority ? priorityPill() : null;
+
+  function healthPill() {
+    const base = "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold";
+
+    if (healthStatus === "hot") {
+      return { cls: `${base} border-emerald-800/60 bg-emerald-950/30 text-emerald-200`, label: "Hot" };
+    }
+    if (healthStatus === "warm") {
+      return { cls: `${base} border-amber-800/60 bg-amber-950/25 text-amber-200`, label: "Warm" };
+    }
+    return { cls: `${base} border-sky-900/50 bg-sky-950/20 text-sky-200`, label: "Cold" };
+  }
+
+  const hp = healthPill();
+  const healthTitle = health?.reasons?.length
+    ? `${healthStatus.toUpperCase()} • ${healthScore ?? "—"}/100\n${health.reasons.join("\n")}`
+    : `${healthStatus.toUpperCase()} • ${healthScore ?? "—"}/100`;
+
   return (
     <div className="rounded-2xl border border-neutral-900 bg-neutral-950/80 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -190,11 +253,25 @@ export default function ContactHeaderClient({ contactId }: { contactId: string }
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">CRM Contact</div>
+
               <span className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5 text-[11px] font-semibold text-neutral-300">
                 {contactId}
               </span>
+
+              {/* Health */}
+              <span className={hp.cls} title={healthTitle}>
+                {hp.label}
+                {healthScore != null ? (
+                  <span className="ml-1 text-[11px] font-semibold text-neutral-200/90">{healthScore}</span>
+                ) : null}
+              </span>
+              {pp ? (
+                <span className={pp.cls} title={`Priority derived from score (${healthScore}/100)`}>
+                  {pp.label}
+                </span>
+              ) : null}
             </div>
 
             <div className="mt-1 text-2xl font-semibold tracking-tight text-neutral-100">{fullName}</div>
@@ -237,9 +314,9 @@ export default function ContactHeaderClient({ contactId }: { contactId: string }
                 <span className="text-neutral-200" title={lastContactedAbsolute}>
                   {lastContactedRelative}
                 </span>
-                {lastContactedRelative === "Never" ? (
+                {!health && lastContactedRelative === "Never" ? (
                   <span className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5 text-[11px] font-semibold text-neutral-400">
-                    Warm lead
+                    Never contacted
                   </span>
                 ) : null}
               </div>
