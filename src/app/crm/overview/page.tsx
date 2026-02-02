@@ -70,6 +70,23 @@ type ManagerTrustResp = {
   };
 };
 
+type CrmActionItem = {
+  id: string;
+  title: string;
+  status?: 'open' | 'done' | 'completed' | string;
+  due_at?: string | null;
+  created_at?: string | null;
+  importance?: 'normal' | 'important' | 'critical' | string | null;
+  contact_id?: string | null;
+  account_id?: string | null;
+  source?: string | null;
+};
+
+type CrmActionsResp = {
+  ok: true;
+  items: CrmActionItem[];
+};
+
 // Recharts (client-only)
 const ResponsiveContainer = nextDynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 const BarChart = nextDynamic(() => import('recharts').then(m => m.BarChart), { ssr: false });
@@ -100,6 +117,60 @@ export default function CrmOverviewPage() {
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [trust, setTrust] = useState<ManagerTrustResp | null>(null);
   const [loadingTrust, setLoadingTrust] = useState<boolean>(true);
+  const [todayActions, setTodayActions] = useState<CrmActionItem[] | null>(null);
+  const [loadingTodayActions, setLoadingTodayActions] = useState<boolean>(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingTodayActions(true);
+      try {
+        // Prefer the aggregated CRM actions endpoint (Day 32). If it doesn't exist yet, fail soft.
+        const resp: any = await fetchJsonWithRetry<any>(
+          '/api/proxy/v1/crm/actions?scope=rep&window=today&limit=12'
+        );
+
+        if (!alive) return;
+
+        const items: any[] = Array.isArray(resp?.items)
+          ? resp.items
+          : (Array.isArray(resp?.actions) ? resp.actions : []);
+
+        const shaped: CrmActionItem[] = items.map((x: any) => ({
+          id: String(x.id ?? ''),
+          title: String(x.title ?? x.label ?? x.task ?? 'Action'),
+          status: (x.status ?? 'open') as any,
+          due_at: x.due_at ?? x.dueAt ?? null,
+          created_at: x.created_at ?? x.createdAt ?? null,
+          importance: x.importance ?? null,
+          contact_id: x.contact_id ?? x.contactId ?? null,
+          account_id: x.account_id ?? x.accountId ?? null,
+          source: x.source ?? (x.meta?.source ?? null),
+        })).filter((x) => x.id);
+
+        // Sort by due date (soonest first), then created
+        shaped.sort((a, b) => {
+          const ad = a.due_at ? new Date(String(a.due_at)).getTime() : Number.POSITIVE_INFINITY;
+          const bd = b.due_at ? new Date(String(b.due_at)).getTime() : Number.POSITIVE_INFINITY;
+          if (ad !== bd) return ad - bd;
+          const ac = a.created_at ? new Date(String(a.created_at)).getTime() : 0;
+          const bc = b.created_at ? new Date(String(b.created_at)).getTime() : 0;
+          return bc - ac;
+        });
+
+        setTodayActions(shaped);
+      } catch (e: any) {
+        // Expected while API stabilises — do not crash the overview.
+        if (alive) setTodayActions([]);
+        console.debug('[CRM Overview] Today actions load failed', e);
+      } finally {
+        if (alive) setLoadingTodayActions(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -246,10 +317,14 @@ export default function CrmOverviewPage() {
     })();
     (async () => {
       try {
-        const res: any = await getTopObjections({ limit: 8 });
+        const res: any =
+          typeof (getTopObjections as any) === "function"
+            ? await (getTopObjections as any)({ limit: 8 })
+            : { ok: true, items: [] };
         if (!alive) return;
 
         let rows: ObjectionDatum[] = [];
+        const items = Array.isArray((res as any)?.items) ? (res as any).items : null;
 
         if (Array.isArray(res)) {
           // Already an array of { objection, count } or similar
@@ -263,8 +338,8 @@ export default function CrmOverviewPage() {
             objection: x.key ?? x.objection ?? x.name ?? 'Unknown',
             count: typeof x.count === 'number' ? x.count : (typeof x.value === 'number' ? x.value : 0),
           }));
-        } else if (Array.isArray(res?.items)) {
-          rows = res.items.map((x: any) => ({
+        } else if (Array.isArray(items)) {
+          rows = items.map((x: any) => ({
             objection: x.objection ?? x.key ?? x.name ?? 'Unknown',
             count: typeof x.count === 'number' ? x.count : (typeof x.value === 'number' ? x.value : 0),
           }));
@@ -286,10 +361,19 @@ export default function CrmOverviewPage() {
   const topReps = repFilter ? topRepsAll.filter((r: any) => String(r.user_id) === String(repFilter)) : topRepsAll;
   return (
     <div className="max-w-5xl mx-auto py-10 px-6">
-      <h1 className="text-2xl font-semibold mb-2">CRM · Overview</h1>
-      <p className="opacity-80">
-  Snapshot of recent team performance based on analysed calls.
-</p>
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <div>
+          <h1 className="text-2xl font-semibold">CRM · Overview</h1>
+          <p className="opacity-80">Snapshot of recent team performance based on analysed calls.</p>
+        </div>
+
+        <Link
+          href="/crm/manager"
+          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+        >
+          Manager
+        </Link>
+      </div>
       {/* Manager Assignments Summary */}
       <div className="mt-3 mb-5 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-2 text-sm text-neutral-300 flex flex-wrap gap-4">
         {loadingSummary ? (
@@ -300,6 +384,75 @@ export default function CrmOverviewPage() {
             <span>🕑 Due soon: <span className="tabular-nums">{sumDueSoon}</span></span>
             <span>✅ Completed 7d: <span className="tabular-nums">{sumDone7d}</span></span>
           </>
+        )}
+      </div>
+
+      {/* Rep Home: Today's Actions (CORE WIN) */}
+      <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900/40 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-neutral-200">Today’s Actions</div>
+          <Link href="/crm/contacts/import" className="text-xs underline opacity-80 hover:opacity-100">
+            Import leads
+          </Link>
+        </div>
+
+        {loadingTodayActions ? (
+          <div className="mt-3 h-20 animate-pulse rounded-xl bg-white/10" />
+        ) : !todayActions || todayActions.length === 0 ? (
+          <div className="mt-3 text-sm text-neutral-400">
+            No actions queued. Open a contact and hit <span className="text-neutral-200">Auto-Assign</span>.
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {todayActions.slice(0, 8).map((a) => {
+              const due = a.due_at ? new Date(String(a.due_at)) : null;
+              const dueLabel = due && isFinite(due.getTime()) ? due.toLocaleString() : null;
+              const imp = (a.importance ?? 'normal') as string;
+              const impCls =
+                imp === 'critical'
+                  ? 'border-red-500/40 text-red-300 bg-red-500/10'
+                  : imp === 'important'
+                    ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
+                    : 'border-white/10 text-white/60 bg-white/5';
+
+              const status = (a.status ?? 'open') as string;
+              const statusCls =
+                status === 'done' || status === 'completed'
+                  ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                  : 'border-sky-500/30 text-sky-300 bg-sky-500/10';
+
+              const href = a.contact_id ? `/crm/contacts/${encodeURIComponent(String(a.contact_id))}` : null;
+
+              return (
+                <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm text-white/90 truncate">
+                      {href ? (
+                        <Link href={href} className="underline">
+                          {a.title}
+                        </Link>
+                      ) : (
+                        a.title
+                      )}
+                    </div>
+                    <div className="text-xs text-white/50 truncate">
+                      {dueLabel ? `Due: ${dueLabel}` : 'No due date'}
+                      {a.source ? ` · ${a.source}` : ''}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={clsx('text-xs rounded-full px-2 py-0.5 border whitespace-nowrap', impCls)}>
+                      {imp}
+                    </span>
+                    <span className={clsx('text-xs rounded-full px-2 py-0.5 border whitespace-nowrap', statusCls)}>
+                      {status}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 

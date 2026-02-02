@@ -28,6 +28,7 @@ type RepOverview = {
     calls?: Array<{ id: string; created_at: string; score: number }>;
     activity?: Array<{ id: string; t: string; text: string }>;
     sparring?: Array<{ id: string; persona_id?: string; personaId?: string; total?: number; created_at: string }>;
+    actions?: Array<{ id: string; title: string; status?: 'open'|'done'|'completed'; due_at?: string | null; completed_at?: string | null; created_at?: string }>;
   };
 };
 
@@ -95,6 +96,49 @@ export default function RepProfilePage() {
   const [savingTitle, setSavingTitle] = useState<string | null>(null);
   // Canonical XP total fetched from /v1/reps/:id/xp
   const [xpTotal, setXpTotal] = useState<number | null>(null);
+  const [todayActions, setTodayActions] = useState<any[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
+
+  async function refreshTodayActions() {
+    setLoadingActions(true);
+    try {
+      const r = await fetch(
+        `/api/proxy/v1/crm/actions/today?repId=${encodeURIComponent(id)}&limit=10`,
+        { cache: 'no-store' as any }
+      );
+      if (!r.ok) throw new Error(`actions_today_failed:${r.status}`);
+      const j = await r.json();
+      const items = Array.isArray(j?.items) ? j.items : (Array.isArray(j?.actions) ? j.actions : []);
+      setTodayActions(items);
+    } catch (err) {
+      console.warn('Today actions fetch failed (safe fallback):', err);
+      setTodayActions([]);
+    } finally {
+      setLoadingActions(false);
+    }
+  }
+
+  async function markActionDone(actionId: string) {
+    // optimistic remove
+    setTodayActions(prev => Array.isArray(prev) ? prev.filter(a => a?.id !== actionId) : prev);
+    try {
+      const r = await fetch(`/api/proxy/v1/crm/actions/${encodeURIComponent(actionId)}/complete`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) {
+        // rollback by refetching
+        await refreshTodayActions();
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error ? String(j.error) : `complete_failed:${r.status}`);
+      }
+      // keep UI fresh
+      await refreshTodayActions();
+    } catch (err) {
+      console.error('markActionDone failed:', err);
+    }
+  }
   // Load canonical XP from backend aggregator
   useEffect(() => {
     let mounted = true;
@@ -172,6 +216,12 @@ export default function RepProfilePage() {
           }
         } catch (err) {
           console.warn('getSparringSessionsByRep failed (safe to ignore):', err);
+        }
+        // Load Today’s Actions (CRM Actions = source of truth)
+        try {
+          if (mounted) await refreshTodayActions();
+        } catch (err) {
+          console.warn('Today actions refresh failed (safe fallback):', err);
         }
       } catch (e) {
         console.error('Failed to load rep overview', e);
@@ -446,29 +496,72 @@ export default function RepProfilePage() {
         </Card>
         <div className="space-y-4">
           <Card>
-            <SectionHeader title="Recent Assignments" cta={<Link href={`/assignments?repId=${id}`} className="text-sm text-white/70 hover:underline">Manage</Link>} />
+            <SectionHeader
+              title="Today’s Actions"
+              cta={<Link href={`/crm/overview?repId=${id}`} className="text-sm text-white/70 hover:underline">Open CRM</Link>}
+            />
             <div className="mt-3">
-              <MiniList
-                items={Array.isArray(data?.recent?.assignments) ? data!.recent!.assignments.slice(0, 3) : []}
-                empty="No open assignments."
-                renderItem={(a: any) => (
-                  <li key={a.id} className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2">
-                    <div className="text-sm">
-                      <div className="text-white/90">{a.title || 'Drill'}</div>
-                      <div className="text-white/50">{new Date(a.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <span className={clsx(
-                      'text-xs rounded-full px-2 py-0.5 border',
-                      (a.status === 'done' || a.status === 'completed')
-                        ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-                        : 'border-white/15 text-white/70 bg-white/5'
-                    )}>
-                      {a.status}
-                    </span>
-                    <Link href={`/assignments/${a.id}`} className="text-sm text-white/70 hover:underline">Open</Link>
-                  </li>
-                )}
-              />
+              {loadingActions ? (
+                <div className="text-white/60 text-sm">Loading…</div>
+              ) : (
+                <MiniList
+                  items={Array.isArray(todayActions) ? todayActions.slice(0, 5) : []}
+                  empty="No actions due today."
+                  renderItem={(a: any) => {
+                    const title = a.title ?? a.label ?? a.name ?? 'Action';
+                    const status = a.status ?? (a.completed_at ? 'completed' : 'open');
+                    const due = a.due_at ? new Date(a.due_at).toLocaleString() : null;
+                    return (
+      <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2">
+        <div className="text-sm min-w-0">
+          <div className="text-white/90 truncate">{title}</div>
+          <div className="text-white/50 truncate">
+            {due ? `Due ${due}` : 'No due date'}
+            {a.contact_id ? (
+              <>
+                {' '}•{' '}
+                <Link
+                  href={`/crm/contacts/${encodeURIComponent(a.contact_id)}`}
+                  className="text-white/70 hover:underline"
+                >
+                  Open contact
+                </Link>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span
+            className={clsx(
+              'text-xs rounded-full px-2 py-0.5 border',
+              (status === 'done' || status === 'completed')
+                ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                : 'border-white/15 text-white/70 bg-white/5'
+            )}
+          >
+            {status}
+          </span>
+
+          <button
+            type="button"
+            disabled={status === 'done' || status === 'completed'}
+            onClick={() => markActionDone(String(a.id))}
+            className={clsx(
+              'rounded-lg px-2.5 py-1 text-xs border',
+              (status === 'done' || status === 'completed')
+                ? 'border-white/10 text-white/40 bg-white/5 cursor-not-allowed'
+                : 'border-white/20 text-white/90 bg-white/10 hover:bg-white/15'
+            )}
+          >
+            Done
+          </button>
+        </div>
+      </li>
+                    );
+                  }}
+                />
+              )}
             </div>
           </Card>
           <Card>
@@ -476,7 +569,7 @@ export default function RepProfilePage() {
               title="3 Most Recent Sparring Sessions"
               cta={<Link href={`/sparring?repId=${id}`} className="text-sm text-white/70 hover:underline">Open Sparring</Link>}
             />
-            <Link href={`/reps/${params.id}/sparring`} className="text-xs underline text-white/60">View all</Link>
+            <Link href={`/reps/${id}/sparring`} className="text-xs underline text-white/60">View all</Link>
             <div className="mt-3">
               <MiniList
                 items={Array.isArray(data?.recent?.sparring) ? data!.recent!.sparring.slice(0, 3) : []}

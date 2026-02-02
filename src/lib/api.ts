@@ -442,6 +442,71 @@ export async function getScoreHistory(callId: string, limit = 24): Promise<Score
 // CRM helpers
 // -------------------------------
 
+// -------------------------------
+// CRM Actions (Today / Complete)
+// -------------------------------
+
+export type CrmActionRow = {
+  id: string;
+  contact_id: string | null;
+  type: string | null;
+  title: string | null;
+  due_at: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  status?: string | null;
+  importance?: string | null;
+  meta?: any;
+};
+
+export async function listCrmActionsToday(opts: {
+  repId: string;
+  limit?: number;
+}): Promise<CrmActionRow[]> {
+  const qs = new URLSearchParams();
+  qs.set("repId", opts.repId);
+  qs.set("limit", String(opts.limit ?? 10));
+
+  const j = await proxyGet<{ ok: true; items: CrmActionRow[] }>(
+    `/v1/crm/actions/today?${qs.toString()}`
+  );
+
+  return j.items || [];
+}
+
+export async function completeCrmAction(actionId: string): Promise<{
+  ok: true;
+  action: CrmActionRow;
+  already_completed?: boolean;
+}> {
+  const j = await proxyPost<{
+    ok: true;
+    action: CrmActionRow;
+    already_completed?: boolean;
+  }>(`/v1/crm/actions/${encodeURIComponent(actionId)}/complete`, {});
+
+  return j;
+}
+
+export async function listContactCrmActions(contactId: string, limit = 50): Promise<{
+  open: CrmActionRow[];
+  completed: CrmActionRow[];
+}> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+
+  const j = await proxyGet<{
+    ok: true;
+    open: CrmActionRow[];
+    completed: CrmActionRow[];
+  }>(`/v1/crm/contacts/${encodeURIComponent(contactId)}/actions?${qs.toString()}`);
+
+  return {
+    open: j.open || [],
+    completed: j.completed || [],
+  };
+}
+
 export async function searchContacts(query: string, limit = 12) {
   const qs = new URLSearchParams({ query, limit: String(limit) });
   const r = await jfetch<{ ok: true; items: ContactHit[] }>(`${PROXY}/v1/crm/contacts?${qs.toString()}`);

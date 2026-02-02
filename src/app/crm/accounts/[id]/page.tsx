@@ -12,8 +12,8 @@ function ScorePill({ score }: { score: number | null | undefined }) {
   const n = Math.round(score);
   const cls =
     n >= 80 ? 'bg-green-600/20 text-green-400'
-    : n >= 60 ? 'bg-amber-600/20 text-amber-300'
-    : 'bg-red-600/20 text-red-300';
+      : n >= 60 ? 'bg-amber-600/20 text-amber-300'
+        : 'bg-red-600/20 text-red-300';
   return <span className={`text-xs px-2 py-1 rounded ${cls}`}>{n}</span>;
 }
 
@@ -26,6 +26,9 @@ export default function AccountPage() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [contacts, setContacts] = useState<Array<{ id: string; first_name?: string; last_name?: string; email?: string }>>([]);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const healthRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/proxy/v1/crm/accounts/${id}/health`, { cache: "no-store" });
+  const healthJson = await healthRes.json().catch(() => null);
+  const accountHealth = healthJson?.health ?? null;
 
   useEffect(() => {
     let alive = true;
@@ -45,7 +48,7 @@ export default function AccountPage() {
           const ar = await fetch(`/api/proxy/v1/coach/assignments/by-entity?accountId=${id}&limit=5`, { cache: 'no-store' });
           const aj = await ar.json();
           if (aj?.ok && Array.isArray(aj.items)) setAssignments(aj.items);
-        } catch {}
+        } catch { }
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message || 'load_failed');

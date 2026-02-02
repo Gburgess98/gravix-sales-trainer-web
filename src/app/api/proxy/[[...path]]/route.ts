@@ -10,9 +10,23 @@ export const dynamic = "force-dynamic";
 // Guardrail: this proxy should ONLY forward to our API surface.
 // Prevents accidental open-proxy behaviour if someone hits /api/proxy/<random>.
 
+
 const ALLOWED_FIRST_SEGMENTS = new Set(["v1"]);
 const MAX_PROXY_SEGMENTS = 20;
 const MAX_PROXY_SEGMENT_LEN = 200;
+
+// Helper: parse legacy ?path= query param into safe path parts
+function sanitizeProxyPathFromQueryParam(req: NextRequest): string[] | null {
+  const raw = (req.nextUrl.searchParams.get("path") || "").trim();
+  if (!raw) return null;
+
+  // Accept inputs like "/v1/crm/manager/overview" or "v1/crm/manager/overview"
+  const cleanedRaw = raw.replace(/^\/+/, "");
+  if (!cleanedRaw) return null;
+
+  const parts = cleanedRaw.split("/").filter(Boolean);
+  return sanitizeProxyPathParts(parts);
+}
 
 function sanitizeProxyPathParts(pathParts: string[] | undefined): string[] | null {
   if (!Array.isArray(pathParts) || pathParts.length === 0) return null;
@@ -151,7 +165,7 @@ async function handle(req: NextRequest, context: any) {
     // Next.js App Router: treat params as async-safe and only read once
     const params = context?.params ? await Promise.resolve(context.params as any) : undefined;
     const rawPathParts = (params as any)?.path as string[] | undefined;
-    const pathParts = sanitizeProxyPathParts(rawPathParts);
+    const pathParts = sanitizeProxyPathParts(rawPathParts) ?? sanitizeProxyPathFromQueryParam(req);
 
     // ---- Known-good proxy debug route (never forwards upstream)
     // GET /api/proxy/__debug  (dev: open, prod: requires x-proxy-debug-token)
@@ -217,6 +231,7 @@ async function handle(req: NextRequest, context: any) {
           now: new Date().toISOString(),
           method: req.method,
           pathParts,
+          pathVia: Array.isArray(rawPathParts) ? "params" : (req.nextUrl.searchParams.get("path") ? "query" : "none"),
           base: getBackendBase(),
           auth: {
             resolvedUserId: resolvedUserId || "",
@@ -277,7 +292,16 @@ async function handle(req: NextRequest, context: any) {
           { status: 404, headers: { "x-proxy-guardrail": "debug_disabled" } }
         );
       }
-      return NextResponse.json({ ok: true, base, target, pathParts }, { status: 200 });
+      return NextResponse.json(
+        {
+          ok: true,
+          base,
+          target,
+          pathParts,
+          via: Array.isArray(rawPathParts) ? "params" : (req.nextUrl.searchParams.get("path") ? "query" : "none"),
+        },
+        { status: 200 }
+      );
     }
 
     // Clone headers; never forward hop-by-hop headers
