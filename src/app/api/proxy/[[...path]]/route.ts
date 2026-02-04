@@ -380,18 +380,18 @@ async function handle(req: NextRequest, context: any) {
     headers.set("x-gravix-user-id", resolvedUserId);
     headers.set("x-forwarded-user-id", resolvedUserId);
 
-    // Org id: prefer explicit header, then env fallbacks
-    const devOrg =
+    // Org id: prefer explicit header, then env fallbacks (dev-friendly)
+    const devOrg = (
+      process.env.DEV_ORG_ID ||
+      process.env.PROXY_DEV_X_ORG_ID ||
       process.env.NEXT_PUBLIC_TEST_ORG_ID ||
       process.env.NEXT_PUBLIC_DEFAULT_ORG_ID ||
       process.env.DEFAULT_ORG_ID ||
-      "";
+      ""
+    ).trim();
 
-    const existingOrgId = headers.get("x-org-id");
-    const finalOrgId =
-      existingOrgId && existingOrgId.trim().length > 0
-        ? existingOrgId
-        : devOrg;
+    const existingOrgId = (headers.get("x-org-id") || "").trim();
+    const finalOrgId = existingOrgId || devOrg;
 
     if (finalOrgId) {
       headers.set("x-org-id", finalOrgId);
@@ -455,6 +455,7 @@ async function handle(req: NextRequest, context: any) {
     try { outHeaders.set("x-proxy-api-fallback", usedDevUid ? "1" : ""); } catch { }
     try { outHeaders.set("x-proxy-auth-source", authSource); } catch { }
     try { outHeaders.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
+    try { outHeaders.set("x-proxy-org-id", (headers.get("x-org-id") || "").trim()); } catch { }
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");
