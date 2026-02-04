@@ -1,6 +1,95 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import RunHistoryTable from "@/components/RunHistoryTable";
+
+// ------------------------------
+// API helpers (status-aware)
+// ------------------------------
+
+type ApiErrorKind = "auth" | "permission" | "validation" | "server" | "network" | "unknown";
+
+type ApiErr = {
+  ok: false;
+  status: number;
+  kind: ApiErrorKind;
+  title: string;
+  hint: string;
+  error: string;
+};
+
+type ApiOk<T> = { ok: true; status: number; data: T };
+
+type ApiResult<T> = ApiOk<T> | ApiErr;
+
+function classifyApiError(status: number): { kind: ApiErrorKind; title: string; hint: string } {
+  if (status === 401) return { kind: "auth", title: "Auth required", hint: "Missing/expired auth or headers. Refresh and try again." };
+  if (status === 403) return { kind: "permission", title: "Permission blocked", hint: "You don’t have access to this org/rep scope." };
+  if (status === 422) return { kind: "validation", title: "Invalid request", hint: "The request body was rejected. Check mode/caps." };
+  if (status >= 500) return { kind: "server", title: "Server error", hint: "API failed. Check server logs and retry." };
+  return { kind: "unknown", title: "Request failed", hint: "Unexpected failure. Check logs." };
+}
+
+async function safeJson(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function apiGet<T = any>(path: string): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(path, { method: "GET" });
+    const data = (await safeJson(res)) as any;
+
+    if (!res.ok) {
+      const cls = classifyApiError(res.status);
+      const apiMsg = data?.error ? String(data.error) : null;
+      return { ok: false, status: res.status, kind: cls.kind, title: cls.title, hint: cls.hint, error: apiMsg || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, status: res.status, data: data as T };
+  } catch (e: any) {
+    return {
+      ok: false,
+      status: 0,
+      kind: "network",
+      title: "Network error",
+      hint: "Couldn’t reach the API. Check proxy/API is running.",
+      error: String(e?.message ?? "network_error"),
+    };
+  }
+}
+
+async function apiPost<T = any>(path: string, body: any): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+
+    const data = (await safeJson(res)) as any;
+
+    if (!res.ok) {
+      const cls = classifyApiError(res.status);
+      const apiMsg = data?.error ? String(data.error) : null;
+      return { ok: false, status: res.status, kind: cls.kind, title: cls.title, hint: cls.hint, error: apiMsg || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, status: res.status, data: data as T };
+  } catch (e: any) {
+    return {
+      ok: false,
+      status: 0,
+      kind: "network",
+      title: "Network error",
+      hint: "Couldn’t reach the API. Check proxy/API is running.",
+      error: String(e?.message ?? "network_error"),
+    };
+  }
+}
 
 type OverviewRow = {
   rep_id: string;
@@ -9,11 +98,86 @@ type OverviewRow = {
   meta?: any;
 };
 
+type LastRun = {
+  run_id: string;
+  mode: string;
+  source?: "cron" | "manual";
+  started_at?: string;
+  finished_at?: string;
+  totals?: {
+    reps_considered?: number;
+    contacts_considered?: number;
+    actions_created?: number;
+    skipped_dedupe?: number;
+    errors?: number;
+  };
+};
+
+const SLACK_ALERT_ACTIONS_CREATED_THRESHOLD = 25;
+
+function shouldSlackAlert(totals?: LastRun["totals"]) {
+  const errors = Number(totals?.errors ?? 0);
+  const created = Number(totals?.actions_created ?? 0);
+  return errors > 0 || created >= SLACK_ALERT_ACTIONS_CREATED_THRESHOLD;
+}
+
+function buildSlackPreview(run: LastRun) {
+  const t = run.totals ?? {};
+  const icon = Number(t.errors ?? 0) > 0 ? "⚠️" : "👀";
+  const title = `${icon} CRM auto-assign run ${(run.mode || "").toUpperCase()} — ${run.run_id}`;
+  const lines = [
+    title,
+    `reps_considered: ${Number(t.reps_considered ?? 0)}`,
+    `contacts_considered: ${Number(t.contacts_considered ?? 0)}`,
+    `actions_created: ${Number(t.actions_created ?? 0)}`,
+    `skipped_dedupe: ${Number(t.skipped_dedupe ?? 0)}`,
+    `errors: ${Number(t.errors ?? 0)}`,
+  ];
+  return lines.join("\n");
+}
+
 export default function ManagerClient({ initial }: { initial: any }) {
   const [rows, setRows] = useState<OverviewRow[]>(initial?.items ?? []);
   const [mode] = useState<string>(initial?.mode ?? "unknown");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<LastRun | null>(null);
+  const [apiError, setApiError] = useState<ApiErr | null>(null);
+  const [confirmExecute, setConfirmExecute] = useState(false);
+  const [contactsPerRep, setContactsPerRep] = useState<number>(5);
+  const [maxTotalContacts, setMaxTotalContacts] = useState<number>(8);
+  const [preview, setPreview] = useState<any | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const r = await apiGet<any>("/api/proxy/v1/crm/manager/auto-assign/runs/latest");
+      if (cancelled) return;
+
+      if (!r.ok) {
+        setApiError(r);
+        return;
+      }
+
+      const item = (r.data as any)?.item;
+      if (item?.run_id) {
+        setLastRun({
+          run_id: String(item.run_id),
+          mode: String(item.mode ?? ""),
+          source: (item.source === "cron" ? "cron" : "manual") as any,
+          started_at: item.started_at ?? undefined,
+          finished_at: item.finished_at ?? undefined,
+          totals: item.totals ?? undefined,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totals = useMemo(() => {
     let open = 0, overdue = 0, done = 0;
@@ -26,29 +190,68 @@ export default function ManagerClient({ initial }: { initial: any }) {
   }, [rows]);
 
   async function refresh() {
-    const r = await fetch("/api/proxy/v1/crm/manager/overview", { cache: "no-store" });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j?.ok) throw new Error(j?.error ?? "Failed to refresh");
+    const r = await apiGet<any>("/api/proxy/v1/crm/manager/overview");
+    if (!r.ok) {
+      setApiError(r);
+      throw new Error(r.error);
+    }
+    const j = r.data as any;
+    if (!j?.ok) {
+      setApiError({ ok: false, status: r.status, kind: "unknown", title: "Request failed", hint: "Unexpected response shape.", error: String(j?.error ?? "Failed to refresh") });
+      throw new Error(j?.error ?? "Failed to refresh");
+    }
     setRows(j.items ?? []);
   }
 
   async function runNow(dryRun = false) {
     setBusy(true);
     setMsg(null);
+    setApiError(null);
     try {
-      const r = await fetch("/api/proxy/v1/crm/manager/runner", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dry_run: dryRun, limit: 50 }),
+      const rr = await apiPost<any>("/api/proxy/v1/crm/manager/auto-assign/run", {
+        mode: dryRun ? "dry_run" : "execute",
+        limit_reps: 10,
+        contacts_per_rep: Math.max(1, Number(contactsPerRep) || 1),
+        max_total_contacts: Math.max(1, Number(maxTotalContacts) || 1),
       });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error ?? "Runner failed");
+
+      if (!rr.ok) {
+        setApiError(rr);
+        throw new Error(rr.error);
+      }
+
+      const j = rr.data as any;
+      if (!j?.ok) {
+        const msg = String(j?.error ?? "Runner failed");
+        setApiError({ ok: false, status: rr.status, kind: "unknown", title: "Request failed", hint: "Unexpected response shape.", error: msg });
+        throw new Error(msg);
+      }
 
       // runner returns stats; show something readable
-      const created = j?.summary?.created ?? j?.created ?? 0;
-      const skipped = j?.summary?.skipped ?? j?.skipped ?? 0;
-      setMsg(dryRun ? `Dry run OK (would create: ${created}, skipped: ${skipped})`
-                    : `Run OK (created: ${created}, skipped: ${skipped})`);
+      const run_id = String(j?.run_id ?? "").trim();
+      const created = Number(j?.totals?.actions_created ?? 0);
+      const skipped = Number(j?.totals?.skipped_dedupe ?? 0);
+      const contacts = Number(j?.totals?.contacts_considered ?? 0);
+      const reps = Number(j?.totals?.reps_considered ?? 0);
+      const errors = Number(j?.totals?.errors ?? 0);
+
+      setLastRun({
+        run_id: run_id || "(missing)",
+        mode: String(j?.mode ?? (dryRun ? "dry_run" : "execute")),
+        source: "manual",
+        started_at: j?.started_at,
+        finished_at: j?.finished_at,
+        totals: {
+          reps_considered: reps,
+          contacts_considered: contacts,
+          actions_created: created,
+          skipped_dedupe: skipped,
+          errors,
+        },
+      });
+
+      const base = `${dryRun ? "Dry run" : "Run"} OK (reps: ${reps}, contacts: ${contacts}, created: ${created}, skipped: ${skipped}${errors ? `, errors: ${errors}` : ""})`;
+      setMsg(run_id ? `${base} — run_id: ${run_id}` : base);
 
       await refresh();
     } catch (e: any) {
@@ -58,12 +261,67 @@ export default function ManagerClient({ initial }: { initial: any }) {
     }
   }
 
+  async function runPreview() {
+    setPreviewBusy(true);
+    setApiError(null);
+    setPreview(null);
+
+    try {
+      const rr = await apiPost<any>("/api/proxy/v1/crm/manager/auto-assign/preview", {
+        limit_reps: 10,
+        contacts_per_rep: Math.max(1, Number(contactsPerRep) || 1),
+        max_total_contacts: Math.max(1, Number(maxTotalContacts) || 1),
+      });
+
+      if (!rr.ok) {
+        setApiError(rr);
+        throw new Error(rr.error);
+      }
+
+      const j = rr.data as any;
+      if (!j?.ok) {
+        const msg = String(j?.error ?? "Preview failed");
+        setApiError({ ok: false, status: rr.status, kind: "unknown", title: "Preview failed", hint: "Unexpected response shape.", error: msg });
+        throw new Error(msg);
+      }
+
+      setPreview(j);
+    } catch (e: any) {
+      // handled above
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {apiError && (
+        <div className="mb-3 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-neutral-100 font-semibold">
+                {apiError.title}
+                {apiError.status > 0 ? (
+                  <span className="ml-2 text-neutral-400 font-normal">({apiError.status})</span>
+                ) : null}
+              </div>
+              <div className="text-neutral-300 text-sm mt-1">{apiError.hint}</div>
+              <div className="text-neutral-400 text-xs mt-2 font-mono break-all">{apiError.error}</div>
+            </div>
+
+            <button
+              className="text-neutral-300 hover:text-white text-sm"
+              onClick={() => setApiError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <button
           disabled={busy}
-          onClick={() => runNow(false)}
+          onClick={() => setConfirmExecute(true)}
           className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
         >
           {busy ? "Running…" : "Run auto-assign now"}
@@ -77,10 +335,53 @@ export default function ManagerClient({ initial }: { initial: any }) {
           Dry run
         </button>
 
+        <button
+          disabled={busy || previewBusy}
+          onClick={() => runPreview()}
+          className="px-3 py-2 rounded border border-neutral-700 text-sm disabled:opacity-60"
+        >
+          {previewBusy ? "Previewing…" : "Preview"}
+        </button>
+
         <div className="text-xs text-neutral-400 ml-auto">
           mode: <span className="text-neutral-200">{mode}</span>
         </div>
       </div>
+
+      {confirmExecute && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
+            <div className="text-neutral-200 font-medium">Confirm execute</div>
+
+            <div className="text-sm text-neutral-400">
+              This will create CRM actions for reps. This cannot be undone.
+            </div>
+
+            <div className="text-xs text-neutral-500">
+              Caps: <span className="text-neutral-200">{contactsPerRep}</span> contacts/rep •{" "}
+              <span className="text-neutral-200">{maxTotalContacts}</span> max contacts total
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setConfirmExecute(false)}
+                className="px-3 py-2 rounded border border-neutral-700 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setConfirmExecute(false);
+                  await runNow(false);
+                }}
+                className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+              >
+                Yes, run auto-assign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-3 text-sm">
         <div className="px-3 py-2 rounded border border-neutral-800">
@@ -99,6 +400,134 @@ export default function ManagerClient({ initial }: { initial: any }) {
           {msg}
         </div>
       )}
+
+      {preview && (
+        <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="text-neutral-200 font-medium">Preview (dry run)</div>
+            <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-200">no changes made</span>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <div className="px-2 py-1 rounded border border-neutral-800">
+              reps: <span className="text-neutral-200">{preview?.totals?.reps_considered ?? 0}</span>
+            </div>
+            <div className="px-2 py-1 rounded border border-neutral-800">
+              contacts: <span className="text-neutral-200">{preview?.totals?.contacts_considered ?? 0}</span>
+            </div>
+            <div className="px-2 py-1 rounded border border-neutral-800">
+              would create: <span className="text-neutral-200">{preview?.totals?.actions_created ?? 0}</span>
+            </div>
+            <div className="px-2 py-1 rounded border border-neutral-800">
+              skipped: <span className="text-neutral-200">{preview?.totals?.skipped_dedupe ?? 0}</span>
+            </div>
+            <div className="px-2 py-1 rounded border border-neutral-800">
+              errors: <span className="text-neutral-200">{preview?.totals?.errors ?? 0}</span>
+            </div>
+          </div>
+
+          <div className="text-xs text-neutral-500">
+            Review the preview above. If this looks correct, you can safely execute the run.
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => setPreview(null)}
+              className="px-3 py-2 rounded border border-neutral-700 text-sm"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={() => setConfirmExecute(true)}
+              className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+            >
+              Execute this run
+            </button>
+          </div>
+        </div>
+      )}
+      {lastRun && (
+        <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="text-neutral-200 font-medium">Latest run</div>
+            {lastRun?.source === "cron" && (
+              <span className="text-xs px-2 py-0.5 rounded bg-blue-900/40 text-blue-200">cron</span>
+            )}
+            <div className="text-xs text-neutral-400 ml-auto">mode: <span className="text-neutral-200">{lastRun.mode}</span></div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400">
+            <div className="flex items-center gap-2">
+              <span>contacts/rep</span>
+              <input
+                type="number"
+                min={1}
+                value={contactsPerRep}
+                onChange={(e) => setContactsPerRep(Math.max(1, Number(e.target.value) || 1))}
+                className="w-20 px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span>max contacts</span>
+              <input
+                type="number"
+                min={1}
+                value={maxTotalContacts}
+                onChange={(e) => setMaxTotalContacts(Math.max(1, Number(e.target.value) || 1))}
+                className="w-24 px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200"
+              />
+            </div>
+
+            <div className="text-neutral-500">These caps apply to dry-run + execute.</div>
+          </div>
+
+          <div className="text-xs text-neutral-400">
+            run_id: <span className="font-mono text-neutral-200">{lastRun.run_id}</span>
+          </div>
+
+          {shouldSlackAlert(lastRun.totals) ? (
+            <div className="border border-amber-900/40 bg-amber-950/10 rounded p-2">
+              <div className="flex items-center gap-2">
+                <div className="text-amber-200 text-xs font-medium">Slack alert</div>
+                <div className="text-xs text-amber-100/80">sent (based on thresholds)</div>
+                <div className="ml-auto text-xs text-neutral-500">rule: errors &gt; 0 OR created ≥ {SLACK_ALERT_ACTIONS_CREATED_THRESHOLD}</div>
+              </div>
+              <pre className="mt-2 whitespace-pre-wrap text-xs text-amber-100/90 font-mono break-words">
+                {buildSlackPreview(lastRun)}
+              </pre>
+            </div>
+          ) : (
+            <div className="text-xs text-neutral-500">
+              Slack alert: not sent (errors = 0 and created &lt; {SLACK_ALERT_ACTIONS_CREATED_THRESHOLD})
+            </div>
+          )}
+
+          {lastRun?.source === "cron" && (
+            <div className="text-xs text-neutral-500">
+              Last run executed automatically by scheduler
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <div className="px-2 py-1 rounded border border-neutral-800">reps: <span className="text-neutral-200">{lastRun.totals?.reps_considered ?? 0}</span></div>
+            <div className="px-2 py-1 rounded border border-neutral-800">contacts: <span className="text-neutral-200">{lastRun.totals?.contacts_considered ?? 0}</span></div>
+            <div className="px-2 py-1 rounded border border-neutral-800">created: <span className="text-neutral-200">{lastRun.totals?.actions_created ?? 0}</span></div>
+            <div className="px-2 py-1 rounded border border-neutral-800">skipped: <span className="text-neutral-200">{lastRun.totals?.skipped_dedupe ?? 0}</span></div>
+            <div className="px-2 py-1 rounded border border-neutral-800">errors: <span className="text-neutral-200">{lastRun.totals?.errors ?? 0}</span></div>
+          </div>
+
+          {(lastRun.started_at || lastRun.finished_at) && (
+            <div className="text-xs text-neutral-500">
+              {lastRun.started_at ? `started: ${new Date(lastRun.started_at).toLocaleString()}` : ""}
+              {lastRun.finished_at ? ` • finished: ${new Date(lastRun.finished_at).toLocaleString()}` : ""}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Run history */}
+      <RunHistoryTable limit={10} className="mt-3" />
 
       <div className="overflow-auto border border-neutral-800 rounded">
         <table className="min-w-[700px] w-full text-sm">
