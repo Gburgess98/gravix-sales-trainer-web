@@ -104,6 +104,9 @@ type LastRun = {
   source?: "cron" | "manual";
   started_at?: string;
   finished_at?: string;
+  executed_from_preview_run_id?: string | null;
+  executed_by_user_id?: string | null;
+  executed_at?: string | null;
   totals?: {
     reps_considered?: number;
     contacts_considered?: number;
@@ -114,6 +117,12 @@ type LastRun = {
 };
 
 const SLACK_ALERT_ACTIONS_CREATED_THRESHOLD = 25;
+
+const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidRunId(id: any) {
+  const s = String(id ?? "").trim();
+  return RUN_ID_RE.test(s);
+}
 
 function shouldSlackAlert(totals?: LastRun["totals"]) {
   const errors = Number(totals?.errors ?? 0);
@@ -144,10 +153,29 @@ export default function ManagerClient({ initial }: { initial: any }) {
   const [lastRun, setLastRun] = useState<LastRun | null>(null);
   const [apiError, setApiError] = useState<ApiErr | null>(null);
   const [confirmExecute, setConfirmExecute] = useState(false);
+  const [confirmExecutePreviewId, setConfirmExecutePreviewId] = useState<string | null>(null);
   const [contactsPerRep, setContactsPerRep] = useState<number>(5);
   const [maxTotalContacts, setMaxTotalContacts] = useState<number>(8);
   const [preview, setPreview] = useState<any | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+
+  // Derived preview helpers
+  const previewRunId = useMemo(() => {
+    const id = String((preview as any)?.run_id ?? "").trim();
+    if (!id.length) return null;
+    return isValidRunId(id) ? id : null;
+  }, [preview]);
+
+  const previewTotals = useMemo(() => {
+    const t = (preview as any)?.totals ?? {};
+    return {
+      reps: Number(t.reps_considered ?? 0),
+      contacts: Number(t.contacts_considered ?? 0),
+      wouldCreate: Number(t.actions_created ?? 0),
+      skipped: Number(t.skipped_dedupe ?? 0),
+      errors: Number(t.errors ?? 0),
+    };
+  }, [preview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,18 +185,25 @@ export default function ManagerClient({ initial }: { initial: any }) {
       if (cancelled) return;
 
       if (!r.ok) {
+        // Latest run is optional. If server can't return it (e.g. invalid_run_id), don't block the page UI.
+        if (r.status === 400 && String(r.error ?? "") === "invalid_run_id") {
+          return;
+        }
         setApiError(r);
         return;
       }
 
       const item = (r.data as any)?.item;
-      if (item?.run_id) {
+      if (isValidRunId(item?.run_id)) {
         setLastRun({
           run_id: String(item.run_id),
           mode: String(item.mode ?? ""),
           source: (item.source === "cron" ? "cron" : "manual") as any,
           started_at: item.started_at ?? undefined,
           finished_at: item.finished_at ?? undefined,
+          executed_from_preview_run_id: item.executed_from_preview_run_id ?? null,
+          executed_by_user_id: item.executed_by_user_id ?? null,
+          executed_at: item.executed_at ?? null,
           totals: item.totals ?? undefined,
         });
       }
@@ -241,6 +276,9 @@ export default function ManagerClient({ initial }: { initial: any }) {
         source: "manual",
         started_at: j?.started_at,
         finished_at: j?.finished_at,
+        executed_from_preview_run_id: null,
+        executed_by_user_id: null,
+        executed_at: null,
         totals: {
           reps_considered: reps,
           contacts_considered: contacts,
@@ -286,10 +324,92 @@ export default function ManagerClient({ initial }: { initial: any }) {
       }
 
       setPreview(j);
+      // If a new preview exists, clear any previous execute-from-preview confirmation state.
+      setConfirmExecutePreviewId(null);
     } catch (e: any) {
       // handled above
     } finally {
       setPreviewBusy(false);
+    }
+  }
+
+  async function executeFromPreview(previewRunId: string) {
+    if (!isValidRunId(previewRunId)) {
+      setApiError({
+        ok: false,
+        status: 422,
+        kind: "validation",
+        title: "Invalid preview run id",
+        hint: "Refusing to execute because preview_run_id is not a valid UUID.",
+        error: "invalid_preview_run_id",
+      });
+      setMsg("Invalid preview_run_id — refused to execute.");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    setApiError(null);
+
+    try {
+      const rr = await apiPost<any>("/api/proxy/v1/crm/manager/auto-assign/execute-from-preview", {
+        preview_run_id: previewRunId,
+      });
+
+      if (!rr.ok) {
+        setApiError(rr);
+        throw new Error(rr.error);
+      }
+
+      const j = rr.data as any;
+      if (!j?.ok) {
+        const msg = String(j?.error ?? "Execute-from-preview failed");
+        setApiError({
+          ok: false,
+          status: rr.status,
+          kind: "unknown",
+          title: "Execute failed",
+          hint: "The server rejected the preview execution.",
+          error: msg,
+        });
+        throw new Error(msg);
+      }
+
+      const run_id = String(j?.run_id ?? "").trim();
+      const created = Number(j?.totals?.actions_created ?? 0);
+      const skipped = Number(j?.totals?.skipped_dedupe ?? 0);
+      const contacts = Number(j?.totals?.contacts_considered ?? 0);
+      const reps = Number(j?.totals?.reps_considered ?? 0);
+      const errors = Number(j?.totals?.errors ?? 0);
+
+      setLastRun({
+        run_id: run_id || "(missing)",
+        mode: "execute",
+        source: "manual",
+        started_at: j?.started_at,
+        finished_at: j?.finished_at,
+        executed_from_preview_run_id: previewRunId,
+        executed_by_user_id: null,
+        executed_at: new Date().toISOString(),
+        totals: {
+          reps_considered: reps,
+          contacts_considered: contacts,
+          actions_created: created,
+          skipped_dedupe: skipped,
+          errors,
+        },
+      });
+
+      const base = `Executed preview OK (reps: ${reps}, contacts: ${contacts}, created: ${created}, skipped: ${skipped}${errors ? `, errors: ${errors}` : ""})`;
+      setMsg(run_id ? `${base} — run_id: ${run_id}` : base);
+
+      // Clear preview panel after successful execute
+      setPreview(null);
+
+      await refresh();
+    } catch (e: any) {
+      setMsg(e?.message ?? "Execute error");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -321,7 +441,11 @@ export default function ManagerClient({ initial }: { initial: any }) {
       <div className="flex items-center gap-3">
         <button
           disabled={busy}
-          onClick={() => setConfirmExecute(true)}
+          onClick={() => {
+            setMsg(null);
+            setApiError(null);
+            setConfirmExecute(true);
+          }}
           className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
         >
           {busy ? "Running…" : "Run auto-assign now"}
@@ -329,7 +453,11 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
         <button
           disabled={busy}
-          onClick={() => runNow(true)}
+          onClick={() => {
+            setMsg(null);
+            setApiError(null);
+            runNow(true);
+          }}
           className="px-3 py-2 rounded border border-neutral-700 text-sm disabled:opacity-60"
         >
           Dry run
@@ -337,8 +465,13 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
         <button
           disabled={busy || previewBusy}
-          onClick={() => runPreview()}
-          className="px-3 py-2 rounded border border-neutral-700 text-sm disabled:opacity-60"
+          onClick={() => {
+            setMsg(null);
+            setApiError(null);
+            setConfirmExecutePreviewId(null);
+            runPreview();
+          }}
+          className="px-3 py-2 rounded border border-neutral-700 text-sm font-medium disabled:opacity-60"
         >
           {previewBusy ? "Previewing…" : "Preview"}
         </button>
@@ -348,6 +481,40 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </div>
       </div>
 
+      {confirmExecutePreviewId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
+            <div className="text-neutral-200 font-medium">Confirm execute</div>
+
+            <div className="text-sm text-neutral-400">
+              This will create CRM actions using the selected preview. This cannot be undone.
+            </div>
+
+            <div className="text-xs text-neutral-500">
+              preview_run_id: <span className="font-mono text-neutral-200">{confirmExecutePreviewId}</span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setConfirmExecutePreviewId(null)}
+                className="px-3 py-2 rounded border border-neutral-700 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = confirmExecutePreviewId;
+                  setConfirmExecutePreviewId(null);
+                  if (id) await executeFromPreview(id);
+                }}
+                className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+              >
+                Yes, execute preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmExecute && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
@@ -410,39 +577,83 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
           <div className="flex flex-wrap gap-2 text-xs">
             <div className="px-2 py-1 rounded border border-neutral-800">
-              reps: <span className="text-neutral-200">{preview?.totals?.reps_considered ?? 0}</span>
+              reps: <span className="text-neutral-200">{previewTotals.reps}</span>
             </div>
             <div className="px-2 py-1 rounded border border-neutral-800">
-              contacts: <span className="text-neutral-200">{preview?.totals?.contacts_considered ?? 0}</span>
+              contacts: <span className="text-neutral-200">{previewTotals.contacts}</span>
             </div>
             <div className="px-2 py-1 rounded border border-neutral-800">
-              would create: <span className="text-neutral-200">{preview?.totals?.actions_created ?? 0}</span>
+              would create: <span className="text-neutral-200">{previewTotals.wouldCreate}</span>
             </div>
             <div className="px-2 py-1 rounded border border-neutral-800">
-              skipped: <span className="text-neutral-200">{preview?.totals?.skipped_dedupe ?? 0}</span>
+              skipped: <span className="text-neutral-200">{previewTotals.skipped}</span>
             </div>
             <div className="px-2 py-1 rounded border border-neutral-800">
-              errors: <span className="text-neutral-200">{preview?.totals?.errors ?? 0}</span>
+              errors: <span className="text-neutral-200">{previewTotals.errors}</span>
             </div>
           </div>
 
-          <div className="text-xs text-neutral-500">
-            Review the preview above. If this looks correct, you can safely execute the run.
+          <div className="text-xs text-neutral-500 space-y-1">
+            <div>
+              Preview run_id:{" "}
+              <span className="font-mono text-neutral-200">
+                {previewRunId ?? "(missing)"}
+              </span>
+            </div>
+            {!previewRunId || !isValidRunId(previewRunId) ? (
+              <div className="text-amber-200">
+                Can’t execute: preview is missing a run_id. Check API logs/response.
+              </div>
+            ) : null}
+            {previewTotals.errors > 0 ? (
+              <div className="text-amber-200">
+                Preview has {previewTotals.errors} error(s). Fix errors before executing.
+              </div>
+            ) : (
+              <div>Review the preview. If this looks correct, you can execute using this preview.</div>
+            )}
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-wrap gap-2 pt-2">
             <button
               onClick={() => setPreview(null)}
               className="px-3 py-2 rounded border border-neutral-700 text-sm"
             >
               Dismiss
             </button>
+
             <button
-              onClick={() => setConfirmExecute(true)}
-              className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+              disabled={!previewRunId || previewTotals.errors > 0}
+              onClick={() => {
+                if (!previewRunId) {
+                  setMsg("Preview is missing a valid run_id — cannot execute.");
+                  return;
+                }
+                if (previewTotals.errors > 0) {
+                  setApiError({
+                    ok: false,
+                    status: 422,
+                    kind: "validation",
+                    title: "Preview has errors",
+                    hint: "Fix preview errors before executing.",
+                    error: "preview_has_errors",
+                  });
+                  return;
+                }
+                setConfirmExecutePreviewId(previewRunId);
+              }}
+              className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
             >
-              Execute this run
+              Execute this preview
             </button>
+
+            <div className="ml-auto text-xs text-neutral-500 flex items-center gap-2">
+              <span>caps:</span>
+              <span className="text-neutral-200">{contactsPerRep}</span>
+              <span>per rep</span>
+              <span className="text-neutral-200">{maxTotalContacts}</span>
+              <span>max total</span>
+            </div>
           </div>
         </div>
       )}
@@ -450,10 +661,32 @@ export default function ManagerClient({ initial }: { initial: any }) {
         <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
           <div className="flex items-center gap-3">
             <div className="text-neutral-200 font-medium">Latest run</div>
+
+            {lastRun?.executed_from_preview_run_id && (
+              <span
+                className="text-xs px-2 py-0.5 rounded bg-emerald-900/20 text-emerald-200"
+                title={`Executed from preview: ${String(lastRun.executed_from_preview_run_id)}`}
+              >
+                from preview
+              </span>
+            )}
+
             {lastRun?.source === "cron" && (
               <span className="text-xs px-2 py-0.5 rounded bg-blue-900/40 text-blue-200">cron</span>
             )}
-            <div className="text-xs text-neutral-400 ml-auto">mode: <span className="text-neutral-200">{lastRun.mode}</span></div>
+
+            {lastRun?.executed_at && !lastRun?.executed_from_preview_run_id && (
+              <span
+                className="text-xs px-2 py-0.5 rounded border border-neutral-800 text-neutral-200"
+                title={`Executed at: ${new Date(lastRun.executed_at).toLocaleString()}`}
+              >
+                executed
+              </span>
+            )}
+
+            <div className="text-xs text-neutral-400 ml-auto">
+              mode: <span className="text-neutral-200">{lastRun.mode}</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400">
@@ -485,6 +718,19 @@ export default function ManagerClient({ initial }: { initial: any }) {
           <div className="text-xs text-neutral-400">
             run_id: <span className="font-mono text-neutral-200">{lastRun.run_id}</span>
           </div>
+
+          {lastRun.executed_from_preview_run_id && (
+            <div className="text-xs text-neutral-500">
+              executed_from_preview_run_id:{" "}
+              <span className="font-mono text-neutral-200">{lastRun.executed_from_preview_run_id}</span>
+            </div>
+          )}
+
+          {lastRun.executed_at && (
+            <div className="text-xs text-neutral-500">
+              executed_at: <span className="text-neutral-200">{new Date(lastRun.executed_at).toLocaleString()}</span>
+            </div>
+          )}
 
           {shouldSlackAlert(lastRun.totals) ? (
             <div className="border border-amber-900/40 bg-amber-950/10 rounded p-2">
@@ -527,8 +773,15 @@ export default function ManagerClient({ initial }: { initial: any }) {
       )}
 
       {/* Run history */}
-      <RunHistoryTable limit={10} className="mt-3" />
+      <div className="border border-neutral-800 rounded p-3">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="text-neutral-200 font-medium">Run history</div>
+          <div className="text-xs text-neutral-500">Last 10 runs (cron + manual)</div>
+        </div>
+        <RunHistoryTable limit={10} />
+      </div>
 
+      <div className="text-neutral-200 font-medium pt-2">Rep overview</div>
       <div className="overflow-auto border border-neutral-800 rounded">
         <table className="min-w-[700px] w-full text-sm">
           <thead className="bg-neutral-900/40">
