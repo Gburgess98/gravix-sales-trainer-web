@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 
 // ------------------------------
@@ -39,9 +40,14 @@ type RunListItem = {
   started_at?: string | null;
   finished_at?: string | null;
   totals?: RunTotals | null;
+  is_preview?: boolean;
+  executed_from_preview_run_id?: string | null;
+  executed_by_user_id?: string | null;
+  executed_at?: string | null;
 };
 
 type RunDetailItem = RunListItem & {
+  preview?: any;
   reps?: any;
 };
 
@@ -50,6 +56,11 @@ function shortId(id: string) {
   if (!s) return "";
   if (s.length <= 12) return s;
   return `${s.slice(0, 8)}…${s.slice(-4)}`;
+}
+
+const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidRunId(id: any) {
+  return RUN_ID_RE.test(String(id ?? "").trim());
 }
 
 function fmtTs(ts?: string | null) {
@@ -87,6 +98,29 @@ function hasErrors(totals: any): boolean {
   return num((totals as any)?.errors) > 0;
 }
 
+function toEntries(obj: any): Array<[string, number]> {
+  if (!obj || typeof obj !== "object") return [];
+  return Object.entries(obj)
+    .map(([k, v]) => [String(k), Number(v)] as [string, number])
+    .filter(([, n]) => Number.isFinite(n) && n > 0)
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function safeArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  dedupe_recent: "Duplicate (recent)",
+  no_next_action: "No next action",
+  missing_data: "Missing data",
+  org_scope_mismatch: "Org scope mismatch",
+};
+
+function formatSkipReason(k: string) {
+  return SKIP_REASON_LABELS[k] ?? k.replace(/_/g, " ");
+}
+
 export default function RunHistoryTable({
   limit = 10,
   className,
@@ -101,6 +135,9 @@ export default function RunHistoryTable({
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, RunDetailItem | null>>({});
   const [detailBusy, setDetailBusy] = useState<Record<string, boolean>>({});
+  const [executeBusy, setExecuteBusy] = useState<Record<string, boolean>>({});
+  const [executeMsg, setExecuteMsg] = useState<string | null>(null);
+  const [confirmExecuteRunId, setConfirmExecuteRunId] = useState<string | null>(null);
 
   const safeLimit = useMemo(() => {
     const n = Number(limit);
@@ -136,6 +173,10 @@ export default function RunHistoryTable({
             run_id: String(x?.run_id ?? "").trim(),
             mode: x?.mode,
             source: x?.source === "cron" ? "cron" : x?.source === "manual" ? "manual" : undefined,
+            is_preview: Boolean((x as any)?.is_preview ?? (x as any)?.preview ?? false),
+            executed_from_preview_run_id: (x as any)?.executed_from_preview_run_id ?? null,
+            executed_by_user_id: (x as any)?.executed_by_user_id ?? null,
+            executed_at: (x as any)?.executed_at ?? null,
             started_at: x?.started_at ?? null,
             finished_at: x?.finished_at ?? null,
             totals: x?.totals ?? null,
@@ -155,9 +196,61 @@ export default function RunHistoryTable({
       setBusy(false);
     }
   }
+  async function executeFromPreview(runId: string) {
+    runId = String(runId ?? "").trim();
+    if (!runId || !isValidRunId(runId)) return;
+
+    setExecuteBusy((m) => ({ ...m, [runId]: true }));
+    setExecuteMsg(null);
+    setApiError(null);
+
+    try {
+      const r = await fetch(`/api/proxy/v1/crm/manager/auto-assign/execute-from-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview_run_id: runId }),
+      });
+
+      const j = await r.json().catch(() => ({}));
+
+      if (!r.ok || (j as any)?.ok === false) {
+        const cls = classifyApiError(r.status);
+        setApiError({
+          status: r.status,
+          kind: cls.kind,
+          title: cls.title,
+          hint: cls.hint,
+          error: String((j as any)?.error ?? `HTTP ${r.status}`),
+        });
+        return;
+      }
+
+      const created = num((j as any)?.totals?.actions_created);
+      const skipped = num((j as any)?.totals?.skipped_dedupe);
+      const errors = num((j as any)?.totals?.errors);
+      const newRunId = String((j as any)?.run_id ?? "").trim();
+
+      setExecuteMsg(
+        `Executed from preview ${shortId(runId)} → ${newRunId ? shortId(newRunId) : "(missing run_id)"} (created: ${created}, skipped: ${skipped}${errors ? `, errors: ${errors}` : ""})`
+      );
+
+      await loadList();
+    } catch (e: any) {
+      setApiError({
+        status: 0,
+        kind: "network",
+        title: "Network error",
+        hint: "Couldn’t reach the API. Check proxy/API is running.",
+        error: String(e?.message ?? "execute_failed"),
+      });
+    } finally {
+      setExecuteBusy((m) => ({ ...m, [runId]: false }));
+    }
+  }
 
   async function loadDetail(runId: string) {
-    if (!runId) return;
+    runId = String(runId ?? "").trim();
+    if (!runId || !isValidRunId(runId)) return;
     // already loaded
     if (detail[runId]) return;
 
@@ -184,6 +277,11 @@ export default function RunHistoryTable({
           run_id: String(item.run_id),
           mode: item.mode,
           source: item.source === "cron" ? "cron" : item.source === "manual" ? "manual" : undefined,
+          is_preview: Boolean((item as any)?.is_preview ?? (item as any)?.preview ?? false),
+          executed_from_preview_run_id: (item as any)?.executed_from_preview_run_id ?? null,
+          executed_by_user_id: (item as any)?.executed_by_user_id ?? null,
+          executed_at: (item as any)?.executed_at ?? null,
+          preview: (item as any)?.preview ?? null,
           started_at: item.started_at ?? null,
           finished_at: item.finished_at ?? null,
           totals: item.totals ?? null,
@@ -227,6 +325,42 @@ export default function RunHistoryTable({
 
   return (
     <div className={className ?? ""}>
+      {confirmExecuteRunId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
+            <div className="text-neutral-200 font-medium">Confirm execute</div>
+
+            <div className="text-sm text-neutral-400">
+              This will create CRM actions from the selected preview run. This cannot be undone.
+            </div>
+
+            <div className="text-xs text-neutral-500">
+              preview_run_id: <span className="font-mono text-neutral-200">{confirmExecuteRunId}</span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmExecuteRunId(null)}
+                className="px-3 py-2 rounded border border-neutral-700 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const rid = confirmExecuteRunId;
+                  setConfirmExecuteRunId(null);
+                  if (rid) await executeFromPreview(rid);
+                }}
+                className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+              >
+                Yes, execute
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="border border-neutral-800 rounded p-3 space-y-3">
         {header}
 
@@ -237,6 +371,12 @@ export default function RunHistoryTable({
             </div>
             <div className="text-neutral-300 mt-1">{apiError.hint}</div>
             <div className="text-neutral-400 mt-1 font-mono break-all">{apiError.error}</div>
+          </div>
+        )}
+
+        {executeMsg && (
+          <div className="text-xs border border-neutral-700 bg-neutral-950 rounded p-2 text-neutral-200">
+            {executeMsg}
           </div>
         )}
 
@@ -267,9 +407,8 @@ export default function RunHistoryTable({
                   const d = detail[r.run_id];
 
                   return (
-                    <>
+                    <React.Fragment key={r.run_id}>
                       <tr
-                        key={r.run_id}
                         className="border-t border-neutral-900 hover:bg-neutral-950/30 cursor-pointer"
                         onClick={async () => {
                           const next = isOpen ? null : r.run_id;
@@ -284,11 +423,51 @@ export default function RunHistoryTable({
                         <td className="py-2 pr-3 text-neutral-200">
                           <span className="inline-flex items-center gap-2">
                             <span>{r.mode ?? "—"}</span>
+
+                            {r.is_preview && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-200">preview</span>
+                            )}
+
+                            {/* Trust signal: from preview badge */}
+                            {!r.is_preview && r.executed_from_preview_run_id && (
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/20 text-emerald-200"
+                                title={`Executed from preview: ${String(r.executed_from_preview_run_id)}`}
+                              >
+                                from preview
+                              </span>
+                            )}
+
                             {r.source === "cron" && (
                               <span className="text-[10px] px-2 py-0.5 rounded bg-blue-900/40 text-blue-200">cron</span>
                             )}
                             {r.source === "manual" && (
                               <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 text-neutral-200">manual</span>
+                            )}
+
+                            {/* Trust signal: executed_at badge */}
+                            {r.executed_at && !r.is_preview && (
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded border border-neutral-800 text-neutral-300"
+                                title={`Executed at: ${fmtTs(r.executed_at)}`}
+                              >
+                                executed
+                              </span>
+                            )}
+
+                            {r.is_preview && (r.mode || "").toLowerCase() === "dry_run" && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmExecuteRunId(r.run_id);
+                                }}
+                                disabled={!!executeBusy[r.run_id]}
+                                className="ml-2 text-[11px] px-2 py-0.5 rounded border border-neutral-800 hover:border-neutral-700 disabled:opacity-60"
+                                title="Execute using this dry-run preview"
+                              >
+                                {executeBusy[r.run_id] ? "Executing…" : "Execute"}
+                              </button>
                             )}
                           </span>
                         </td>
@@ -333,6 +512,55 @@ export default function RunHistoryTable({
                                 )}
                               </div>
 
+                              {/* Audit/trust context block */}
+                              {(() => {
+                                const fromPreview = String((d?.executed_from_preview_run_id ?? r.executed_from_preview_run_id) || "").trim();
+                                const executedBy = String((d?.executed_by_user_id ?? r.executed_by_user_id) || "").trim();
+                                const executedAt = (d?.executed_at ?? r.executed_at) as string | null | undefined;
+
+                                if (!fromPreview && !executedBy && !executedAt) return null;
+
+                                return (
+                                  <div className="border border-neutral-900 rounded p-2">
+                                    <div className="text-neutral-300 mb-2">Audit</div>
+
+                                    {fromPreview && (
+                                      <div className="text-[11px] text-neutral-400">
+                                        <span className="text-neutral-500">executed_from_preview_run_id:</span>{" "}
+                                        <span className="font-mono text-neutral-200">{fromPreview}</span>
+                                      </div>
+                                    )}
+
+                                    {executedBy && (
+                                      <div className="text-[11px] text-neutral-400 mt-1">
+                                        <span className="text-neutral-500">executed_by_user_id:</span>{" "}
+                                        <span className="font-mono text-neutral-200">{executedBy}</span>
+                                      </div>
+                                    )}
+
+                                    {executedAt && (
+                                      <div className="text-[11px] text-neutral-400 mt-1">
+                                        <span className="text-neutral-500">executed_at:</span>{" "}
+                                        <span className="text-neutral-200">{fmtTs(executedAt)}</span>
+                                      </div>
+                                    )}
+
+                                    {fromPreview && (
+                                      <div className="mt-2 text-[11px] text-neutral-500">
+                                        This run was executed from an approved preview (high-trust path).
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
+                              {/* UX: preview expanded row hint */}
+                              {r.is_preview && (r.mode || "").toLowerCase() === "dry_run" && (
+                                <div className="text-[11px] text-neutral-500">
+                                  Preview run (dry_run). Use the <span className="text-neutral-300">Execute</span> button on the row to create actions from this preview.
+                                </div>
+                              )}
+
                               {!isLoadingDetail && d?.reps && Array.isArray(d.reps) && (() => {
                                 const samples = collectErrorSamples(d.reps);
                                 if (samples.length === 0) return null;
@@ -376,6 +604,121 @@ export default function RunHistoryTable({
                                 </div>
                               )}
 
+                              {!isLoadingDetail && d?.reps && Array.isArray(d.reps) && (() => {
+                                const reps = safeArray<any>(d.reps);
+
+                                // Aggregate skip reasons across all reps
+                                const agg: Record<string, number> = {};
+                                for (const rep of reps) {
+                                  const by = rep?.skipped_by_reason;
+                                  if (!by || typeof by !== "object") continue;
+                                  for (const [k, v] of Object.entries(by)) {
+                                    const key = String(k);
+                                    const n = Number(v);
+                                    if (!Number.isFinite(n) || n <= 0) continue;
+                                    agg[key] = (agg[key] || 0) + n;
+                                  }
+                                }
+
+                                const top = toEntries(agg).slice(0, 3);
+                                if (top.length === 0) return null;
+
+                                return (
+                                  <div className="border border-neutral-900 rounded p-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="text-neutral-300">Top skips</div>
+                                      <div className="text-[11px] text-neutral-500">(this run)</div>
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {top.map(([k, n]) => (
+                                        <span
+                                          key={k}
+                                          className="text-[11px] px-2 py-1 rounded border border-neutral-800 bg-neutral-950 text-neutral-200"
+                                          title={k}
+                                        >
+                                          <span className="text-neutral-400">{formatSkipReason(k)}</span>
+                                          <span className="text-neutral-500"> × </span>
+                                          {n}
+                                        </span>
+                                      ))}
+                                    </div>
+
+                                    <div className="mt-2 text-[11px] text-neutral-500">
+                                      Skips are usually expected (e.g. dedupe or missing next actions) and prevent duplicate work.
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {!isLoadingDetail && d?.reps && Array.isArray(d.reps) && (() => {
+                                const reps = safeArray<any>(d.reps);
+                                const hasDiag = reps.some((x) => x?.skipped_by_reason || x?.skipped_samples);
+                                if (!hasDiag) return null;
+
+                                return (
+                                  <div className="border border-neutral-900 rounded p-2">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="text-neutral-300">Skip diagnostics</div>
+                                      <div className="text-[11px] text-neutral-500">(per rep)</div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      {reps
+                                        .map((rep: any, idx: number) => {
+                                          const repId = String(rep?.rep_id ?? rep?.id ?? "").trim();
+                                          const repName = String(rep?.rep_name ?? rep?.name ?? "Rep").trim();
+
+                                          const entries = toEntries(rep?.skipped_by_reason);
+                                          const samples = safeArray<{ contact_id?: string; reason?: string }>(rep?.skipped_samples);
+
+                                          if (!entries.length && !samples.length) return null;
+
+                                          return (
+                                            <div key={repId || `${repName}_${idx}`} className="border border-neutral-800 rounded p-2">
+                                              <div className="text-xs text-neutral-300">
+                                                <span className="text-neutral-200 font-medium">{repName}</span>
+                                                {repId ? <span className="text-neutral-500"> • </span> : null}
+                                                {repId ? <span className="font-mono text-[11px] text-neutral-400">{repId}</span> : null}
+                                              </div>
+
+                                              {entries.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                  {entries.map(([k, n]) => (
+                                                    <span
+                                                      key={k}
+                                                      className="text-[11px] px-2 py-1 rounded border border-neutral-800 bg-neutral-950 text-neutral-200"
+                                                      title={k}
+                                                    >
+                                                      <span className="text-neutral-400">{formatSkipReason(k)}</span>
+                                                      <span className="text-neutral-500">:</span> {n}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              )}
+
+                                              {samples.length > 0 && (
+                                                <div className="mt-2">
+                                                  <div className="text-[11px] text-neutral-500">samples</div>
+                                                  <div className="mt-1 space-y-1">
+                                                    {samples.slice(0, 5).map((s, sidx) => (
+                                                      <div key={`${repId || repName}_${sidx}`} className="text-[11px] text-neutral-300">
+                                                        <span className="font-mono text-neutral-200">{shortId(String(s?.contact_id ?? ""))}</span>
+                                                        {s?.reason ? <span className="text-neutral-500"> — {formatSkipReason(String(s.reason))}</span> : null}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })
+                                        .filter(Boolean)}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               {!isLoadingDetail && (!d || !d.reps) && (
                                 <div className="text-neutral-500">No per-rep breakdown available for this run.</div>
                               )}
@@ -383,7 +726,7 @@ export default function RunHistoryTable({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>

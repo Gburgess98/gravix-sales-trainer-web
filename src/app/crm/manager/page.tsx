@@ -136,7 +136,7 @@ export default async function CrmManagerPage() {
 
       {/* Runner client */}
       <div className="mt-6">
-        <CrmManagerRunnerClient />
+        <CrmManagerRunnerClient initial={overview} />
       </div>
     </div>
   );
