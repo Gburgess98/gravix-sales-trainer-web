@@ -40,6 +40,7 @@ type RunListItem = {
   started_at?: string | null;
   finished_at?: string | null;
   totals?: RunTotals | null;
+  meta?: any;
   is_preview?: boolean;
   executed_from_preview_run_id?: string | null;
   executed_by_user_id?: string | null;
@@ -49,6 +50,7 @@ type RunListItem = {
 type RunDetailItem = RunListItem & {
   preview?: any;
   reps?: any;
+  meta?: any;
 };
 
 function shortId(id: string) {
@@ -180,6 +182,7 @@ export default function RunHistoryTable({
             started_at: x?.started_at ?? null,
             finished_at: x?.finished_at ?? null,
             totals: x?.totals ?? null,
+            meta: (x as any)?.meta ?? null,
           }))
           .filter((x: RunListItem) => !!x.run_id)
       );
@@ -229,10 +232,16 @@ export default function RunHistoryTable({
       const skipped = num((j as any)?.totals?.skipped_dedupe);
       const errors = num((j as any)?.totals?.errors);
       const newRunId = String((j as any)?.run_id ?? "").trim();
+      const meta = (j as any)?.meta ?? null;
+      const abortedReason = String(meta?.aborted_reason ?? "").trim();
 
-      setExecuteMsg(
-        `Executed from preview ${shortId(runId)} → ${newRunId ? shortId(newRunId) : "(missing run_id)"} (created: ${created}, skipped: ${skipped}${errors ? `, errors: ${errors}` : ""})`
-      );
+      if (!newRunId && abortedReason === "preview_has_no_actions") {
+        setExecuteMsg(`Nothing to execute — preview ${shortId(runId)} had no actions to create.`);
+      } else {
+        setExecuteMsg(
+          `Executed from preview ${shortId(runId)} → ${newRunId ? shortId(newRunId) : "(missing run_id)"} (created: ${created}, skipped: ${skipped}${errors ? `, errors: ${errors}` : ""})`
+        );
+      }
 
       await loadList();
     } catch (e: any) {
@@ -286,6 +295,7 @@ export default function RunHistoryTable({
           finished_at: item.finished_at ?? null,
           totals: item.totals ?? null,
           reps: item.reps ?? null,
+          meta: (item as any)?.meta ?? null,
         },
       }));
     } catch (e: any) {
@@ -550,6 +560,100 @@ export default function RunHistoryTable({
                                         This run was executed from an approved preview (high-trust path).
                                       </div>
                                     )}
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Timings (read-only) */}
+                              {(() => {
+                                const m = (d as any)?.meta ?? (r as any)?.meta;
+                                if (!m || typeof m !== "object") return null;
+
+                                const totalMs = Number((m as any)?.total_ms);
+                                const budgetMs = Number((m as any)?.time_budget_ms);
+                                const aborted = (m as any)?.aborted_reason;
+                                const perRep = Array.isArray((m as any)?.timings?.per_rep)
+                                  ? (m as any).timings.per_rep
+                                  : [];
+
+                                const hasAny =
+                                  Number.isFinite(totalMs) ||
+                                  Number.isFinite(budgetMs) ||
+                                  aborted != null ||
+                                  (perRep?.length ?? 0) > 0;
+                                if (!hasAny) return null;
+
+                                const fmtMs = (v: any) => {
+                                  const n = Number(v);
+                                  return Number.isFinite(n) ? `${n}ms` : "—";
+                                };
+
+                                return (
+                                  <div className="border border-neutral-900 rounded p-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="text-neutral-300">Timings</div>
+                                      <div className="text-[11px] text-neutral-500">(read-only)</div>
+
+                                      {aborted ? (
+                                        <span
+                                          className="ml-auto text-[10px] px-2 py-0.5 rounded bg-amber-900/20 text-amber-200"
+                                          title="Run aborted early to protect performance"
+                                        >
+                                          aborted: {String(aborted)}
+                                        </span>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                                      <span className="px-2 py-1 rounded border border-neutral-800 bg-neutral-950 text-neutral-200">
+                                        total: <span className="text-neutral-200">{fmtMs(totalMs)}</span>
+                                      </span>
+                                      <span className="px-2 py-1 rounded border border-neutral-800 bg-neutral-950 text-neutral-200">
+                                        budget: <span className="text-neutral-200">{fmtMs(budgetMs)}</span>
+                                      </span>
+                                    </div>
+
+                                    {perRep.length > 0 && (
+                                      <div className="mt-3 overflow-x-auto">
+                                        <table className="w-full text-[11px]">
+                                          <thead className="text-neutral-500">
+                                            <tr>
+                                              <th className="text-left py-1 pr-3">Rep</th>
+                                              <th className="text-right py-1 pr-3">Fetch contacts</th>
+                                              <th className="text-right py-1 pr-3">Processing</th>
+                                              <th className="text-right py-1">Total</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {perRep.slice(0, 10).map((x: any, i: number) => (
+                                              <tr
+                                                key={`${r.run_id}_timing_${String(x?.rep_id ?? i)}`}
+                                                className="border-t border-neutral-950"
+                                              >
+                                                <td className="py-1 pr-3 text-neutral-200">
+                                                  <span className="font-mono">{String(x?.rep_id ?? "")}</span>
+                                                </td>
+                                                <td className="py-1 pr-3 text-right text-neutral-200">
+                                                  {fmtMs(x?.fetch_contacts_ms)}
+                                                </td>
+                                                <td className="py-1 pr-3 text-right text-neutral-200">
+                                                  {fmtMs(x?.processing_ms)}
+                                                </td>
+                                                <td className="py-1 text-right text-neutral-200">{fmtMs(x?.total_ms)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+
+                                        {perRep.length > 10 ? (
+                                          <div className="mt-2 text-[11px] text-neutral-500">Showing first 10 reps.</div>
+                                        ) : null}
+                                      </div>
+                                    )}
+
+                                    <div className="mt-2 text-[11px] text-neutral-500">
+                                      Use this to understand where time is spent (DB fetch vs processing). No actions are taken here.
+                                    </div>
                                   </div>
                                 );
                               })()}
