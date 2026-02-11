@@ -36,7 +36,7 @@ type RunTotals = {
 type RunListItem = {
   run_id: string;
   mode?: string;
-  source?: "cron" | "manual";
+  source?: "cron" | "manual" | "preview";
   started_at?: string | null;
   finished_at?: string | null;
   totals?: RunTotals | null;
@@ -174,8 +174,21 @@ export default function RunHistoryTable({
           .map((x: any) => ({
             run_id: String(x?.run_id ?? "").trim(),
             mode: x?.mode,
-            source: x?.source === "cron" ? "cron" : x?.source === "manual" ? "manual" : undefined,
-            is_preview: Boolean((x as any)?.is_preview ?? (x as any)?.preview ?? false),
+            source:
+              x?.source === "cron"
+                ? "cron"
+                : x?.source === "manual"
+                  ? "manual"
+                  : x?.source === "preview"
+                    ? "preview"
+                    : undefined,
+            is_preview: Boolean(
+              (x as any)?.is_preview ??
+                (x as any)?.preview ??
+                (x as any)?.meta?.preview ??
+                x?.source === "preview" ??
+                false
+            ),
             executed_from_preview_run_id: (x as any)?.executed_from_preview_run_id ?? null,
             executed_by_user_id: (x as any)?.executed_by_user_id ?? null,
             executed_at: (x as any)?.executed_at ?? null,
@@ -285,8 +298,21 @@ export default function RunHistoryTable({
         [runId]: {
           run_id: String(item.run_id),
           mode: item.mode,
-          source: item.source === "cron" ? "cron" : item.source === "manual" ? "manual" : undefined,
-          is_preview: Boolean((item as any)?.is_preview ?? (item as any)?.preview ?? false),
+          source:
+            item.source === "cron"
+              ? "cron"
+              : item.source === "manual"
+                ? "manual"
+                : item.source === "preview"
+                  ? "preview"
+                  : undefined,
+          is_preview: Boolean(
+            (item as any)?.is_preview ??
+              (item as any)?.preview ??
+              (item as any)?.meta?.preview ??
+              item.source === "preview" ??
+              false
+          ),
           executed_from_preview_run_id: (item as any)?.executed_from_preview_run_id ?? null,
           executed_by_user_id: (item as any)?.executed_by_user_id ?? null,
           executed_at: (item as any)?.executed_at ?? null,
@@ -438,6 +464,20 @@ export default function RunHistoryTable({
                               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-200">preview</span>
                             )}
 
+                            {(() => {
+                              const m = (d as any)?.meta ?? (r as any)?.meta;
+                              const abortedReason = String(m?.aborted_reason ?? "").trim();
+                              if (!abortedReason) return null;
+                              return (
+                                <span
+                                  className="text-[10px] px-2 py-0.5 rounded bg-amber-900/20 text-amber-200"
+                                  title="Run aborted early to protect performance"
+                                >
+                                  aborted
+                                </span>
+                              );
+                            })()}
+
                             {/* Trust signal: from preview badge */}
                             {!r.is_preview && r.executed_from_preview_run_id && (
                               <span
@@ -453,6 +493,9 @@ export default function RunHistoryTable({
                             )}
                             {r.source === "manual" && (
                               <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 text-neutral-200">manual</span>
+                            )}
+                            {r.source === "preview" && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-200">preview</span>
                             )}
 
                             {/* Trust signal: executed_at badge */}
