@@ -1,5 +1,6 @@
-// src/app/crm/actions/page.tsx
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import React from "react";
 
 type ActionRow = {
   id?: string;
@@ -32,48 +33,61 @@ function fmtDt(v: any) {
   return d.toLocaleString();
 }
 
-export default async function CrmActionsPage({
-  searchParams,
-}: {
-  searchParams?: { repId?: string; status?: string };
-}) {
-  const repId = String(searchParams?.repId ?? "").trim() || null;
-  const status = String(searchParams?.status ?? "").trim() || null;
+function safeBool(v: any) {
+  return v === true;
+}
 
-  // Reuse the same aggregated endpoint the Overview uses.
-  // Keep no-store so Manager clicks always show current state.
-  let actions: ActionRow[] = [];
-  let loadError: string | null = null;
+type Props = {
+  actions: ActionRow[];
+  repId?: string;
+  status?: string;
+  loadError?: string | null;
+};
 
-  try {
-    const resp = await fetch(
-      "/api/proxy/v1/crm/actions?scope=rep&window=all&limit=500",
-      { cache: "no-store" }
-    );
-    const json = await resp.json().catch(() => ({} as any));
+export default function ActionsClient({ actions, repId: initialRepId, status: initialStatus, loadError }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-    // expected: { ok: true, actions: [...] }
-    const arr = Array.isArray((json as any)?.actions) ? (json as any).actions : [];
-    actions = arr as ActionRow[];
-  } catch (e: any) {
-    loadError = String(e?.message ?? "actions_load_failed");
+  const repId = (searchParams?.get("repId") ?? "").trim();
+  const activeStatus = (searchParams?.get("status") ?? "open").trim();
+
+  function hrefForStatus(nextStatus: string) {
+    const qs = new URLSearchParams(searchParams?.toString() ?? "");
+    if (repId) qs.set("repId", repId);
+    if (nextStatus) qs.set("status", nextStatus);
+    else qs.delete("status");
+    return `/crm/actions?${qs.toString()}`;
   }
 
-  // Client-side filters (safe even if API doesn’t support filtering yet)
+  function goStatus(nextStatus: string) {
+    router.push(hrefForStatus(nextStatus));
+    router.refresh();
+  }
+
+  // Safe client-side filtering
+  let filtered = [...actions];
+
   if (repId) {
-    actions = actions.filter((a) => String(a.rep_id ?? "").trim() === repId);
+    filtered = filtered.filter((a) => String(a.rep_id ?? "").trim() === repId);
   }
 
-  if (status === "open") {
-    actions = actions.filter((a) => !a.completed_at);
-  } else if (status === "overdue") {
-    actions = actions.filter((a) => (a.is_overdue === true) && !a.completed_at);
+  if (activeStatus === "open") {
+    filtered = filtered.filter((a) => !a.completed_at);
+  } else if (activeStatus === "completed") {
+    filtered = filtered.filter((a) => !!a.completed_at);
+  } else if (activeStatus === "overdue") {
+    filtered = filtered.filter((a) => safeBool(a.is_overdue) && !a.completed_at);
+  } else if (activeStatus === "all") {
+    // no filter
+  } else {
+    // default to open if unknown status
+    filtered = filtered.filter((a) => !a.completed_at);
   }
 
-  // Sort: overdue first, then due date asc (best-effort)
-  actions.sort((a, b) => {
-    const ao = a.is_overdue === true ? 1 : 0;
-    const bo = b.is_overdue === true ? 1 : 0;
+  // Sort: overdue first, then due date asc
+  filtered.sort((a, b) => {
+    const ao = safeBool(a.is_overdue) && !a.completed_at ? 1 : 0;
+    const bo = safeBool(b.is_overdue) && !b.completed_at ? 1 : 0;
     if (ao !== bo) return bo - ao;
 
     const ad = a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
@@ -82,89 +96,135 @@ export default async function CrmActionsPage({
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-2xl font-semibold text-neutral-100">CRM Actions</div>
-          <div className="text-sm text-neutral-400">
-            Filtered view for rep follow-ups.
-          </div>
+    <div>
+      <h1 className="text-2xl font-semibold mb-4">Actions</h1>
 
-          <div className="mt-2 text-xs text-neutral-500">
-            repId: <span className="text-neutral-300">{repId ?? "—"}</span>{" "}
-            | status: <span className="text-neutral-300">{status ?? "—"}</span>
-          </div>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => goStatus("open")}
+          className={`rounded border px-3 py-1 text-sm ${
+            activeStatus === "open" || activeStatus === "" ? "border-neutral-600 text-neutral-100" : "border-neutral-800 text-neutral-300 hover:border-neutral-700"
+          }`}
+        >
+          Open
+        </button>
 
-        <div className="flex items-center gap-2">
-          <Link
-            className="rounded border border-neutral-800 px-3 py-1 text-sm text-neutral-200 hover:border-neutral-700"
-            href="/crm/manager"
-          >
-            Back to Manager
-          </Link>
-          <Link
-            className="rounded border border-neutral-800 px-3 py-1 text-sm text-neutral-200 hover:border-neutral-700"
-            href="/crm/overview"
-          >
-            Back to CRM Overview
-          </Link>
+        <button
+          type="button"
+          onClick={() => goStatus("overdue")}
+          className={`rounded border px-3 py-1 text-sm ${activeStatus === "overdue" ? "border-neutral-600 text-neutral-100" : "border-neutral-800 text-neutral-300 hover:border-neutral-700"}`}
+        >
+          Overdue
+        </button>
+
+        <button
+          type="button"
+          onClick={() => goStatus("completed")}
+          className={`rounded border px-3 py-1 text-sm ${activeStatus === "completed" ? "border-neutral-600 text-neutral-100" : "border-neutral-800 text-neutral-300 hover:border-neutral-700"}`}
+        >
+          Completed
+        </button>
+
+        <button
+          type="button"
+          onClick={() => goStatus("all")}
+          className={`rounded border px-3 py-1 text-sm ${activeStatus === "all" ? "border-neutral-600 text-neutral-100" : "border-neutral-800 text-neutral-300 hover:border-neutral-700"}`}
+        >
+          All
+        </button>
+
+        <div className="ml-auto text-xs text-neutral-500">
+          repId: <span className="text-neutral-300">{repId || "—"}</span>
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-neutral-800 bg-neutral-950/30 p-4">
-        {loadError ? (
-          <div className="text-sm text-red-300">
-            Failed to load actions: {loadError}
-          </div>
-        ) : actions.length === 0 ? (
-          <div className="text-sm text-neutral-400">No actions found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-neutral-400">
-                <tr className="border-b border-neutral-800">
-                  <th className="py-2 pr-3 text-left font-medium">Status</th>
-                  <th className="py-2 pr-3 text-left font-medium">Action</th>
-                  <th className="py-2 pr-3 text-left font-medium">Rep</th>
-                  <th className="py-2 pr-3 text-left font-medium">Contact</th>
-                  <th className="py-2 pr-3 text-left font-medium">Due</th>
-                  <th className="py-2 pr-3 text-left font-medium">Completed</th>
+      {loadError ? (
+        <div className="text-sm text-red-500">Failed to load actions: {loadError}</div>
+      ) : !repId ? (
+        <div className="text-sm text-neutral-400">
+          Select a rep to view actions. Go back to the Manager page and click a rep name.
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-sm text-neutral-400">No actions found.</div>
+      ) : (
+        <table className="w-full text-sm border-collapse border border-neutral-700">
+          <thead>
+            <tr className="border-b border-neutral-700">
+              <th className="py-2 px-3 text-left font-medium">Status</th>
+              <th className="py-2 px-3 text-left font-medium">Action</th>
+              <th className="py-2 px-3 text-left font-medium">Rep</th>
+              <th className="py-2 px-3 text-left font-medium">Contact</th>
+              <th className="py-2 px-3 text-left font-medium">Due</th>
+              <th className="py-2 px-3 text-left font-medium">Completed</th>
+              <th className="py-2 px-3 text-left font-medium">Complete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((a) => {
+              const id = pickId(a);
+              const overdue = safeBool(a.is_overdue) && !a.completed_at;
+              const open = !a.completed_at;
+
+              return (
+                <tr key={id} className="border-b border-neutral-800">
+                  <td className="py-2 px-3">
+                    {overdue ? (
+                      <span className="text-amber-300">Overdue</span>
+                    ) : open ? (
+                      <span className="text-neutral-200">Open</span>
+                    ) : (
+                      <span className="text-neutral-500">Done</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3">
+                    {safeStr(a.title ?? a.label)}
+                    <div className="text-xs text-neutral-500">id: {safeStr(id)}</div>
+                  </td>
+                  <td className="py-2 px-3">{safeStr(a.rep_name ?? a.rep_id)}</td>
+                  <td className="py-2 px-3">
+                    {a.contact_id ? (
+                      <Link
+                        className="text-neutral-200 underline decoration-neutral-700 hover:decoration-neutral-500"
+                        href={`/crm/contacts/${encodeURIComponent(String(a.contact_id))}`}
+                      >
+                        {safeStr(a.contact_id)}
+                      </Link>
+                    ) : (
+                      safeStr(a.contact_id)
+                    )}
+                  </td>
+                  <td className="py-2 px-3">{fmtDt(a.due_at)}</td>
+                  <td className="py-2 px-3">{fmtDt(a.completed_at)}</td>
+                  <td className="py-2 px-3">
+                    {open ? (
+                      <button
+                        type="button"
+                        className="rounded border border-green-600 bg-green-700 px-2 py-1 text-xs text-green-100 hover:bg-green-600"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/v1/crm/actions/${encodeURIComponent(id)}/complete`, {
+                              method: "POST",
+                            });
+                            if (!res.ok) throw new Error(`Failed to complete action: ${res.status}`);
+                            router.refresh();
+                          } catch (err) {
+                            alert(String(err));
+                          }
+                        }}
+                      >
+                        Complete
+                      </button>
+                    ) : (
+                      <span className="text-neutral-500 text-xs">—</span>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="text-neutral-200">
-                {actions.map((a) => {
-                  const id = pickId(a);
-                  const overdue = a.is_overdue === true && !a.completed_at;
-                  const open = !a.completed_at;
-
-                  return (
-                    <tr key={id || Math.random()} className="border-b border-neutral-900">
-                      <td className="py-2 pr-3">
-                        {overdue ? (
-                          <span className="text-amber-300">Overdue</span>
-                        ) : open ? (
-                          <span className="text-neutral-200">Open</span>
-                        ) : (
-                          <span className="text-neutral-500">Done</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {safeStr(a.title ?? a.label)}
-                        <div className="text-xs text-neutral-500">id: {safeStr(id)}</div>
-                      </td>
-                      <td className="py-2 pr-3">{safeStr(a.rep_name ?? a.rep_id)}</td>
-                      <td className="py-2 pr-3">{safeStr(a.contact_id)}</td>
-                      <td className="py-2 pr-3">{fmtDt(a.due_at)}</td>
-                      <td className="py-2 pr-3">{fmtDt(a.completed_at)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

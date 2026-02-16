@@ -92,6 +92,15 @@ export default function RepProfilePage() {
 
         <div className="flex flex-col items-end gap-2">
           <Link
+            href={`/crm/actions?repId=${encodeURIComponent(
+              String(repId ?? titleId)
+            )}&status=open`}
+            className="inline-flex items-center rounded-md border border-amber-600/60 bg-amber-600/10 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-600/20"
+          >
+            Open CRM Actions
+          </Link>
+
+          <Link
             href={`/sparring?repId=${encodeURIComponent(
               String(repId ?? titleId)
             )}&persona=price_sensitive`}
