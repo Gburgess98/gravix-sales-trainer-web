@@ -81,6 +81,11 @@ function decodeJwtSub(token: string | null): string | null {
   }
 }
 
+function isUuid(v: string): boolean {
+  const s = (v || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
 function getBackendBase(): string {
   const target = (process.env.API_PROXY_TARGET || "").trim();
   if (target) return target.replace(/\/$/, "");
@@ -189,12 +194,14 @@ async function handle(req: NextRequest, context: any) {
         ? await getUserIdFromSupabaseCookies(req, cookieList)
         : "";
 
-      const devUid = (
+      const devUidRaw = (
         process.env.PROXY_DEV_X_USER_ID ||
         process.env.NEXT_PUBLIC_DEV_USER_ID ||
         process.env.DEV_TEST_UID ||
         ""
       ).trim();
+
+      const devUid = isUuid(devUidRaw) ? devUidRaw : "";
 
       const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
 
@@ -322,12 +329,14 @@ async function handle(req: NextRequest, context: any) {
       ? await getUserIdFromSupabaseCookies(req, cookieList)
       : "";
 
-    const devUid = (
+    const devUidRaw = (
       process.env.PROXY_DEV_X_USER_ID ||
       process.env.NEXT_PUBLIC_DEV_USER_ID ||
       process.env.DEV_TEST_UID ||
       ""
     ).trim();
+
+    const devUid = isUuid(devUidRaw) ? devUidRaw : "";
 
     const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
 
