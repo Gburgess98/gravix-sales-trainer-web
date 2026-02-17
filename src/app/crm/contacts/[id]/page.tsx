@@ -1,8 +1,17 @@
+import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+
+import ContactHeaderClient from "./ContactHeaderClient";
+import ContactAssignmentsClient from "./ContactAssignmentsClient";
+import RepNotesClient from "./RepNotesClient";
+import AIBriefClient from "./AIBriefClient";
+
 async function autoAssign(formData: FormData) {
   "use server";
-  const contactId = String(formData.get("contactId") || "");
-  const dryRun = formData.get("dryRun") === "1";
+
+  const contactId = String(formData.get("contactId") || "").trim();
+  const dryRun = String(formData.get("dryRun") || "") === "1";
   if (!contactId) return;
 
   await fetch(
@@ -11,9 +20,7 @@ async function autoAssign(formData: FormData) {
     )}/auto-assign`,
     {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(dryRun ? { dry_run: true } : {}),
       cache: "no-store",
     }
@@ -23,15 +30,6 @@ async function autoAssign(formData: FormData) {
     redirect(`/crm/contacts/${encodeURIComponent(contactId)}?autoAssigned=1`);
   }
 }
-import Link from "next/link";
-
-import { headers } from "next/headers";
-
-import ContactHeaderClient from "./ContactHeaderClient";
-import ContactAssignmentsClient from "./ContactAssignmentsClient";
-import RepNotesClient from "./RepNotesClient";
-import AIBriefClient from "./AIBriefClient";
-
 
 export default async function ContactPage({
   params,
@@ -40,16 +38,17 @@ export default async function ContactPage({
   params: { id: string };
   searchParams?: { [key: string]: string | string[] | undefined };
 }) {
-  // Fetch contact health (server-side)
+  const base = process.env.INTERNAL_API_BASE_URL ?? "http://localhost:3000";
+
+  // Fetch contact (and health) server-side
   let health: any = null;
   try {
     const h = headers();
     const res = await fetch(
-      `${process.env.INTERNAL_API_BASE_URL ?? "http://localhost:3000"}/api/proxy/v1/crm/contacts/${encodeURIComponent(
-        params.id
-      )}/health`,
+      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(params.id)}`,
       {
         headers: {
+          // NOTE: proxy attaches auth; keep this header for legacy/dev support
           "x-user-id": h.get("x-user-id") ?? "",
         },
         cache: "no-store",
@@ -57,7 +56,8 @@ export default async function ContactPage({
     );
     const json = await res.json();
     if (res.ok && json?.ok) {
-      health = json.health;
+      // schema-tolerant: API may return `health` top-level or nested
+      health = json.health ?? json.contact?.health ?? null;
     }
   } catch {
     // non-blocking
@@ -68,9 +68,7 @@ export default async function ContactPage({
   try {
     const h = headers();
     const res = await fetch(
-      `${process.env.INTERNAL_API_BASE_URL ?? "http://localhost:3000"}/api/proxy/v1/crm/contacts/${encodeURIComponent(
-        params.id
-      )}/actions?limit=50`,
+      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(params.id)}/actions?limit=50`,
       {
         headers: {
           "x-user-id": h.get("x-user-id") ?? "",
@@ -88,6 +86,7 @@ export default async function ContactPage({
   } catch {
     // non-blocking
   }
+
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-8">
       {searchParams?.autoAssigned === "1" ? (
@@ -95,6 +94,7 @@ export default async function ContactPage({
           ✓ Action auto-assigned successfully
         </div>
       ) : null}
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -138,7 +138,7 @@ export default async function ContactPage({
                     : "bg-red-500/15 text-red-400",
                 ].join(" ")}
               >
-                {health.status.toUpperCase()}
+                {String(health.status || "").toUpperCase()}
               </span>
 
               <span className="text-xs text-neutral-400">
@@ -166,7 +166,9 @@ export default async function ContactPage({
           <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold text-neutral-200">Next Action</div>
+                <div className="text-xs font-semibold text-neutral-200">
+                  Next Action
+                </div>
                 <div className="mt-1 text-sm text-neutral-200">
                   {health.next_action ?? "No next action yet."}
                 </div>
@@ -175,7 +177,9 @@ export default async function ContactPage({
               <div className="shrink-0 text-right">
                 <div className="text-[11px] text-neutral-500">Why</div>
                 <div className="mt-1 text-xs text-neutral-400">
-                  {health.reasons?.length ? health.reasons.slice(0, 2).join(" • ") : "—"}
+                  {health.reasons?.length
+                    ? health.reasons.slice(0, 2).join(" • ")
+                    : "—"}
                 </div>
               </div>
             </div>
@@ -208,27 +212,28 @@ export default async function ContactPage({
                 </div>
               </div>
             </div>
-          <form action={autoAssign} className="mt-3 flex gap-2">
-            <input type="hidden" name="contactId" value={params.id} />
 
-            <button
-              type="submit"
-              name="dryRun"
-              value="1"
-              className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
-            >
-              Preview auto‑assign
-            </button>
+            <form action={autoAssign} className="mt-3 flex gap-2">
+              <input type="hidden" name="contactId" value={params.id} />
 
-            <button
-              type="submit"
-              className="rounded-md bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/30"
-            >
-              Auto‑assign this action
-            </button>
-          </form>
+              <button
+                type="submit"
+                name="dryRun"
+                value="1"
+                className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
+              >
+                Preview auto‑assign
+              </button>
+
+              <button
+                type="submit"
+                className="rounded-md bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/30"
+              >
+                Auto‑assign this action
+              </button>
+            </form>
           </div>
-      </section>
+        </section>
       ) : null}
 
       {/* Context row */}
