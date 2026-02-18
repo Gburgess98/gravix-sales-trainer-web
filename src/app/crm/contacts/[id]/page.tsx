@@ -87,6 +87,65 @@ export default async function ContactPage({
     // non-blocking
   }
 
+  // Fetch contact activity (server-side)
+  let activity: any[] = [];
+  try {
+    const h = headers();
+    const res = await fetch(
+      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(params.id)}/activity?limit=25`,
+      {
+        headers: {
+          "x-user-id": h.get("x-user-id") ?? "",
+        },
+        cache: "no-store",
+      }
+    );
+    const json = await res.json();
+    if (res.ok && json?.ok) {
+      activity = Array.isArray(json.items) ? json.items : [];
+    }
+  } catch {
+    // non-blocking
+  }
+
+  const fmtRel = (iso?: string | null) => {
+    if (!iso) return "—";
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return "—";
+    const diffMs = Date.now() - t;
+    const s = Math.max(0, Math.floor(diffMs / 1000));
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    const d = Math.floor(h / 24);
+    if (d > 0) return `${d}d ago`;
+    if (h > 0) return `${h}h ago`;
+    if (m > 0) return `${m}m ago`;
+    return `${s}s ago`;
+  };
+
+  const iconFor = (t: string) => {
+    const k = String(t || "").toLowerCase();
+    if (k.includes("call")) return "📞";
+    if (k.includes("note")) return "📝";
+    if (k.includes("action")) return "✅";
+    return "•";
+  };
+
+  const bandRaw = String((health as any)?.band ?? (health as any)?.status ?? "").toLowerCase();
+  const band = bandRaw === "hot" || bandRaw === "warm" || bandRaw === "watch" ? bandRaw : (health ? "watch" : "");
+
+  const bandPillClass =
+    band === "hot"
+      ? "bg-green-500/15 text-green-400"
+      : band === "warm"
+      ? "bg-yellow-500/15 text-yellow-400"
+      : "bg-red-500/15 text-red-400";
+
+  const bandDotClass =
+    band === "hot" ? "bg-green-400" : band === "warm" ? "bg-yellow-400" : "bg-red-400";
+
+  const bandTitle = band === "hot" ? "HOT" : band === "warm" ? "WARM" : band ? "WATCH" : "";
+
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-8">
       {searchParams?.autoAssigned === "1" ? (
@@ -116,6 +175,43 @@ export default async function ContactPage({
       <ContactHeaderClient contactId={params.id} health={health} />
 
       {health ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${bandDotClass}`} />
+                <div className="text-sm font-semibold text-neutral-200">Contact Health</div>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${bandPillClass}`}>
+                  {bandTitle}
+                </span>
+                <span className="text-[11px] text-neutral-500">Score: {Number((health as any)?.score ?? 0)}</span>
+              </div>
+
+              <div className="mt-2 text-sm text-neutral-200">
+                <span className="text-neutral-400">Next:</span>{" "}
+                {String((health as any)?.next_action ?? "No next action yet.")}
+              </div>
+
+              {(health as any)?.reasons?.length ? (
+                <div className="mt-1 text-xs text-neutral-500">
+                  {Array.isArray((health as any).reasons) ? (health as any).reasons.slice(0, 2).join(" • ") : ""}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 text-right">
+              <div className="text-[11px] text-neutral-500">Last contacted</div>
+              <div className="mt-1 text-xs font-semibold text-neutral-200">
+                {(health as any)?.stats?.last_contacted_days == null
+                  ? "Never"
+                  : `${Number((health as any).stats.last_contacted_days)}d`}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {health ? (
         <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -129,20 +225,13 @@ export default async function ContactPage({
 
             <div className="flex items-center gap-2">
               <span
-                className={[
-                  "rounded-full px-3 py-1 text-xs font-semibold",
-                  health.status === "hot"
-                    ? "bg-green-500/15 text-green-400"
-                    : health.status === "warm"
-                    ? "bg-yellow-500/15 text-yellow-400"
-                    : "bg-red-500/15 text-red-400",
-                ].join(" ")}
+                className={["rounded-full px-3 py-1 text-xs font-semibold", bandPillClass].join(" ")}
               >
-                {String(health.status || "").toUpperCase()}
+                {bandTitle}
               </span>
 
               <span className="text-xs text-neutral-400">
-                Score: {health.score}
+                Score: {Number((health as any)?.score ?? 0)}
               </span>
             </div>
           </div>
@@ -239,12 +328,62 @@ export default async function ContactPage({
       {/* Context row */}
       <section className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-200">
-            Recent Activity
-          </h2>
-          <p className="text-sm text-neutral-500">
-            Calls, messages, and key interactions linked to this contact.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-200">Recent Activity</h2>
+              <p className="text-xs text-neutral-500">Calls, notes, and actions linked to this contact.</p>
+            </div>
+            <div className="text-xs text-neutral-500">{activity.length ? `${activity.length} items` : ""}</div>
+          </div>
+
+          {activity.length ? (
+            <ul className="mt-3 space-y-2">
+              {activity.slice(0, 25).map((it: any) => {
+                const type = String(it?.type ?? "");
+                const created = (it as any)?.created_at ?? (it as any)?.at ?? null;
+                const title = String(it?.title ?? it?.summary ?? it?.name ?? "").trim() || "(no title)";
+                const meta = (it as any)?.meta && typeof (it as any).meta === "object" ? (it as any).meta : null;
+                const completed = Boolean(meta?.completed);
+                const overdue = Boolean(meta?.overdue);
+
+                return (
+                  <li key={String(it?.id ?? `${type}-${created}-${title}`)} className="flex items-start gap-3 rounded-lg border border-neutral-900 bg-neutral-950 px-3 py-2">
+                    <div className="mt-0.5 w-5 text-center text-sm">{iconFor(type)}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="truncate text-sm text-neutral-200">{title}</div>
+                        {type ? (
+                          <span className="rounded-full border border-neutral-800 bg-neutral-900/40 px-2 py-0.5 text-[11px] text-neutral-400">
+                            {type}
+                          </span>
+                        ) : null}
+                        {completed ? (
+                          <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-300">
+                            completed
+                          </span>
+                        ) : null}
+                        {overdue ? (
+                          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300">
+                            overdue
+                          </span>
+                        ) : null}
+                      </div>
+                      {meta?.due_at ? (
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          Due: {String(meta.due_at)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="shrink-0 text-[11px] text-neutral-500">{fmtRel(created)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900/20 px-3 py-2 text-sm text-neutral-400">
+              No recent activity yet.
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
