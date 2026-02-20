@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type CrmContact = {
   id: string;
@@ -100,6 +101,9 @@ export default function ContactHeaderClient({
   const [account, setAccount] = useState<CrmAccount | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const router = useRouter();
+  const [marking, setMarking] = useState(false);
+
   useEffect(() => {
     let alive = true;
 
@@ -153,7 +157,7 @@ export default function ContactHeaderClient({
     return (
       <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4">
         <div className="text-sm font-semibold text-red-300">Couldn’t load contact</div>
-        <div className="mt-1 text-sm text-red-200/80">{err}</div>
+        <div className="mt-1 text-sm text-red-200/80">{typeof err === "string" ? err : (err as any)?.label ?? (err as any)?.message ?? (() => { try { return JSON.stringify(err); } catch { return String(err); } })()}</div>
         <div className="mt-3 text-sm">
           <Link href="/crm/overview" className="text-neutral-200 underline">
             Back to CRM
@@ -164,15 +168,18 @@ export default function ContactHeaderClient({
   }
 
   const rawName =
-    contact?.name ||
-    [contact?.first_name, contact?.last_name].filter(Boolean).join(" ") ||
+    String(contact?.name ?? "").trim() ||
+    [contact?.first_name, contact?.last_name]
+      .filter((v) => v != null && String(v).trim() !== "")
+      .map((v) => String(v))
+      .join(" ") ||
     "(Unnamed)";
 
-  const fullName = rawName === "(Unnamed)" ? rawName : toTitleCase(rawName);
+  const fullName = rawName === "(Unnamed)" ? rawName : toTitleCase(String(rawName));
 
-  const email = contact?.email || "";
-  const accountId = account?.id || null;
-  const companyName = account?.name || contact?.company || "—";
+  const email = String(contact?.email ?? "").trim();
+  const accountId = account?.id ? String(account.id) : null;
+  const companyName = String(account?.name ?? contact?.company ?? "—");
 
   const lastContactedRelative = fmtRelative(contact?.last_contacted_at);
   const lastContactedAbsolute = contact?.last_contacted_at
@@ -189,6 +196,45 @@ export default function ContactHeaderClient({
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
       // ignore
+    }
+  }
+
+  async function handleMarkContacted() {
+    if (!contactId || marking) return;
+
+    try {
+      setMarking(true);
+
+      const res = await fetch(
+        `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/mark-contacted`,
+        {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        console.error("mark_contacted_failed", json);
+        return;
+      }
+
+      // Optimistic UI: update the header immediately, then refresh server data.
+      const last = String(json?.last_contacted_at ?? "").trim();
+      if (last) {
+        setContact((prev) => (prev ? { ...prev, last_contacted_at: last } : prev));
+      }
+
+      router.refresh();
+    } catch (err) {
+      console.error("mark_contacted_error", err);
+    } finally {
+      setMarking(false);
     }
   }
 
@@ -281,7 +327,7 @@ export default function ContactHeaderClient({
                 <span className="text-neutral-500">Email</span>
                 {email ? (
                   <a className="text-neutral-200 hover:text-white underline underline-offset-4" href={`mailto:${email}`}>
-                    {email}
+                    {String(email)}
                   </a>
                 ) : (
                   <span className="text-neutral-500">—</span>
@@ -298,10 +344,10 @@ export default function ContactHeaderClient({
                     className="text-neutral-200 hover:text-white underline underline-offset-4"
                     title="Open account"
                   >
-                    {companyName}
+                    {String(companyName)}
                   </Link>
                 ) : companyName && companyName !== "—" ? (
-                  <span className="text-neutral-200">{companyName}</span>
+                  <span className="text-neutral-200">{String(companyName)}</span>
                 ) : (
                   <span className="text-neutral-500">—</span>
                 )}
@@ -351,6 +397,14 @@ export default function ContactHeaderClient({
           >
             Email
           </a>
+          <button
+            type="button"
+            onClick={handleMarkContacted}
+            disabled={marking}
+            className="inline-flex h-9 items-center rounded-xl border border-neutral-800/80 bg-neutral-950 px-3 text-sm font-semibold text-neutral-200 hover:bg-neutral-900/70 hover:border-neutral-700 transition-all duration-150 active:scale-[0.98] disabled:opacity-40"
+          >
+            {marking ? "Marking…" : "Mark contacted"}
+          </button>
         </div>
       </div>
     </div>

@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+function errText(e: unknown): string {
+  if (!e) return "";
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 type Health = {
   contact_id: string;
   status: "hot" | "warm" | "cold";
@@ -75,7 +86,7 @@ export default function ContactHealthClient({ contactId }: { contactId: string }
           <div className="text-sm text-white/60">Loading…</div>
         ) : error ? (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-            Health failed to load — {error}
+            Health failed to load — {errText(error)}
           </div>
         ) : !health ? (
           <div className="text-sm text-white/60">No health data.</div>

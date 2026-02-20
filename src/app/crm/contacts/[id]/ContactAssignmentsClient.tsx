@@ -2,6 +2,17 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 
+function errText(e: unknown): string {
+  if (!e) return "";
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 type Item = {
   id: string;
   title?: string | null;
@@ -104,7 +115,7 @@ const ContactAssignmentsClient = forwardRef<
         <div className="mt-4 text-sm text-neutral-400">Loading…</div>
       ) : err ? (
         <div className="mt-4 rounded-xl border border-red-900/40 bg-red-950/40 p-4 text-sm text-red-200">
-          {err}
+          {errText(err)}
         </div>
       ) : !(open.length + completed.length) ? (
         <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4">

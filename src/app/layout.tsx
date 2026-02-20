@@ -21,12 +21,12 @@ export const metadata: Metadata = {
   description: "Gravix AI-powered sales review & training platform.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // Read middleware signal: when x-open-route=1, pages should render without any auth redirects.
-  const h = headers();
-  const isOpenRoute = h.get('x-open-route') === '1';
+  const h = await headers();
+  const isOpenRoute = h.get("x-open-route") === "1";
 
   return (
     <html lang="en">
