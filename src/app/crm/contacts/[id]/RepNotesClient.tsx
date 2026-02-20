@@ -2,6 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+function errText(e: unknown): string {
+  if (!e) return "";
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 type Importance = "normal" | "important" | "critical";
 
 type Note = {
@@ -104,7 +115,7 @@ export default function RepNotesClient({
       {err ? (
         <div className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-200">
           <div className="font-semibold">Notes error</div>
-          <div className="opacity-90">{err}</div>
+          <div className="opacity-90">{errText(err)}</div>
         </div>
       ) : null}
 

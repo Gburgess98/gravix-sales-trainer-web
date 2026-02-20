@@ -1,4 +1,3 @@
-// src/app/crm/manager/contacts/ManagerContactsClient.tsx
 "use client";
 
 import Link from "next/link";
@@ -74,6 +73,35 @@ export default function ManagerContactsClient(props: {
   const pathname = usePathname();
   const sp = useSearchParams();
   const [isPending, startTransition] = useTransition();
+
+  const [creatingForId, setCreatingForId] = useState<string | null>(null);
+
+  async function createFollowUp(contactId: string) {
+    try {
+      setCreatingForId(contactId);
+
+      const r = await fetch("/api/proxy/v1/crm/actions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contact_id: contactId,
+          type: "follow_up",
+          title: "Follow up",
+          meta: { source: "manager_contacts_table" },
+        }),
+      });
+
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok || !j?.ok) {
+        const msg = j?.error ?? `create_follow_up_failed_${r.status}`;
+        throw new Error(msg);
+      }
+
+      router.refresh();
+    } finally {
+      setCreatingForId(null);
+    }
+  }
 
   const [items] = useState<ContactRow[]>(props.initialItems ?? []);
   const ok = props.initialOk;
@@ -246,24 +274,38 @@ export default function ManagerContactsClient(props: {
                       </td>
 
                       <td className="py-2 px-3 text-right">
-                        <div className="inline-flex items-center gap-2">
+                        <div className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
                           <Link
                             href={`/crm/contacts/${encodeURIComponent(r.id)}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="px-2 py-1 rounded border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:bg-neutral-900"
+                            className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-xs font-medium text-black hover:bg-neutral-200 transition whitespace-nowrap leading-none"
                             title="Open contact"
                           >
                             Open
                           </Link>
 
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void createFollowUp(String(r.id));
+                            }}
+                            disabled={creatingForId === String(r.id)}
+                            className="inline-flex items-center rounded-md border border-neutral-800/60 bg-neutral-950/40 px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-900/60 transition whitespace-nowrap leading-none disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Create follow-up action"
+                          >
+                            {creatingForId === String(r.id) ? "Creating…" : "Follow up"}
+                          </button>
+
                           <a
                             href={r.email ? `mailto:${r.email}` : undefined}
                             onClick={(e) => e.stopPropagation()}
                             className={[
-                              "px-2 py-1 rounded border text-xs",
+                              "inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium transition whitespace-nowrap leading-none",
                               r.email
-                                ? "border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
-                                : "border-neutral-900 bg-neutral-950 text-neutral-600 cursor-not-allowed",
+                                ? "text-neutral-400 hover:text-white"
+                                : "text-neutral-600 cursor-not-allowed",
                             ].join(" ")}
                             title={r.email ? "Email contact" : "No email on file"}
                             aria-disabled={!r.email}

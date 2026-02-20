@@ -2,6 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+function errText(e: unknown): string {
+  if (!e) return "";
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 type Brief = {
   summary?: string;
   who?: string[];
@@ -86,7 +97,7 @@ export default function AIBriefClient({ contactId }: { contactId: string }) {
       ) : err ? (
         <div className="mt-4 rounded-xl border border-red-900/40 bg-red-950/40 p-4 text-sm text-red-200">
           <div className="font-semibold">AI brief failed to load</div>
-          <div className="mt-1 text-xs text-red-200/80">{err}</div>
+          <div className="mt-1 text-xs text-red-200/80">{errText(err)}</div>
           <div className="mt-3 text-xs text-neutral-300">
             Tip: this is non-blocking — the CRM still works even if the AI layer is down.
           </div>
