@@ -28,6 +28,23 @@ type RepSummaryResp = {
   since: string;
 };
 
+type ManagerNudge = {
+  contact_id: string;
+  priority: number;
+  action_counts?: { open?: number; overdue?: number; completed?: number };
+  health?: {
+    stats?: {
+      last_contacted_days?: number | null;
+    };
+    next_action_severity?: string | null;
+  };
+};
+
+type ManagerNudgesResp = {
+  ok: boolean;
+  nudges: ManagerNudge[];
+};
+
 function scoreColour(score?: number | null) {
   if (score == null) return "text-zinc-400";
   if (score >= 80) return "text-green-400";
@@ -41,6 +58,7 @@ export default function RepProfilePage() {
   const [data, setData] = useState<RepSummaryResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [ignoredNudges, setIgnoredNudges] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -48,16 +66,48 @@ export default function RepProfilePage() {
 
     (async () => {
       try {
-        const resp = await fetchJsonWithRetry<RepSummaryResp>(
-          `/api/proxy/v1/dashboard/rep-summary?userId=${encodeURIComponent(
-            String(repId)
-          )}&days=90`
-        );
+        const [resp, nudgesResp] = await Promise.all([
+          fetchJsonWithRetry<RepSummaryResp>(
+            `/api/proxy/v1/dashboard/rep-summary?userId=${encodeURIComponent(
+              String(repId)
+            )}&days=90`
+          ),
+          // Fail-soft: this is optional UI signal; do not block the page.
+          fetchJsonWithRetry<ManagerNudgesResp>(
+            `/api/proxy/v1/crm/manager/nudges?limit=200`
+          ).catch(() => null as any),
+        ]);
+
         if (!alive) return;
+
         if (!resp || (resp as any).ok === false) {
           setErrorText("Unable to load rep summary.");
         } else {
           setData(resp);
+        }
+
+        // Compute an "ignored nudges" count. Definition (simple + stable):
+        // - Overdue actions, OR
+        // - Not contacted in 7+ days.
+        // This is intentionally conservative and fail-soft.
+        if (nudgesResp && (nudgesResp as any).ok !== false) {
+          const items = Array.isArray((nudgesResp as any).nudges)
+            ? ((nudgesResp as any).nudges as ManagerNudge[])
+            : [];
+
+          const ignored = items.filter((n) => {
+            const overdue = Number(n?.action_counts?.overdue ?? 0);
+            const lastDays =
+              n?.health?.stats?.last_contacted_days == null
+                ? null
+                : Number(n.health.stats.last_contacted_days);
+            const stale = typeof lastDays === "number" && Number.isFinite(lastDays) && lastDays >= 7;
+            return overdue > 0 || stale;
+          }).length;
+
+          setIgnoredNudges(ignored);
+        } else {
+          setIgnoredNudges(null);
         }
       } catch (e) {
         console.error("rep-summary load failed", e);
@@ -126,7 +176,7 @@ export default function RepProfilePage() {
       {!loading && !errorText && data && (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
             <div className="rounded-lg border border-neutral-800 p-4">
               <div className="text-sm opacity-70">Total Calls</div>
               <div className="text-2xl font-semibold tabular-nums">
@@ -149,6 +199,15 @@ export default function RepProfilePage() {
               <div className="text-sm opacity-70">XP</div>
               <div className="text-2xl font-semibold tabular-nums">
                 {data.xp ?? 0} XP
+              </div>
+            </div>
+            <div className="rounded-lg border border-neutral-800 p-4">
+              <div className="text-sm opacity-70">Ignored Nudges</div>
+              <div className="text-2xl font-semibold tabular-nums">
+                {typeof ignoredNudges === "number" ? ignoredNudges : "—"}
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">
+                Overdue or 7d+ untouched
               </div>
             </div>
           </div>

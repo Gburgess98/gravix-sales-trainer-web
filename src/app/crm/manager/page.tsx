@@ -117,9 +117,28 @@ async function loadLatestRun(): Promise<LatestRunResponse> {
   };
 }
 
+async function loadNudges(): Promise<{ ok: boolean; items: any[]; error?: string }> {
+  try {
+    const res = await proxyFetch("/v1/crm/manager/nudges?limit=10");
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return { ok: false, items: [], error: json?.error ?? "nudges_failed" };
+    }
+
+    return {
+      ok: Boolean(json?.ok),
+      items: Array.isArray(json?.nudges) ? json.nudges : [],
+    };
+  } catch (e: any) {
+    return { ok: false, items: [], error: e?.message ?? "nudges_failed" };
+  }
+}
+
 export default async function CrmManagerPage() {
   const overview = await loadOverview();
   const latestRun = await loadLatestRun();
+  const nudges = await loadNudges();
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -137,6 +156,106 @@ export default async function CrmManagerPage() {
         >
           Back to CRM Overview
         </Link>
+      </div>
+
+      {/* Manager Nudges */}
+      <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+          <div className="text-sm font-medium text-neutral-200">Manager Nudges</div>
+          <Link
+            href="/crm/manager/nudges"
+            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+          >
+            View full list
+          </Link>
+        </div>
+
+        <div className="p-4">
+          {!nudges.ok ? (
+            <div className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+              Failed to load nudges: {nudges.error ?? "unknown_error"}
+            </div>
+          ) : nudges.items.length === 0 ? (
+            <div className="text-sm text-neutral-400">No nudges right now.</div>
+          ) : (
+            <ul className="space-y-3">
+              {nudges.items.map((n: any) => {
+                const id = String(n?.contact_id ?? "");
+                const name = String(n?.name ?? "Contact");
+                const priority = Number(n?.priority ?? 0);
+                const open = Number(n?.action_counts?.open ?? 0);
+                const overdue = Number(n?.action_counts?.overdue ?? 0);
+
+                const bandRaw = String(n?.health?.band ?? "").toLowerCase();
+                const reasons: string[] = Array.isArray(n?.health?.reasons)
+                  ? n.health.reasons.slice(0, 2)
+                  : [];
+
+                const bandStyles: Record<string, string> = {
+                  healthy: "bg-green-500/10 text-green-300 border-green-500/20",
+                  warning: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+                  at_risk: "bg-red-500/10 text-red-300 border-red-500/20",
+                };
+
+                const bandClass = bandStyles[bandRaw] ?? "bg-neutral-800 text-neutral-300 border-neutral-700";
+
+                return (
+                  <li
+                    key={id || name}
+                    className="rounded-xl border border-neutral-900 bg-neutral-950 hover:bg-neutral-900/60 transition-colors"
+                  >
+                    <Link
+                      href={id ? `/crm/contacts/${encodeURIComponent(id)}` : "/crm/overview"}
+                      className="block px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-neutral-100 truncate">
+                              {name}
+                            </div>
+
+                            {bandRaw ? (
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${bandClass}`}
+                              >
+                                {bandRaw.replace("_", " ")}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {reasons.length > 0 ? (
+                            <div className="mt-1 text-xs text-neutral-400">
+                              {reasons.join(" • ")}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
+                          <span className="rounded-full border border-neutral-800 px-2 py-0.5 tabular-nums">
+                            P{Math.round(priority)}
+                          </span>
+
+                          {overdue > 0 ? (
+                            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-300">
+                              {overdue} overdue
+                            </span>
+                          ) : null}
+
+                          {open > 0 ? (
+                            <span className="rounded-full border border-neutral-800 px-2 py-0.5 tabular-nums">
+                              {open} open
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
 
       {/* Overview table */}

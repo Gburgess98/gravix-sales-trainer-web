@@ -47,6 +47,20 @@ function pct(n?: number | null) {
   return `${Math.round(n * 100)}%`;
 }
 
+function relTime(iso?: string | null) {
+  if (!iso) return '—';
+  const t = new Date(String(iso)).getTime();
+  if (!isFinite(t)) return '—';
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 // Types for manager cards
 type Assignment = {
   id: string;
@@ -119,6 +133,8 @@ export default function CrmOverviewPage() {
   const [loadingTrust, setLoadingTrust] = useState<boolean>(true);
   const [todayActions, setTodayActions] = useState<CrmActionItem[] | null>(null);
   const [loadingTodayActions, setLoadingTodayActions] = useState<boolean>(true);
+  const [nudges, setNudges] = useState<any[] | null>(null);
+  const [loadingNudges, setLoadingNudges] = useState<boolean>(true);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -164,6 +180,37 @@ export default function CrmOverviewPage() {
         console.debug('[CRM Overview] Today actions load failed', e);
       } finally {
         if (alive) setLoadingTodayActions(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoadingNudges(true);
+      try {
+        // Best-effort: do not block the overview if this fails.
+        const resp: any = await fetchJsonWithRetry<any>(
+          '/api/proxy/v1/crm/manager/nudges?limit=5'
+        );
+
+        if (!alive) return;
+
+        const items: any[] = Array.isArray(resp?.nudges)
+          ? resp.nudges
+          : (Array.isArray(resp?.items) ? resp.items : []);
+
+        setNudges(items);
+      } catch (e: any) {
+        if (alive) setNudges([]);
+        console.debug('[CRM Overview] Nudges load failed', e);
+      } finally {
+        if (alive) setLoadingNudges(false);
       }
     })();
 
@@ -384,6 +431,166 @@ export default function CrmOverviewPage() {
             <span>🕑 Due soon: <span className="tabular-nums">{sumDueSoon}</span></span>
             <span>✅ Completed 7d: <span className="tabular-nums">{sumDone7d}</span></span>
           </>
+        )}
+      </div>
+
+      {/* Manager Nudges (fail-soft) */}
+      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold text-neutral-100">Manager Nudges</div>
+              {!loadingNudges ? (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 tabular-nums">
+                  {nudges?.length ?? 0}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-0.5 text-xs text-neutral-400">
+              Highest-priority contacts to touch next — sorted by urgency signals (overdue work, staleness, and open actions).
+            </div>
+          </div>
+
+          <Link
+            href="/crm/manager/nudges"
+            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+          >
+            View all
+          </Link>
+        </div>
+
+        {loadingNudges ? (
+          <div className="mt-3 h-24 animate-pulse rounded-xl bg-white/10" />
+        ) : !nudges || nudges.length === 0 ? (
+          <div className="mt-3 text-sm text-neutral-400">No nudges right now.</div>
+        ) : (
+          <ul className="mt-3 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10">
+            {nudges.slice(0, 5).map((n: any) => {
+              const contactId = String(n?.contact_id ?? "");
+              const name = String(n?.name ?? n?.contact_name ?? "Contact").trim();
+              const email = n?.email ? String(n.email) : "";
+              const company = n?.company ? String(n.company) : "";
+              const priority = typeof n?.priority === "number" ? n.priority : Number(n?.priority ?? 0);
+
+              const bandRaw = String(n?.health?.band ?? "").toLowerCase();
+              const band = bandRaw || "unknown";
+              const bandCls =
+                band === "hot" || band === "critical" || band === "at_risk"
+                  ? "border-red-500/30 bg-red-500/10 text-red-200"
+                  : band === "warm" || band === "watch"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    : band === "healthy"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                      : "border-white/10 bg-white/5 text-white/70";
+
+              const score = typeof n?.health?.score === "number" ? n.health.score : null;
+
+              const open = typeof n?.action_counts?.open === "number" ? n.action_counts.open : Number(n?.action_counts?.open ?? 0);
+              const overdue = typeof n?.action_counts?.overdue === "number" ? n.action_counts.overdue : Number(n?.action_counts?.overdue ?? 0);
+
+              const lastDays =
+                typeof n?.health?.stats?.last_contacted_days === "number" ? n.health.stats.last_contacted_days : null;
+              const lastTouched = n?.last_contacted_at ?? n?.last_touched_at ?? null;
+
+              const nextAction = String(n?.health?.next_action ?? "").trim();
+              const reasons: string[] = Array.isArray(n?.health?.reasons)
+                ? n.health.reasons.map((x: any) => String(x)).filter(Boolean)
+                : [];
+
+              const href = contactId ? `/crm/contacts/${encodeURIComponent(contactId)}` : null;
+
+              const touchedLabel =
+                lastDays == null
+                  ? `Touched: ${relTime(lastTouched)}`
+                  : lastDays === 0
+                    ? "Touched: today"
+                    : `Touched: ${lastDays}d`;
+
+              const urgencyLabel = overdue > 0 ? `Overdue ${overdue}` : open > 0 ? `${open} open` : "No open";
+              const urgencyCls =
+                overdue > 0
+                  ? "border-red-500/30 bg-red-500/10 text-red-200"
+                  : open > 0
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    : "border-white/10 bg-white/5 text-white/70";
+
+              const RowWrap: any = href ? Link : "div";
+              const rowProps = href
+                ? { href, className: "block px-3 py-2 hover:bg-white/[0.03]" }
+                : { className: "px-3 py-2" };
+
+              return (
+                <li key={contactId || `${name}-${email}-${company}` }>
+                  <RowWrap {...rowProps}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="truncate text-sm text-white/90">{name}</div>
+                          {company ? (
+                            <span className="truncate text-xs text-white/50">· {company}</span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-0.5 truncate text-xs text-white/50">
+                          {email ? email : "—"}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] border uppercase ${bandCls}`}>
+                            {band}
+                          </span>
+
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${urgencyCls}`}>
+                            {urgencyLabel}
+                          </span>
+
+                          {score != null ? (
+                            <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                              Score {Math.round(score)}
+                            </span>
+                          ) : null}
+
+                          <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                            {touchedLabel}
+                          </span>
+
+                          <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums" title="Priority score (higher = more urgent)">
+                            P{isFinite(priority) ? Math.round(priority) : 0}
+                          </span>
+                        </div>
+
+                        {nextAction ? (
+                          <div className="mt-2 text-xs text-white/75">
+                            <span className="text-white/50">Next:</span> {nextAction}
+                          </div>
+                        ) : null}
+
+                        {reasons.length > 0 ? (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {reasons.slice(0, 2).map((r: any, idx: number) => (
+                              <span
+                                key={`${contactId || name}-r-${idx}`}
+                                className="text-[11px] rounded-full px-2 py-0.5 border border-white/10 bg-white/5 text-white/55"
+                              >
+                                {String(r)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="text-[11px] text-white/40">Actions</div>
+                        <div className="mt-1 text-xs text-white/70 tabular-nums">
+                          {open}/{overdue}
+                        </div>
+                      </div>
+                    </div>
+                  </RowWrap>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
