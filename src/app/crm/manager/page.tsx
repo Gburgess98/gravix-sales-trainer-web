@@ -117,6 +117,7 @@ async function loadLatestRun(): Promise<LatestRunResponse> {
   };
 }
 
+
 async function loadNudges(): Promise<{ ok: boolean; items: any[]; error?: string }> {
   try {
     const res = await proxyFetch("/v1/crm/manager/nudges?limit=10");
@@ -135,10 +136,47 @@ async function loadNudges(): Promise<{ ok: boolean; items: any[]; error?: string
   }
 }
 
+type ControlCentreResp = {
+  ok: boolean;
+  headline?: {
+    reps_total?: number;
+    reps_at_risk?: number;
+    reps_watch?: number;
+    overdue_actions_total?: number;
+    open_actions_total?: number;
+    window_days?: number;
+    since?: string;
+  };
+  reps_at_risk?: any[];
+  reps_watch?: any[];
+  error?: string;
+};
+
+async function loadControlCentre(): Promise<ControlCentreResp> {
+  try {
+    const res = await proxyFetch("/v1/crm/manager/control-centre?days=7&limit=20");
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return { ok: false, error: json?.error ?? "control_centre_failed" };
+    }
+
+    return {
+      ok: Boolean(json?.ok),
+      headline: json?.headline ?? undefined,
+      reps_at_risk: Array.isArray(json?.reps_at_risk) ? json.reps_at_risk : [],
+      reps_watch: Array.isArray(json?.reps_watch) ? json.reps_watch : [],
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "control_centre_failed" };
+  }
+}
+
 export default async function CrmManagerPage() {
   const overview = await loadOverview();
   const latestRun = await loadLatestRun();
   const nudges = await loadNudges();
+  const control = await loadControlCentre();
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -150,12 +188,178 @@ export default async function CrmManagerPage() {
           </p>
         </div>
 
-        <Link
-          href="/crm/overview"
-          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-        >
-          Back to CRM Overview
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/crm/manager/control-centre"
+            className="rounded-lg bg-indigo-600/20 px-3 py-2 text-sm font-semibold text-indigo-200 hover:bg-indigo-600/30"
+          >
+            Open Control Centre
+          </Link>
+
+          <Link
+            href="/crm/overview"
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+          >
+            Back to CRM Overview
+          </Link>
+        </div>
+      </div>
+
+      {/* Daily Control Centre */}
+      <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+          <div>
+            <Link
+              href="/crm/manager/control-centre"
+              className="text-sm font-medium text-neutral-200 underline decoration-neutral-700 hover:decoration-neutral-300"
+            >
+              Daily Control Centre
+            </Link>
+            <div className="mt-0.5 text-xs text-neutral-500">
+              Fast view of rep risk + workload (last {Number(control?.headline?.window_days ?? 7)}d).
+            </div>
+          </div>
+
+          <Link
+            href="/crm/manager/control-centre"
+            className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-900"
+          >
+            Open full view
+          </Link>
+        </div>
+
+        <div className="p-4">
+          {!control.ok ? (
+            <div className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+              Failed to load control centre: {control.error ?? "unknown_error"}
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="text-[11px] text-neutral-500">Reps</div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-100">
+                    {Number(control?.headline?.reps_total ?? 0)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                    <StatusDot colour="red" /> At risk
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-100">
+                    {Number(control?.headline?.reps_at_risk ?? 0)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                    <StatusDot colour="amber" /> Watch
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-100">
+                    {Number(control?.headline?.reps_watch ?? 0)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="text-[11px] text-neutral-500">Open actions</div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-100">
+                    {Number(control?.headline?.open_actions_total ?? 0)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="text-[11px] text-neutral-500">Overdue actions</div>
+                  <div className="mt-1 text-lg font-semibold text-neutral-100">
+                    {Number(control?.headline?.overdue_actions_total ?? 0)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/20 p-3">
+                {(control.reps_at_risk?.length ?? 0) === 0 && (control.reps_watch?.length ?? 0) === 0 ? (
+                  <div className="flex items-start gap-3">
+                    <StatusDot colour="green" />
+                    <div>
+                      <div className="text-sm font-medium text-neutral-100">All clear</div>
+                      <div className="mt-0.5 text-xs text-neutral-500">
+                        No reps flagged as watch / at risk in the last {Number(control?.headline?.window_days ?? 7)} days.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                        <StatusDot colour="red" /> At risk
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {(control.reps_at_risk ?? []).slice(0, 4).map((r: any) => {
+                          const id = String(r?.rep_id ?? r?.id ?? "");
+                          const name = String(r?.rep_name ?? r?.name ?? "Rep");
+                          const score = Number(r?.risk_score ?? 0);
+                          const reasons = Array.isArray(r?.reasons) ? r.reasons.slice(0, 2) : [];
+                          return (
+                            <Link
+                              key={id || name}
+                              href={id ? `/crm/reps/${encodeURIComponent(id)}` : "/crm/overview"}
+                              className="block rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 hover:bg-neutral-900"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm text-neutral-100">{name}</div>
+                                  {reasons.length ? (
+                                    <div className="mt-0.5 text-[11px] text-neutral-500">{reasons.join(" • ")}</div>
+                                  ) : null}
+                                </div>
+                                <div className="shrink-0 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] text-red-200">
+                                  {Math.round(score)}
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                        <StatusDot colour="amber" /> Watch
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {(control.reps_watch ?? []).slice(0, 4).map((r: any) => {
+                          const id = String(r?.rep_id ?? r?.id ?? "");
+                          const name = String(r?.rep_name ?? r?.name ?? "Rep");
+                          const score = Number(r?.risk_score ?? 0);
+                          const reasons = Array.isArray(r?.reasons) ? r.reasons.slice(0, 2) : [];
+                          return (
+                            <Link
+                              key={id || name}
+                              href={id ? `/crm/reps/${encodeURIComponent(id)}` : "/crm/overview"}
+                              className="block rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 hover:bg-neutral-900"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm text-neutral-100">{name}</div>
+                                  {reasons.length ? (
+                                    <div className="mt-0.5 text-[11px] text-neutral-500">{reasons.join(" • ")}</div>
+                                  ) : null}
+                                </div>
+                                <div className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">
+                                  {Math.round(score)}
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Manager Nudges */}

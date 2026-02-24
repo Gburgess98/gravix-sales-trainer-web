@@ -101,6 +101,21 @@ type CrmActionsResp = {
   items: CrmActionItem[];
 };
 
+type ControlCentreResp = {
+  ok: boolean;
+  headline?: {
+    reps_total?: number;
+    reps_at_risk?: number;
+    reps_watch?: number;
+    overdue_actions_total?: number;
+    open_actions_total?: number;
+    window_days?: number;
+    since?: string;
+  };
+  reps_at_risk?: any[];
+  error?: string;
+};
+
 // Recharts (client-only)
 const ResponsiveContainer = nextDynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 const BarChart = nextDynamic(() => import('recharts').then(m => m.BarChart), { ssr: false });
@@ -135,6 +150,8 @@ export default function CrmOverviewPage() {
   const [loadingTodayActions, setLoadingTodayActions] = useState<boolean>(true);
   const [nudges, setNudges] = useState<any[] | null>(null);
   const [loadingNudges, setLoadingNudges] = useState<boolean>(true);
+  const [controlCentre, setControlCentre] = useState<ControlCentreResp | null>(null);
+  const [loadingControlCentre, setLoadingControlCentre] = useState<boolean>(true);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -211,6 +228,41 @@ export default function CrmOverviewPage() {
         console.debug('[CRM Overview] Nudges load failed', e);
       } finally {
         if (alive) setLoadingNudges(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoadingControlCentre(true);
+      try {
+        // Best-effort: do not block the overview if this fails.
+        const resp: any = await fetchJsonWithRetry<any>(
+          '/api/proxy/v1/crm/manager/control-centre?days=7&limit=20'
+        );
+
+        if (!alive) return;
+
+        // Tolerate shape differences
+        const shaped: ControlCentreResp = {
+          ok: Boolean(resp?.ok),
+          headline: resp?.headline ?? resp?.summary ?? resp?.stats ?? undefined,
+          reps_at_risk: Array.isArray(resp?.reps_at_risk) ? resp.reps_at_risk : [],
+          error: resp?.error,
+        };
+
+        setControlCentre(shaped);
+      } catch (e: any) {
+        if (alive) setControlCentre({ ok: false, error: e?.message ?? 'control_centre_failed' });
+        console.debug('[CRM Overview] Control centre load failed', e);
+      } finally {
+        if (alive) setLoadingControlCentre(false);
       }
     })();
 
@@ -434,35 +486,174 @@ export default function CrmOverviewPage() {
         )}
       </div>
 
-      {/* Manager Nudges (fail-soft) */}
+      {/* Control Centre teaser (manager system feature, fail-soft) */}
       <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold text-neutral-100">Manager Nudges</div>
+              <div className="text-sm font-semibold text-neutral-100">Control Centre</div>
+              {loadingControlCentre ? null : (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 tabular-nums">
+                  {Number(controlCentre?.headline?.window_days ?? 7)}d window
+                </span>
+              )}
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
+                Manager view
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-neutral-400">
+              One place to see which reps need attention — based on overdue work, open workload, and recent activity.
+            </div>
+          </div>
+
+          <div className="shrink-0">
+            <Link
+              href="/crm/manager/control-centre"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+            >
+              Open Control Centre
+            </Link>
+          </div>
+        </div>
+
+        {loadingControlCentre ? (
+          <div className="mt-3 h-12 animate-pulse rounded-xl bg-white/10" />
+        ) : !controlCentre?.ok ? (
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="text-sm text-white/80">Control Centre unavailable right now.</div>
+            <div className="mt-1 text-xs text-white/55">{String(controlCentre?.error ?? 'control_centre_failed')}</div>
+          </div>
+        ) : (
+          (() => {
+            const h = controlCentre?.headline ?? {};
+            const repsTotal = Number(h.reps_total ?? 0);
+            const atRisk = Number(h.reps_at_risk ?? 0);
+            const watch = Number(h.reps_watch ?? 0);
+            const overdue = Number(h.overdue_actions_total ?? 0);
+            const open = Number(h.open_actions_total ?? 0);
+
+            const atRiskCls = atRisk > 0 ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-white/10 bg-white/5 text-white/70';
+            const watchCls = watch > 0 ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-white/10 bg-white/5 text-white/70';
+            const overdueCls = overdue > 0 ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-white/10 bg-white/5 text-white/70';
+
+            return (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${atRiskCls}`}>
+                  At risk {atRisk}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${watchCls}`}>
+                  Watch {watch}
+                </span>
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                  Reps {repsTotal}
+                </span>
+
+                <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${overdueCls}`}>
+                  Overdue actions {overdue}
+                </span>
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                  Open actions {open}
+                </span>
+              </div>
+            );
+          })()
+        )}
+      </div>
+
+      {/* Nudges (system feature, fail-soft) */}
+      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold text-neutral-100">Nudges</div>
               {!loadingNudges ? (
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 tabular-nums">
                   {nudges?.length ?? 0}
                 </span>
               ) : null}
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
+                Manager signal
+              </span>
             </div>
             <div className="mt-0.5 text-xs text-neutral-400">
-              Highest-priority contacts to touch next — sorted by urgency signals (overdue work, staleness, and open actions).
+              The system’s best guess at who needs attention next — ranked by overdue work, staleness, and open actions.
             </div>
           </div>
 
-          <Link
-            href="/crm/manager/nudges"
-            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
-          >
-            View all
-          </Link>
+          <div className="shrink-0 flex items-center gap-2">
+            <Link
+              href="/crm/manager"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+            >
+              Manager
+            </Link>
+            <Link
+              href="/crm/manager/nudges"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+            >
+              View all
+            </Link>
+          </div>
         </div>
 
+        {/* Summary strip */}
         {loadingNudges ? (
-          <div className="mt-3 h-24 animate-pulse rounded-xl bg-white/10" />
+          <div className="mt-3 h-10 animate-pulse rounded-xl bg-white/10" />
+        ) : (
+          (() => {
+            const items = Array.isArray(nudges) ? nudges : [];
+            const counts = items.reduce(
+              (acc: any, n: any) => {
+                const band = String(n?.health?.band ?? "").toLowerCase();
+                if (band === "at_risk" || band === "critical" || band === "hot") acc.at_risk += 1;
+                else if (band === "watch" || band === "warm" || band === "warning") acc.watch += 1;
+                else if (band === "healthy") acc.healthy += 1;
+                else acc.unknown += 1;
+                return acc;
+              },
+              { at_risk: 0, watch: 0, healthy: 0, unknown: 0 }
+            );
+
+            const overdueTotal = items.reduce((s: number, n: any) => s + Number(n?.action_counts?.overdue ?? 0), 0);
+            const openTotal = items.reduce((s: number, n: any) => s + Number(n?.action_counts?.open ?? 0), 0);
+
+            return (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-red-500/30 bg-red-500/10 text-red-200 tabular-nums">
+                  At risk {counts.at_risk}
+                </span>
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-amber-500/30 bg-amber-500/10 text-amber-200 tabular-nums">
+                  Watch {counts.watch}
+                </span>
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 tabular-nums">
+                  Healthy {counts.healthy}
+                </span>
+                {counts.unknown ? (
+                  <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
+                    Other {counts.unknown}
+                  </span>
+                ) : null}
+
+                <span className="ml-auto rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
+                  Overdue {overdueTotal}
+                </span>
+                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
+                  Open {openTotal}
+                </span>
+              </div>
+            );
+          })()
+        )}
+
+        {loadingNudges ? (
+          <div className="mt-3 h-28 animate-pulse rounded-xl bg-white/10" />
         ) : !nudges || nudges.length === 0 ? (
-          <div className="mt-3 text-sm text-neutral-400">No nudges right now.</div>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="text-sm text-white/80">No nudges right now.</div>
+            <div className="mt-1 text-xs text-white/55">
+              When contacts have open or overdue actions, or go stale, they’ll show up here automatically.
+            </div>
+          </div>
         ) : (
           <ul className="mt-3 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10">
             {nudges.slice(0, 5).map((n: any) => {
@@ -477,7 +668,7 @@ export default function CrmOverviewPage() {
               const bandCls =
                 band === "hot" || band === "critical" || band === "at_risk"
                   ? "border-red-500/30 bg-red-500/10 text-red-200"
-                  : band === "warm" || band === "watch"
+                  : band === "warm" || band === "watch" || band === "warning"
                     ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
                     : band === "healthy"
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
@@ -526,23 +717,15 @@ export default function CrmOverviewPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
                           <div className="truncate text-sm text-white/90">{name}</div>
-                          {company ? (
-                            <span className="truncate text-xs text-white/50">· {company}</span>
-                          ) : null}
+                          {company ? <span className="truncate text-xs text-white/50">· {company}</span> : null}
                         </div>
 
-                        <div className="mt-0.5 truncate text-xs text-white/50">
-                          {email ? email : "—"}
-                        </div>
+                        <div className="mt-0.5 truncate text-xs text-white/50">{email ? email : "—"}</div>
 
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] border uppercase ${bandCls}`}>
-                            {band}
-                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] border uppercase ${bandCls}`}>{band}</span>
 
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${urgencyCls}`}>
-                            {urgencyLabel}
-                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${urgencyCls}`}>{urgencyLabel}</span>
 
                           {score != null ? (
                             <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
@@ -554,7 +737,10 @@ export default function CrmOverviewPage() {
                             {touchedLabel}
                           </span>
 
-                          <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums" title="Priority score (higher = more urgent)">
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums"
+                            title="Priority score (higher = more urgent)"
+                          >
                             P{isFinite(priority) ? Math.round(priority) : 0}
                           </span>
                         </div>
@@ -581,9 +767,7 @@ export default function CrmOverviewPage() {
 
                       <div className="shrink-0 text-right">
                         <div className="text-[11px] text-white/40">Actions</div>
-                        <div className="mt-1 text-xs text-white/70 tabular-nums">
-                          {open}/{overdue}
-                        </div>
+                        <div className="mt-1 text-xs text-white/70 tabular-nums">{open}/{overdue}</div>
                       </div>
                     </div>
                   </RowWrap>
@@ -592,6 +776,15 @@ export default function CrmOverviewPage() {
             })}
           </ul>
         )}
+
+        <div className="mt-3 flex items-center justify-between text-xs text-white/50">
+          <div>
+            Nudges update automatically as you log notes, complete actions, and touch contacts.
+          </div>
+          <Link href="/crm/manager/nudges" className="underline hover:text-white/70">
+            Open full nudges →
+          </Link>
+        </div>
       </div>
 
       {/* Rep Home: Today's Actions (CORE WIN) */}
