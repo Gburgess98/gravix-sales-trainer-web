@@ -247,6 +247,20 @@ export default async function ContactPage({
   const bandDotClass = band === "hot" ? "bg-green-400" : band === "warm" ? "bg-yellow-400" : "bg-red-400";
   const bandTitle = band === "hot" ? "HOT" : band === "warm" ? "WARM" : band ? "WATCH" : "";
 
+  const sevRaw = String((health as any)?.next_action_severity ?? "").toLowerCase();
+  const sev = sevRaw || "none";
+
+  const sevPillClass =
+    sev.includes("high") || sev.includes("critical")
+      ? "bg-red-500/15 text-red-300"
+      : sev.includes("med") || sev.includes("moder") || sev.includes("important")
+        ? "bg-amber-500/15 text-amber-300"
+        : sev.includes("low")
+          ? "bg-sky-500/15 text-sky-300"
+          : "bg-neutral-500/10 text-neutral-300";
+
+  const sevTitle = sev === "none" ? "NO URGENCY" : String(sev).toUpperCase();
+
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-8">
       {(sp as any)?.autoAssigned === "1" ? (
@@ -271,126 +285,66 @@ export default async function ContactPage({
       <ContactHeaderClient contactId={contactId} health={health} />
 
       {health ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <div className="flex items-start justify-between gap-4">
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${bandDotClass}`} />
-                <div className="text-sm font-semibold text-neutral-200">Contact Health</div>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${bandPillClass}`}>{bandTitle}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-sm font-semibold text-neutral-200">Health</div>
+
+                {bandTitle ? (
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${bandPillClass}`}>{bandTitle}</span>
+                ) : null}
+
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${sevPillClass}`}>{sevTitle}</span>
+
                 <span className="text-[11px] text-neutral-500">Score: {Number((health as any)?.score ?? 0)}</span>
               </div>
 
               <div className="mt-2 text-sm text-neutral-200">
-                <span className="text-neutral-400">Next:</span>{" "}
+                <span className="text-neutral-400">Next move:</span>{" "}
                 {nextActionText((health as any)?.next_action) || "No next action yet."}
               </div>
 
               {(health as any)?.reasons?.length ? (
                 <div className="mt-1 text-xs text-neutral-500">
                   {Array.isArray((health as any).reasons)
-                    ? (health as any).reasons.map(reasonText).filter(Boolean).slice(0, 2).join(" • ")
+                    ? (health as any).reasons.map(reasonText).filter(Boolean).slice(0, 3).join(" • ")
                     : ""}
                 </div>
               ) : null}
             </div>
 
-            <div className="shrink-0 text-right">
-              <div className="text-[11px] text-neutral-500">Last contacted</div>
-              <div className="mt-1 text-xs font-semibold text-neutral-200">
-                {(health as any)?.stats?.last_contacted_days == null ? "Never" : `${Number((health as any).stats.last_contacted_days)}d`}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {health ? (
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-neutral-200">Contact Health</h2>
-              <p className="text-xs text-neutral-500">Overall relationship status and urgency.</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className={["rounded-full px-3 py-1 text-xs font-semibold", bandPillClass].join(" ")}>{bandTitle}</span>
-
-              <span className="text-xs text-neutral-400">Score: {Number((health as any)?.score ?? 0)}</span>
-            </div>
-          </div>
-
-          {health.reasons?.length ? (
-            <ul className="mt-3 list-disc pl-5 text-xs text-neutral-400 space-y-1">
-              {health.reasons.map((r: any, i: number) => {
-                const t = reasonText(r) || `Reason ${i + 1}`;
-                return <li key={`${i}-${t}`}>{t}</li>;
-              })}
-            </ul>
-          ) : null}
-
-          {(health as any)?.next_action ? (
-            <div className="mt-3 text-xs text-neutral-300">
-              <span className="font-semibold">Suggested next step:</span> {nextActionText((health as any)?.next_action) || "—"}
-            </div>
-          ) : null}
-
-          {/* Next Action block (health-driven priorities) */}
-          <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold text-neutral-200">Next Action</div>
-                <div className="mt-1 text-sm text-neutral-200">{nextActionText((health as any)?.next_action) || "No next action yet."}</div>
-              </div>
-
-              <div className="shrink-0 text-right">
-                <div className="text-[11px] text-neutral-500">Why</div>
-                <div className="mt-1 text-xs text-neutral-400">
-                  {health.reasons?.length ? health.reasons.map(reasonText).filter(Boolean).slice(0, 2).join(" • ") : "—"}
+            <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:min-w-[320px]">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500">Open actions</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-200">
+                  {Number((health as any)?.stats?.open_actions ?? (health as any)?.signals?.open_actions ?? 0)}
                 </div>
               </div>
-            </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-neutral-800 bg-neutral-950 p-2">
-                <div className="text-[11px] text-neutral-500">Overdue</div>
-                <div className="text-xs font-semibold text-neutral-200">{health.signals?.overdue_assignments ?? 0}</div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500">Overdue actions</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-200">
+                  {Number((health as any)?.stats?.overdue_actions ?? (health as any)?.signals?.overdue_actions ?? (health as any)?.signals?.overdue_assignments ?? 0)}
+                </div>
               </div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950 p-2">
-                <div className="text-[11px] text-neutral-500">Critical notes</div>
-                <div className="text-xs font-semibold text-neutral-200">{health.signals?.critical_notes ?? 0}</div>
-              </div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950 p-2">
-                <div className="text-[11px] text-neutral-500">Important notes</div>
-                <div className="text-xs font-semibold text-neutral-200">{health.signals?.important_notes ?? 0}</div>
-              </div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950 p-2">
+
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
                 <div className="text-[11px] text-neutral-500">Last contacted</div>
-                <div className="text-xs font-semibold text-neutral-200">
-                  {health.signals?.last_contacted_days == null ? "Never" : `${health.signals.last_contacted_days}d`}
+                <div className="mt-1 text-sm font-semibold text-neutral-200">
+                  {(health as any)?.stats?.last_contacted_days == null
+                    ? "Never"
+                    : `${Number((health as any).stats.last_contacted_days)}d`}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500">Notes</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-200">
+                  {((health as any)?.stats?.has_notes ?? (health as any)?.signals?.has_notes) ? "Yes" : "No"}
                 </div>
               </div>
             </div>
-
-            <form action={autoAssign} className="mt-3 flex gap-2">
-              <input type="hidden" name="contactId" value={contactId} />
-
-              <button
-                type="submit"
-                name="dryRun"
-                value="1"
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
-              >
-                Preview auto-assign
-              </button>
-
-              <button
-                type="submit"
-                className="rounded-md bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/30"
-              >
-                Auto-assign this action
-              </button>
-            </form>
           </div>
         </section>
       ) : null}
