@@ -1,6 +1,7 @@
 // src/app/crm/manager/control-centre/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,84 @@ function computeFallbackRiskScore(r: RepRiskRow) {
   const overdue = Number(r?.counts?.overdue ?? 0);
   // Simple urgency heuristic if API doesn't provide a risk_score.
   return overdue * 100 + open * 10;
+}
+
+// Server action: best-effort create a rep follow-up task (fail-soft)
+async function createRepFollowUpAction(formData: FormData) {
+  "use server";
+
+  const rep_id = String(formData.get("rep_id") ?? "").trim();
+  const rep_name = String(formData.get("rep_name") ?? "Rep").trim() || "Rep";
+  const filter = String(formData.get("filter") ?? "all").trim() || "all";
+
+  if (!rep_id) {
+    redirect(`/crm/manager/control-centre?filter=${encodeURIComponent(filter)}`);
+  }
+
+  try {
+    // NOTE: This is best-effort. If your API enforces contact_id, it may reject.
+    // We still fail-soft and return the user back to the page.
+    await proxyFetch("/v1/crm/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rep_id,
+        type: "follow_up",
+        title: `Manager follow-up – ${rep_name}`,
+        due_at: null,
+        importance: "important",
+        meta: { source: "manager_control_centre" },
+      }),
+    });
+  } catch {
+    // fail-soft
+  }
+
+  redirect(`/crm/manager/control-centre?filter=${encodeURIComponent(filter)}`);
+}
+
+// Server action: best-effort complete the most urgent open action for a rep (fail-soft)
+async function completeRepTopAction(formData: FormData) {
+  "use server";
+
+  const rep_id = String(formData.get("rep_id") ?? "").trim();
+  const filter = String(formData.get("filter") ?? "all").trim() || "all";
+
+  if (!rep_id) {
+    redirect(`/crm/manager/control-centre?filter=${encodeURIComponent(filter)}`);
+  }
+
+  try {
+    // 1) Find the most urgent open action for this rep (best-effort)
+    const listRes = await proxyFetch(
+      `/v1/crm/actions?repId=${encodeURIComponent(rep_id)}&status=open&limit=1`,
+      { method: "GET" }
+    );
+    const listJson = (await listRes.json().catch(() => ({}))) as any;
+
+    const items: any[] = Array.isArray(listJson?.items)
+      ? listJson.items
+      : Array.isArray(listJson?.actions)
+        ? listJson.actions
+        : [];
+
+    const actionId = String(items?.[0]?.id ?? "").trim();
+    if (!actionId) {
+      // Nothing to complete
+      redirect(`/crm/manager/control-centre?filter=${encodeURIComponent(filter)}`);
+    }
+
+    // 2) Complete it
+    await proxyFetch(`/v1/crm/actions/${encodeURIComponent(actionId)}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  } catch {
+    // fail-soft
+  }
+
+  redirect(`/crm/manager/control-centre?filter=${encodeURIComponent(filter)}`);
 }
 
 export default async function ControlCentrePage({
@@ -457,18 +536,11 @@ export default async function ControlCentrePage({
 
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
-                              {/* Inline create follow-up */}
-                              <form
-                                method="POST"
-                                action={`/api/proxy?path=${encodeURIComponent("/v1/crm/actions")}`}
-                              >
+                              {/* Inline create follow-up (best-effort, fail-soft) */}
+                              <form action={createRepFollowUpAction}>
                                 <input type="hidden" name="rep_id" value={repId} />
-                                <input
-                                  type="hidden"
-                                  name="title"
-                                  value={`Follow up with rep – ${repName}`}
-                                />
-                                <input type="hidden" name="importance" value="important" />
+                                <input type="hidden" name="rep_name" value={repName} />
+                                <input type="hidden" name="filter" value={activeFilter} />
                                 <button
                                   type="submit"
                                   className="rounded-md bg-emerald-600/20 px-2 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-600/30"
@@ -477,22 +549,20 @@ export default async function ControlCentrePage({
                                 </button>
                               </form>
 
-                              {/* Clear oldest overdue (if any) */}
-                              {overdue > 0 ? (
-                                <form
-                                  method="POST"
-                                  action={`/api/proxy?path=${encodeURIComponent("/v1/crm/actions/complete-oldest")}`}
+                              {/* Best-effort: complete top open action for this rep (fail-soft) */}
+                              <form action={completeRepTopAction}>
+                                <input type="hidden" name="rep_id" value={repId} />
+                                <input type="hidden" name="filter" value={activeFilter} />
+                                <button
+                                  type="submit"
+                                  className="rounded-md bg-amber-600/20 px-2 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-600/30"
+                                  title="Completes the most urgent open action for this rep (best-effort)"
                                 >
-                                  <input type="hidden" name="rep_id" value={repId} />
-                                  <button
-                                    type="submit"
-                                    className="rounded-md bg-red-600/20 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-600/30"
-                                  >
-                                    ✓ Clear overdue
-                                  </button>
-                                </form>
-                              ) : null}
+                                  ✓ Complete top
+                                </button>
+                              </form>
 
+                              {/* View scoped open actions */}
                               <Link
                                 href={actionsHref}
                                 className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
@@ -500,6 +570,7 @@ export default async function ControlCentrePage({
                                 Open actions
                               </Link>
 
+                              {/* Deep rep view */}
                               <Link
                                 href={rowHref}
                                 className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30"
