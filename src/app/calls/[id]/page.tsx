@@ -2,14 +2,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useRef as useRefReact } from 'react';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
 import AuthGate from '@/components/AuthGate';
 import ScoreHistory from '@/components/ScoreHistory';
 import ScoreSparkline from "@/components/ScoreSparkline";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import ErrorBox from "@/components/ErrorBox";
-import { linkCallByEmail, getCrmLink } from "@/lib/api";
+// NOTE: Call page uses direct proxy CRM endpoints (single source of truth)
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
@@ -93,7 +92,7 @@ export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const callId = (id ?? '').toString();
 
-const toast = useToast();
+  const toast = useToast();
 
   // url controls for crm panel
   const params = useSearchParams();
@@ -156,13 +155,13 @@ const toast = useToast();
 
 
   // Score trend (sparkline)
-const [trend, setTrend] = useState<number[] | null>(null);
-useEffect(() => {
-  if (!callId) return;
-  fetchJsonWithRetry(`/api/proxy/v1/calls/${callId}/scores?n=12`)
-    .then(r => setTrend(r.values || []))
-    .catch(() => setTrend(null));
-}, [callId]);
+  const [trend, setTrend] = useState<number[] | null>(null);
+  useEffect(() => {
+    if (!callId) return;
+    fetchJsonWithRetry(`/api/proxy/v1/calls/${callId}/scores?n=12`)
+      .then(r => setTrend(r.values || []))
+      .catch(() => setTrend(null));
+  }, [callId]);
 
   // CRM link (inline state)
   const [linkInfo, setLinkInfo] = useState<{
@@ -170,6 +169,8 @@ useEffect(() => {
     account: { id: string; name: string | null; domain: string | null } | null;
     opportunity: { id: string; name: string; stage: string } | null;
   } | null>(null);
+  // Guard against stale / out-of-order CRM link fetches (prevents unlink flicker)
+  const linkFetchSeqRef = useRef(0);
   const [linkEmail, setLinkEmail] = useState("");
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
@@ -188,66 +189,35 @@ useEffect(() => {
   const [coachOpen, setCoachOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false); // if true, show Assign Drill section
 
-  // --- ADD (CRM linker) ---
-const [crmQuery, setCrmQuery] = useState("");
-const [crmResults, setCrmResults] = useState<any[]>([]);
-const [crmLoading, setCrmLoading] = useState(false);
-const [crmError, setCrmError] = useState<string | null>(null);
-
-const searchContacts = useCallback(async () => {
-  try {
-    setCrmLoading(true); setCrmError(null);
-    const resp = await fetchJsonWithRetry(`/api/proxy/v1/crm/contacts?q=${encodeURIComponent(crmQuery || "")}`);
-    setCrmResults(resp.items || []);
-  } catch (e: any) {
-    setCrmError(e?.message || "Search failed");
-  } finally {
-    setCrmLoading(false);
-  }
-}, [crmQuery]);
-
-const linkCall = useCallback(async (contactId: string) => {
-  try {
-    await fetchJsonWithRetry(`/api/proxy/v1/crm/link-call`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ callId, contactId })
-    });
-    await loadLinkInfo().catch(() => {});
-    toast("Linked to contact.");
-  } catch (e: any) {
-    toast(e?.message || "Link failed");
-  }
-}, [callId, loadLinkInfo, toast]);
 
   // --- ADD: Assign form state ---
-const [assignSaving, setAssignSaving] = useState(false);
-const [assignError, setAssignError] = useState<string | null>(null);
-const DEV_UID = process.env.NEXT_PUBLIC_DEV_USER_ID || "11111111-1111-1111-8111-111111111111";
-const [assigneeUserId, setAssigneeUserId] = useState(DEV_UID);
-const [drillId, setDrillId] = useState("intro-basics");
-const [notes, setNotes] = useState("");
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const DEV_UID = process.env.NEXT_PUBLIC_DEV_USER_ID || "11111111-1111-1111-8111-111111111111";
+  const [assigneeUserId, setAssigneeUserId] = useState(DEV_UID);
+  const [drillId, setDrillId] = useState("intro-basics");
+  const [notes, setNotes] = useState("");
 
-const [coachNotes, setCoachNotes] = useState("");
-const [notesSaving, setNotesSaving] = useState(false);
-const assignmentCount = assignments.length;
-const loadAssignments = useCallback(async () => {
-  const r = await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments?callId=${callId}`);
-  setAssignments(r.items || []);
-}, [callId]);
-useEffect(() => { if (coachOpen) loadAssignments().catch(()=>{}); }, [coachOpen, loadAssignments]);
+  const [coachNotes, setCoachNotes] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const assignmentCount = assignments.length;
+  const loadAssignments = useCallback(async () => {
+    const r = await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments?callId=${callId}`);
+    setAssignments(r.items || []);
+  }, [callId]);
+  useEffect(() => { if (coachOpen) loadAssignments().catch(() => { }); }, [coachOpen, loadAssignments]);
 
-useEffect(() => {
-  if (!coachOpen) return;
-  (async () => {
-    try {
-      const r = await fetchJsonWithRetry(`/api/proxy/v1/coach/notes?callId=${callId}`);
-      setCoachNotes(r?.note?.notes || "");
-    } catch {
-      /* ignore */
-    }
-  })();
-}, [coachOpen, callId]);
+  useEffect(() => {
+    if (!coachOpen) return;
+    (async () => {
+      try {
+        const r = await fetchJsonWithRetry(`/api/proxy/v1/coach/notes?callId=${callId}`);
+        setCoachNotes(r?.note?.notes || "");
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [coachOpen, callId]);
 
   const onSaveAssign = useCallback(async () => {
     try {
@@ -263,7 +233,7 @@ useEffect(() => {
           ...(assignmentId ? { assignmentId } : {}),
         }),
       });
-      await loadAssignments().catch(() => {});
+      await loadAssignments().catch(() => { });
       toast("Assignment saved.");
     } catch (e: any) {
       setAssignError(e?.message || "Failed to save assignment.");
@@ -361,67 +331,67 @@ useEffect(() => {
     return () => { alive = false; };
   }, [callId]);
 
-// Load coach assignments for this call (initial) + refresh when coach panel opens
-useEffect(() => {
-  if (!callId) return;
-  let cancelled = false;
-  (async () => {
+  // Load coach assignments for this call (initial) + refresh when coach panel opens
+  useEffect(() => {
+    if (!callId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setAssignmentsLoading(true);
+        await loadAssignments();
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setAssignmentsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [callId, loadAssignments]);
+
+  // Load drills catalog (static list from API)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setDrillsLoading(true);
+        const r = await fetchJsonWithRetry<any>(`/api/proxy/v1/coach/drills`);
+        if (!cancelled && r?.ok) setDrills(r.items || []);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setDrillsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load team users for assignment dropdown
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setUsersLoading(true);
+        const r = await proxyFetch("/v1/team/users?limit=100", { cache: "no-store" });
+        const j = await r.json();
+        if (!cancelled && j?.ok && Array.isArray(j.items)) setUsers(j.items);
+      } catch { }
+      finally { if (!cancelled) setUsersLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // --- ADD: deleteAssignment helper ---
+  async function deleteAssignment(id: string) {
     try {
-      setAssignmentsLoading(true);
-      await loadAssignments();
-    } catch {
-      // ignore
-    } finally {
-      if (!cancelled) setAssignmentsLoading(false);
+      const r = await proxyFetch(`/v1/coach/assignments/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("Delete failed");
+      setAssignments((xs) => xs.filter((x) => x.id !== id));
+    } catch (e) {
+      console.error("deleteAssignment", e);
     }
-  })();
-  return () => {
-    cancelled = true;
-  };
-}, [callId, loadAssignments]);
-
-// Load drills catalog (static list from API)
-useEffect(() => {
-  let cancelled = false;
-  (async () => {
-    try {
-      setDrillsLoading(true);
-      const r = await fetchJsonWithRetry<any>(`/api/proxy/v1/coach/drills`);
-      if (!cancelled && r?.ok) setDrills(r.items || []);
-    } catch {
-      // ignore
-    } finally {
-      if (!cancelled) setDrillsLoading(false);
-    }
-  })();
-  return () => { cancelled = true; };
-}, []);
-
-// Load team users for assignment dropdown
-useEffect(() => {
-  let cancelled = false;
-  (async () => {
-    try {
-      setUsersLoading(true);
-      const r = await proxyFetch("/v1/team/users?limit=100", { cache: "no-store" });
-      const j = await r.json();
-      if (!cancelled && j?.ok && Array.isArray(j.items)) setUsers(j.items);
-    } catch {}
-    finally { if (!cancelled) setUsersLoading(false); }
-  })();
-  return () => { cancelled = true; };
-}, []);
-
-// --- ADD: deleteAssignment helper ---
-async function deleteAssignment(id: string) {
-  try {
-    const r = await proxyFetch(`/v1/coach/assignments/${id}`, { method: "DELETE" });
-    if (!r.ok) throw new Error("Delete failed");
-    setAssignments((xs) => xs.filter((x) => x.id !== id));
-  } catch (e) {
-    console.error("deleteAssignment", e);
   }
-}
 
   // Try fetching a dedicated signed audio URL (fallback/refresh)
   useEffect(() => {
@@ -499,6 +469,12 @@ async function deleteAssignment(id: string) {
 
   // Pins (initial)
   async function refreshPins() {
+    // Demo calls may not have real pins; fail-soft.
+    if (String(callId).startsWith("demo-")) {
+      setPins([]);
+      setErr(null); // important: clear any previous request_failed state
+      return;
+    }
     const res = await listPins(callId);
     setPins((res?.pins ?? []).sort((a: Pin, b: Pin) => a.t - b.t));
   }
@@ -512,14 +488,36 @@ async function deleteAssignment(id: string) {
     return () => { alive = false; };
   }, [callId]);
 
-  // CRM link info (now using helper)
+  // CRM link info (single source of truth: proxy GET)
   async function loadLinkInfo() {
     if (!callId) return;
+
+    // bump sequence so only the latest response can win
+    const seq = ++linkFetchSeqRef.current;
+
     try {
-      const link = await getCrmLink(callId);
-      setLinkInfo(link || null);
+      const j: any = await fetchJsonWithRetry(
+        `/api/proxy/v1/crm/link?callId=${encodeURIComponent(callId)}`,
+        { cache: "no-store" }
+      );
+
+      // ignore out-of-order responses
+      if (seq !== linkFetchSeqRef.current) return;
+
+      if (!j || j?.ok === false) {
+        setLinkInfo(null);
+        return;
+      }
+
+      setLinkInfo({
+        contact: j?.contact ?? null,
+        account: j?.account ?? null,
+        opportunity: j?.opportunity ?? null,
+      });
     } catch {
-      // ignore
+      // ignore out-of-order errors too
+      if (seq !== linkFetchSeqRef.current) return;
+      setLinkInfo(null);
     }
   }
   useEffect(() => {
@@ -620,14 +618,28 @@ async function deleteAssignment(id: string) {
     }
   }
 
-  // --- CRM: link by email (helper) ---
+  // --- CRM: link by email (single source of truth: proxy POST) ---
   async function onLinkByEmail() {
     try {
+      const email = String(linkEmail || "").trim();
+      if (!email || !email.includes("@")) return;
+
       setLinkLoading(true);
       setLinkMsg(null);
-      await linkCallByEmail(callId, linkEmail);
+
+      const resp: any = await fetchJsonWithRetry(`/api/proxy/v1/crm/link-call`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callId, email }),
+      });
+
+      if (resp?.ok === false) {
+        throw new Error(resp?.error || "Link failed");
+      }
+
       await loadLinkInfo();
       setLinkMsg("Linked ✓");
+      toast("Linked ✓");
       setTimeout(() => setLinkMsg(null), 1500);
       setLinkEmail("");
     } catch (e: any) {
@@ -639,18 +651,63 @@ async function deleteAssignment(id: string) {
 
   // --- CRM: unlink contact/account ---
   async function unlink(target: "contact" | "account") {
+    const prev = linkInfo;
+
+    // Invalidate any in-flight link fetch so it can't overwrite our optimistic state.
+    // The next call to loadLinkInfo() will bump the seq again and become the winner.
+    linkFetchSeqRef.current++;
+
     try {
-      await fetchJsonWithRetry(`/api/proxy/v1/crm/unlink`, {
+      // Optimistic UI clear
+      setLinkInfo((cur) => {
+        if (!cur) return cur;
+        if (target === "contact") {
+          return { ...cur, contact: null, opportunity: null };
+        }
+        return { ...cur, account: null, opportunity: null };
+      });
+
+      const payload: any = {
+        callId,
+        target,
+        ...(target === "contact" ? { contact_id: null, contactId: null } : {}),
+        ...(target === "account" ? { account_id: null, accountId: null } : {}),
+        opportunity_id: null,
+        opportunityId: null,
+      };
+
+      const resp: any = await fetchJsonWithRetry(`/api/proxy/v1/crm/unlink`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ callId, target }),
+        body: JSON.stringify(payload),
       });
+
+      if (resp?.ok === false) {
+        throw new Error(resp?.error || "Unlink failed");
+      }
+
+      // Source of truth refresh (guarded against stale responses)
       await loadLinkInfo();
-      toast(`${target} unlinked.`);
+
+      toast(`${target} unlinked ✓`);
     } catch (e: any) {
+      setLinkInfo(prev ?? null);
       toast(e?.message || "Unlink failed");
     }
   }
+
+  // --- CRM: open linked entities ---
+  const openContact = useCallback(() => {
+    const cid = linkInfo?.contact?.id;
+    if (!cid) return;
+    router.push(`/crm/contacts/${encodeURIComponent(String(cid))}`);
+  }, [linkInfo?.contact?.id, router]);
+
+  const openAccount = useCallback(() => {
+    const aid = linkInfo?.account?.id;
+    if (!aid) return;
+    router.push(`/crm/accounts/${encodeURIComponent(String(aid))}`);
+  }, [linkInfo?.account?.id, router]);
 
   // contact search + link (by selecting a contact, we use their email)
   function debouncedSearchContacts(term: string) {
@@ -661,7 +718,10 @@ async function deleteAssignment(id: string) {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchAbortRef.current?.abort();
 
-    if (!term.trim()) {
+    const cleaned = term.trim();
+
+    // Guard: don’t search for 0–1 chars (prevents spam + feels snappier)
+    if (cleaned.length < 2) {
       setResults([]);
       setIdx(0);
       return;
@@ -673,7 +733,7 @@ async function deleteAssignment(id: string) {
       searchAbortRef.current = ac;
       try {
         const r = await proxyFetch(
-          `/v1/crm/contacts?q=${encodeURIComponent(term)}&limit=12`,
+          `/v1/crm/contacts?query=${encodeURIComponent(cleaned)}&limit=12`,
           { signal: ac.signal, cache: "no-store" }
         );
         const j = await r.json().catch(() => ({}));
@@ -690,16 +750,31 @@ async function deleteAssignment(id: string) {
   async function linkContactId(contactId: string) {
     setBusy(true);
     setSearchErr(null);
+
     try {
       const c = results.find((x) => x.id === contactId);
-      if (c?.email) {
-        await linkCallByEmail(callId, c.email);
-        await loadLinkInfo();
-        setQ("");
-        setResults([]);
-      } else {
-        throw new Error("Selected contact has no email");
+      const email = String(c?.email ?? "").trim();
+      if (!email) throw new Error("Selected contact has no email");
+
+      // Source of truth: direct proxy POST to the backend endpoint
+      const resp: any = await fetchJsonWithRetry(`/api/proxy/v1/crm/link-call`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callId, email }),
+      });
+
+      // If fetchJsonWithRetry doesn't throw but returns ok:false
+      if (resp?.ok === false) {
+        throw new Error(resp?.error || "Link failed");
       }
+
+      toast("Linked ✓");
+      await loadLinkInfo();
+
+      // Close results list / reset search UI
+      setQ("");
+      setResults([]);
+      setIdx(0);
     } catch (e: any) {
       setSearchErr(e?.message || "Link failed");
     } finally {
@@ -747,7 +822,7 @@ async function deleteAssignment(id: string) {
     router.replace(`${pathname}?${url.searchParams.toString()}`);
   };
 
-    // Keyboard shortcuts: c = CRM, a = Coach (Assign)
+  // Keyboard shortcuts: c = CRM, a = Coach (Assign)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -769,11 +844,20 @@ async function deleteAssignment(id: string) {
       ? Math.round(Number(callMeta.score_overall))
       : null;
 
-  const contactChip = linkInfo?.contact
-    ? ([linkInfo.contact.first_name, linkInfo.contact.last_name].filter(Boolean).join(" ").trim() || linkInfo.contact.email || linkInfo.contact.id)
-    : null;
+  function formatContactName(c: any): string | null {
+    if (!c) return null;
+    const first = String(c?.first_name ?? c?.firstName ?? "").trim();
+    const last = String(c?.last_name ?? c?.lastName ?? "").trim();
+    const full = [first, last].filter(Boolean).join(" ").trim();
+    return full || String(c?.email ?? "").trim() || String(c?.id ?? "").trim() || null;
+  }
+  const contactChip = formatContactName(linkInfo?.contact);
   const accountChip = linkInfo?.account
     ? (linkInfo.account.name || linkInfo.account.domain || linkInfo.account.id)
+    : null;
+
+  const opportunityChip = linkInfo?.opportunity
+    ? (linkInfo.opportunity.name || linkInfo.opportunity.id)
     : null;
 
   const durationLabel = formatCallDuration(callMeta);
@@ -786,17 +870,17 @@ async function deleteAssignment(id: string) {
         <div className="flex items-start gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold break-all flex items-center gap-3">
             {loadingCall ? (
-  <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
-) : (
-  <>
-    {callMeta?.filename || `Call ${callId}`}
-    {overall != null ? (
-      <ScorePill score={overall} />
-    ) : (
-      <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
-    )}
-  </>
-)}
+              <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
+            ) : (
+              <>
+                {callMeta?.filename || `Call ${callId}`}
+                {overall != null ? (
+                  <ScorePill score={overall} />
+                ) : (
+                  <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
+                )}
+              </>
+            )}
           </h1>
 
           <div className="ml-auto flex items-center gap-2">
@@ -809,7 +893,7 @@ async function deleteAssignment(id: string) {
             </button>
             <button onClick={() => openCoach(true)} className="rounded-xl border px-3 py-1.5 text-sm">
               Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-70">({assignmentCount})</span>}
-           </button>
+            </button>
             {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
               <a
                 href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
@@ -843,7 +927,7 @@ async function deleteAssignment(id: string) {
               AI
             </span>
           )}
-         
+
           {trend && trend.length > 1 && (
             <div className="ml-auto flex items-center gap-2 text-xs opacity-80">
               <span>Trend</span>
@@ -1094,7 +1178,7 @@ async function deleteAssignment(id: string) {
 
             {assignments.length > 0 && (
               <ul className="divide-y divide-neutral-800">
-                {assignments.map((a:any) => (
+                {assignments.map((a: any) => (
                   <li key={a.id} className="py-2 flex items-center justify-between gap-3">
                     <div className="text-sm">
                       <div className="font-medium">{a.drill_id}</div>
@@ -1177,12 +1261,25 @@ async function deleteAssignment(id: string) {
         {/* CRM summary chips (quick glance) */}
         <section className="space-y-2">
           <h2 className="text-lg font-medium">CRM</h2>
+
           <div className="flex flex-wrap gap-2 text-sm">
+            {/* Contact */}
             {contactChip ? (
               <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
-                <span>Contact: {contactChip}</span>
                 <button
-                  onClick={() => unlink("contact")}
+                  type="button"
+                  onClick={openContact}
+                  className="underline underline-offset-2 hover:opacity-90"
+                  title="Open contact"
+                >
+                  Contact: {contactChip}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unlink("contact");
+                  }}
                   className="opacity-60 hover:opacity-100"
                   aria-label="Unlink contact"
                   title="Unlink contact"
@@ -1191,13 +1288,26 @@ async function deleteAssignment(id: string) {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30">No contact linked</span>
+              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Contact: none</span>
             )}
+
+            {/* Account */}
             {accountChip ? (
               <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
-                <span>Account: {accountChip}</span>
                 <button
-                  onClick={() => unlink("account")}
+                  type="button"
+                  onClick={openAccount}
+                  className="underline underline-offset-2 hover:opacity-90"
+                  title="Open account"
+                >
+                  Account: {accountChip}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unlink("account");
+                  }}
                   className="opacity-60 hover:opacity-100"
                   aria-label="Unlink account"
                   title="Unlink account"
@@ -1206,9 +1316,17 @@ async function deleteAssignment(id: string) {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30">No account linked</span>
+              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Account: none</span>
+            )}
+
+            {/* Opportunity (placeholder only for now) */}
+            {opportunityChip ? (
+              <span className="px-2 py-0.5 rounded-full border bg-white/5 text-zinc-200">Opportunity: {opportunityChip}</span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Opportunity: none</span>
             )}
           </div>
+
           <button onClick={openCrm} className="rounded-xl border px-3 py-1.5 text-sm">
             Open CRM panel
           </button>
@@ -1219,13 +1337,13 @@ async function deleteAssignment(id: string) {
             Coach panel opened via deep link — “Assign Drill” preset is active.
           </div>
         )}
-{err && (
-  <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-    {err === "invalid callId"
-      ? "This is a demo placeholder call. No full metadata or audio is stored for this ID."
-      : err}
-  </div>
-)}
+        {err && (
+          <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {err === "invalid callId"
+              ? "This is a demo placeholder call. No full metadata or audio is stored for this ID."
+              : err}
+          </div>
+        )}
       </main>
 
       {/* === CRM DRAWER === */}
@@ -1252,12 +1370,69 @@ async function deleteAssignment(id: string) {
           <div className="mt-4 space-y-3 text-sm">
             {/* Current links */}
             <div className="rounded-xl border p-3">
-              <div className="opacity-70 text-xs mb-1">Linked Contact</div>
-              <div>{contactChip || <span className="opacity-60">None</span>}</div>
-            </div>
-            <div className="rounded-xl border p-3">
-              <div className="opacity-70 text-xs mb-1">Linked Account</div>
-              <div>{accountChip || <span className="opacity-60">None</span>}</div>
+              <div className="opacity-70 text-xs mb-2">Current links</div>
+
+              <div className="flex flex-wrap gap-2">
+                {contactChip ? (
+                  <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openContact}
+                      className="underline underline-offset-2 hover:opacity-90"
+                      title="Open contact"
+                    >
+                      Contact: {contactChip}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unlink("contact");
+                      }}
+                      className="opacity-60 hover:opacity-100"
+                      aria-label="Unlink contact"
+                      title="Unlink contact"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Contact: none</span>
+                )}
+
+                {accountChip ? (
+                  <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openAccount}
+                      className="underline underline-offset-2 hover:opacity-90"
+                      title="Open account"
+                    >
+                      Account: {accountChip}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unlink("account");
+                      }}
+                      className="opacity-60 hover:opacity-100"
+                      aria-label="Unlink account"
+                      title="Unlink account"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Account: none</span>
+                )}
+
+                {opportunityChip ? (
+                  <span className="px-2 py-0.5 rounded-full border bg-white/5 text-zinc-200">Opportunity: {opportunityChip}</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Opportunity: none</span>
+                )}
+              </div>
             </div>
 
             <div className="border-top border-neutral-800 pt-3 mt-2" />
@@ -1289,6 +1464,7 @@ async function deleteAssignment(id: string) {
               {linkMsg && <div className="text-green-400 text-xs">{linkMsg}</div>}
             </div>
 
+
             {/* Search contacts */}
             <div className="space-y-2">
               <div className="opacity-80 text-xs">Search contacts</div>
@@ -1303,13 +1479,62 @@ async function deleteAssignment(id: string) {
               />
               {searchErr && <div className="text-xs text-red-400">{searchErr}</div>}
               {q && (
-                <div className="rounded-xl border divide-y max-h-56 overflow-auto" role="listbox" aria-label="Contacts">
+                <div
+                  className="rounded-xl border divide-y max-h-56 overflow-auto"
+                  role="listbox"
+                  aria-label="Contacts"
+                >
                   {results.length === 0 ? (
-                    <div className="p-3 text-xs opacity-70">No results</div>
+                    <>
+                      <div className="p-3 text-xs opacity-70">No results</div>
+
+                      {q.includes("@") && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              setBusy(true);
+                              setSearchErr(null);
+
+                              const resp: any = await fetchJsonWithRetry(
+                                `/api/proxy/v1/crm/link-call`,
+                                {
+                                  method: "POST",
+                                  headers: { "content-type": "application/json" },
+                                  body: JSON.stringify({ callId, email: q.trim() }),
+                                }
+                              );
+
+                              if (resp?.ok === false) {
+                                throw new Error(resp?.error || "Link failed");
+                              }
+
+                              toast("Linked ✓");
+                              await loadLinkInfo();
+
+                              setQ("");
+                              setResults([]);
+                              setIdx(0);
+                            } catch (e: any) {
+                              setSearchErr(e?.message || "Create + link failed");
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          disabled={busy}
+                          className="w-full text-left p-3 hover:bg-neutral-900 border-t border-neutral-800 text-emerald-400"
+                        >
+                          Create contact: {q}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     results.map((c, i) => {
-                      const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+                      const name = [c.first_name, c.last_name]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim();
                       const selected = i === idx;
+
                       return (
                         <button
                           key={c.id}
@@ -1318,11 +1543,18 @@ async function deleteAssignment(id: string) {
                           aria-selected={selected}
                           onMouseEnter={() => setIdx(i)}
                           onClick={() => linkContactId(c.id)}
-                          className={`w-full text-left p-3 ${selected ? "bg-white/10" : "hover:bg-neutral-900"}`}
+                          className={`w-full text-left p-3 ${selected ? "bg-white/10" : "hover:bg-neutral-900"
+                            }`}
                           disabled={busy}
                         >
-                          <div className="text-sm">{name || c.email || c.id}</div>
-                          {c.email && <div className="text-xs opacity-70">{c.email}</div>}
+                          <div className="text-sm">
+                            {name || c.email || c.id}
+                          </div>
+                          {c.email && (
+                            <div className="text-xs opacity-70">
+                              {c.email}
+                            </div>
+                          )}
                         </button>
                       );
                     })
@@ -1360,116 +1592,116 @@ async function deleteAssignment(id: string) {
               Close
             </button>
           </div>
-          {assignments.slice(0,3).map((a:any) => (
-  <span key={a.id} className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs opacity-80">
-    <span>{a.drill_id}</span>
-    <span className="opacity-60">· {a.created_at ? new Date(a.created_at).toLocaleString() : ""}</span>
-  </span>
-))}
+          {assignments.slice(0, 3).map((a: any) => (
+            <span key={a.id} className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs opacity-80">
+              <span>{a.drill_id}</span>
+              <span className="opacity-60">· {a.created_at ? new Date(a.created_at).toLocaleString() : ""}</span>
+            </span>
+          ))}
 
           <div className="mt-4 space-y-4 text-sm">
 
-{/* --- ADD: Assign form --- */}
-<div id="assign-form" className="space-y-2 mt-3">
-  <label className="block text-sm opacity-80">Assignee User ID</label>
-  <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-    value={assigneeUserId} onChange={e => setAssigneeUserId(e.target.value)} />
+            {/* --- ADD: Assign form --- */}
+            <div id="assign-form" className="space-y-2 mt-3">
+              <label className="block text-sm opacity-80">Assignee User ID</label>
+              <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                value={assigneeUserId} onChange={e => setAssigneeUserId(e.target.value)} />
 
-  <label className="block text-sm opacity-80">Drill</label>
-  <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-    value={drillId} onChange={e => setDrillId(e.target.value)}>
- {drills.length ? (
-  drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)
-) : (
-  <>
-    <option value="intro-basics">Intro: Basics</option>
-    <option value="discovery-5qs">Discovery: Top 5 Qs</option>
-    <option value="objection-too-expensive">Objection: “Too expensive”</option>
-    <option value="close-trial">Close: Trial close</option>
-  </>
-)}
-  </select>
+              <label className="block text-sm opacity-80">Drill</label>
+              <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                value={drillId} onChange={e => setDrillId(e.target.value)}>
+                {drills.length ? (
+                  drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)
+                ) : (
+                  <>
+                    <option value="intro-basics">Intro: Basics</option>
+                    <option value="discovery-5qs">Discovery: Top 5 Qs</option>
+                    <option value="objection-too-expensive">Objection: “Too expensive”</option>
+                    <option value="close-trial">Close: Trial close</option>
+                  </>
+                )}
+              </select>
 
-  <label className="block text-sm opacity-80">Notes</label>
-  <textarea className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-    rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+              <label className="block text-sm opacity-80">Notes</label>
+              <textarea className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
 
-  {assignError && <ErrorBox msg={assignError} />}
+              {assignError && <ErrorBox msg={assignError} />}
 
-  <button
-    onClick={onSaveAssign}
-    disabled={assignSaving || !assigneeUserId || !drillId}
-    className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">
-    {assignSaving ? "Saving..." : "Save Assignment"}
-  </button>
-</div>
-
-{/* Assignments list (remove) */}
-<div className="rounded-xl border p-3 space-y-2">
-  <h3 className="font-medium">Assignments</h3>
-  {assignments.length === 0 ? (
-    <div className="text-sm opacity-70">No assignments yet.</div>
-  ) : (
-    <ul className="divide-y divide-neutral-800">
-      {assignments.map((a:any) => (
-        <li key={a.id} className="py-2 flex items-center justify-between text-sm">
-          <div className="flex flex-col">
-            <span className="font-medium">{a.drill_id}</span>
-            <span className="opacity-60">{new Date(a.created_at).toLocaleString()}</span>
-          </div>
-          <button
-            onClick={async () => {
-              try {
-                await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
-                await loadAssignments();
-                toast("Assignment removed.");
-              } catch (e:any) {
-                toast(e?.message || "Failed to remove.");
-              }
-            }}
-            className="px-2 py-1 rounded bg-red-600 hover:bg-red-500"
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-    </ul>
-  )}
-</div>
-
-            
+              <button
+                onClick={onSaveAssign}
+                disabled={assignSaving || !assigneeUserId || !drillId}
+                className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">
+                {assignSaving ? "Saving..." : "Save Assignment"}
+              </button>
             </div>
 
-            {/* Coaching notes */}
-<div className="rounded-xl border p-3">
-  <div className="flex items-center gap-2 mb-2">
-    <h3 className="font-medium">Notes</h3>
-    {notesSaving && <span className="text-xs opacity-70">Saving…</span>}
-  </div>
-  <textarea
-    className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 min-h-[100px]"
-    placeholder="Add quick guidance for the rep…"
-    value={coachNotes}
-    onChange={(e) => setCoachNotes(e.target.value)}
-    onBlur={async () => {
-      try {
-        setNotesSaving(true);
-        await fetchJsonWithRetry(`/api/proxy/v1/coach/notes`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ callId, notes: coachNotes })
-        });
-        toast("Saved");
-      } catch (e:any) {
-        toast(e?.message || "Failed to save");
-      } finally {
-        setNotesSaving(false);
-      }
-    }}
-  />
-</div>
+            {/* Assignments list (remove) */}
+            <div className="rounded-xl border p-3 space-y-2">
+              <h3 className="font-medium">Assignments</h3>
+              {assignments.length === 0 ? (
+                <div className="text-sm opacity-70">No assignments yet.</div>
+              ) : (
+                <ul className="divide-y divide-neutral-800">
+                  {assignments.map((a: any) => (
+                    <li key={a.id} className="py-2 flex items-center justify-between text-sm">
+                      <div className="flex flex-col">
+                        <span className="font-medium">{a.drill_id}</span>
+                        <span className="opacity-60">{new Date(a.created_at).toLocaleString()}</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
+                            await loadAssignments();
+                            toast("Assignment removed.");
+                          } catch (e: any) {
+                            toast(e?.message || "Failed to remove.");
+                          }
+                        }}
+                        className="px-2 py-1 rounded bg-red-600 hover:bg-red-500"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+
+          </div>
+
+          {/* Coaching notes */}
+          <div className="rounded-xl border p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-medium">Notes</h3>
+              {notesSaving && <span className="text-xs opacity-70">Saving…</span>}
+            </div>
+            <textarea
+              className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 min-h-[100px]"
+              placeholder="Add quick guidance for the rep…"
+              value={coachNotes}
+              onChange={(e) => setCoachNotes(e.target.value)}
+              onBlur={async () => {
+                try {
+                  setNotesSaving(true);
+                  await fetchJsonWithRetry(`/api/proxy/v1/coach/notes`, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ callId, notes: coachNotes })
+                  });
+                  toast("Saved");
+                } catch (e: any) {
+                  toast(e?.message || "Failed to save");
+                } finally {
+                  setNotesSaving(false);
+                }
+              }}
+            />
           </div>
         </div>
+      </div>
       {/* === /COACH DRAWER === */}
     </AuthGate>
   );

@@ -514,17 +514,21 @@ export async function searchContacts(query: string, limit = 12) {
 }
 
 export async function linkCallByEmail(callId: string, email: string) {
-  const r = await jfetch<{ ok: true; link: any }>(`${PROXY}/v1/crm/link-call`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ callId, email }),
-  });
-  return r.link;
+  // Single source of truth: always go through our proxy helpers.
+  // This keeps auth/header injection consistent and matches backend behaviour (incl demo-### call IDs).
+  const j = await proxyPost<{ ok: true; link: any }>(
+    `/v1/crm/link-call`,
+    { callId, email }
+  );
+  return (j as any).link;
 }
 
 export async function getCrmLink(callId: string) {
-  const r = await jfetch<{ ok: true; link: any }>(`${PROXY}/v1/crm/calls/${callId}/link`);
-  return r.link;
+  // Single source of truth: proxy helper + safe encoding.
+  const j = await proxyGet<{ ok: true; link: any }>(
+    `/v1/crm/calls/${encodeURIComponent(String(callId))}/link`
+  );
+  return (j as any).link;
 }
 
 /** Optional: latest job for a call (if your API exposes it) */
@@ -740,6 +744,24 @@ export async function proxyPost<T = ApiJson>(path: string, body: any, init: Requ
   const r = await proxyFetch(path, {
     ...init,
     method: "POST",
+    headers,
+    body: JSON.stringify(body ?? {}),
+  });
+
+  const json = (await r.json().catch(() => null)) as any;
+  if (!r.ok || !json?.ok) {
+    throw new Error(json?.error || json?.message || `request_failed_${r.status}`);
+  }
+  return json as T;
+}
+
+export async function proxyPatch<T = ApiJson>(path: string, body: any, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  const r = await proxyFetch(path, {
+    ...init,
+    method: "PATCH",
     headers,
     body: JSON.stringify(body ?? {}),
   });
