@@ -1,5 +1,5 @@
 // src/app/crm/overview/page.tsx
- 'use client';
+'use client';
 
 export const dynamic = "force-dynamic";
 import { useState, useEffect } from 'react';
@@ -37,8 +37,8 @@ function ScorePill({ score }: { score: number }) {
   const cls = score >= 80
     ? 'bg-green-600/20 text-green-400'
     : score >= 60
-    ? 'bg-amber-600/20 text-amber-300'
-    : 'bg-red-600/20 text-red-300';
+      ? 'bg-amber-600/20 text-amber-300'
+      : 'bg-red-600/20 text-red-300';
   return <span className={`text-xs px-2 py-1 rounded ${cls}`}>{Math.round(score)}</span>;
 }
 
@@ -124,6 +124,8 @@ const XAxis = nextDynamic(() => import('recharts').then(m => m.XAxis), { ssr: fa
 const YAxis = nextDynamic(() => import('recharts').then(m => m.YAxis), { ssr: false });
 const Tooltip = nextDynamic(() => import('recharts').then(m => m.Tooltip), { ssr: false });
 const Cell = nextDynamic(() => import('recharts').then(m => m.Cell), { ssr: false });
+const LineChart = nextDynamic(() => import('recharts').then(m => m.LineChart), { ssr: false });
+const Line = nextDynamic(() => import('recharts').then(m => m.Line), { ssr: false });
 
 export default function CrmOverviewPage() {
   // Mark this route as "open" for auth guards (debug-only — no control flow changes here)
@@ -133,7 +135,7 @@ export default function CrmOverviewPage() {
     try {
       // Helpful when tracking redirect loops in staging
       console.debug('[CRM Overview] open-route check:', { path: __crmPathname, isOpen: __isOpen });
-    } catch {}
+    } catch { }
   }, [__isOpen]);
   const [trends, setTrends] = useState<DashboardKpisResp | null>(null);
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
@@ -152,6 +154,14 @@ export default function CrmOverviewPage() {
   const [loadingNudges, setLoadingNudges] = useState<boolean>(true);
   const [controlCentre, setControlCentre] = useState<ControlCentreResp | null>(null);
   const [loadingControlCentre, setLoadingControlCentre] = useState<boolean>(true);
+  // --- Day 53 Analytics ---
+  const [analyticsSummary, setAnalyticsSummary] = useState<any | null>(null);
+  const [stageConversion, setStageConversion] = useState<Record<string, number> | null>(null);
+  const [scoreTrend, setScoreTrend] = useState<{ date: string, avg_score: number }[] | null>(null);
+  const [activityByRep, setActivityByRep] = useState<any[] | null>(null);
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30);
+  const [analyticsRep, setAnalyticsRep] = useState<string | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState<boolean>(true);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -352,40 +362,87 @@ export default function CrmOverviewPage() {
     };
   }, []);
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  (async () => {
-    try {
-      const resp = await fetchJsonWithRetry<DashboardKpisResp>(
-        "/api/proxy/v1/dashboard/kpis?days=90"
-      );
-      if (!alive) return;
-      if (resp && (resp as any).ok !== false) {
-        setTrends(resp);
+    (async () => {
+      try {
+        const resp = await fetchJsonWithRetry<DashboardKpisResp>(
+          "/api/proxy/v1/dashboard/kpis?days=90"
+        );
+        if (!alive) return;
+        if (resp && (resp as any).ok !== false) {
+          setTrends(resp);
+        }
+      } catch (e) {
+        if (alive) {
+          setTrends({
+            ok: false as any,
+            total_calls: 0,
+            avg_score_overall: null,
+            conversion_rate_90d: null as any,
+            callsAnalyzed: [],
+            avgScore: [],
+            winRate: [],
+            top_accounts: [],
+            top_reps: [],
+            since: new Date().toISOString(),
+          } as any);
+        }
+        console.error("getDashboardKpis via proxy failed", e);
       }
-    } catch (e) {
-      if (alive) {
-        setTrends({
-          ok: false as any,
-          total_calls: 0,
-          avg_score_overall: null,
-          conversion_rate_90d: null as any,
-          callsAnalyzed: [],
-          avgScore: [],
-          winRate: [],
-          top_accounts: [],
-          top_reps: [],
-          since: new Date().toISOString(),
-        } as any);
-      }
-      console.error("getDashboardKpis via proxy failed", e);
-    }
-  })();
+    })();
 
-  return () => {
-    alive = false;
-  };
-}, []);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // --- Day 53 Analytics Loader ---
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoadingAnalytics(true);
+
+      try {
+        const summary = await fetchJsonWithRetry<any>(
+          `/api/proxy/v1/crm/analytics/summary?days=${analyticsDays}${analyticsRep ? `&repId=${analyticsRep}` : ""}`
+        );
+
+        const stages = await fetchJsonWithRetry<any>(
+          `/api/proxy/v1/crm/analytics/stage-conversion?days=${analyticsDays}`
+        );
+
+        const trend = await fetchJsonWithRetry<any>(
+          `/api/proxy/v1/crm/analytics/score-trend?days=${analyticsDays}`
+        );
+
+        const repActivity = await fetchJsonWithRetry<any>(
+          `/api/proxy/v1/crm/analytics/activity-by-rep?days=${analyticsDays}`
+        );
+
+        if (!alive) return;
+
+        setAnalyticsSummary(summary);
+        setStageConversion(stages?.stages ?? {});
+        setScoreTrend(trend?.trend ?? []);
+        setActivityByRep(repActivity?.reps ?? []);
+
+      } catch (e) {
+        console.debug("Analytics load failed", e);
+        if (alive) {
+          setAnalyticsSummary(null);
+          setStageConversion(null);
+          setScoreTrend(null);
+          setActivityByRep(null);
+        }
+      } finally {
+        if (alive) setLoadingAnalytics(false);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [analyticsDays, analyticsRep]);
   useEffect(() => {
     let alive = true;
     // Load assignments (requires one of callId/accountId/contactId/assigneeUserId|repId). If no rep filter, skip.
@@ -711,7 +768,7 @@ export default function CrmOverviewPage() {
                 : { className: "px-3 py-2" };
 
               return (
-                <li key={contactId || `${name}-${email}-${company}` }>
+                <li key={contactId || `${name}-${email}-${company}`}>
                   <RowWrap {...rowProps}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -1064,6 +1121,107 @@ export default function CrmOverviewPage() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* ---------------- CRM Analytics (Day 53) ---------------- */}
+      <div className="mt-8 rounded-xl border border-neutral-800 p-4">
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm font-medium text-neutral-200">CRM Analytics</div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <select
+              value={analyticsDays}
+              onChange={(e) => setAnalyticsDays(Number(e.target.value))}
+              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+            >
+              <option value={7}>7d</option>
+              <option value={30}>30d</option>
+              <option value={90}>90d</option>
+            </select>
+
+            <input
+              placeholder="Rep ID"
+              value={analyticsRep ?? ""}
+              onChange={(e) => setAnalyticsRep(e.target.value || null)}
+              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+            />
+          </div>
+        </div>
+
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+
+          <div className="border border-neutral-800 rounded p-3">
+            <div className="text-xs text-neutral-400">Opportunities</div>
+            <div className="text-xl font-semibold">{analyticsSummary?.opportunities ?? '—'}</div>
+          </div>
+
+          <div className="border border-neutral-800 rounded p-3">
+            <div className="text-xs text-neutral-400">Won</div>
+            <div className="text-xl font-semibold">{analyticsSummary?.won ?? '—'}</div>
+          </div>
+
+          <div className="border border-neutral-800 rounded p-3">
+            <div className="text-xs text-neutral-400">Conversion</div>
+            <div className="text-xl font-semibold">{analyticsSummary?.conversion_rate ?? '—'}%</div>
+          </div>
+
+          <div className="border border-neutral-800 rounded p-3">
+            <div className="text-xs text-neutral-400">Avg Score</div>
+            <div className="text-xl font-semibold">{analyticsSummary?.avg_score ?? '—'}</div>
+          </div>
+
+        </div>
+
+        {/* Conversion by stage */}
+        <div className="mb-6">
+          <div className="text-sm mb-2 text-neutral-300">Conversion by Stage</div>
+          <div className="flex flex-wrap gap-2">
+            {stageConversion && Object.entries(stageConversion).map(([stage, count]) => (
+              <span key={stage} className="text-xs border border-neutral-700 rounded px-2 py-1">
+                {stage}: {count}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Score trend */}
+        <div className="mb-6 h-48">
+          <div className="text-sm mb-2 text-neutral-300">Avg Score Trend</div>
+
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={scoreTrend ?? []}>
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#bbb" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#bbb" }} />
+              <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333" }} />
+
+              <Line
+                type="monotone"
+                dataKey="avg_score"
+                stroke="#38bdf8"
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Activity by rep */}
+        <div>
+          <div className="text-sm mb-2 text-neutral-300">Activity by Rep</div>
+
+          <div className="space-y-1">
+            {(activityByRep ?? []).slice(0, 6).map((r: any) => (
+              <div key={r.rep_id} className="flex justify-between text-xs border border-neutral-800 rounded px-2 py-1">
+                <span>{r.rep_name ?? r.rep_id}</span>
+                <span>{r.activities_completed}/{r.activities_created}</span>
+              </div>
+            ))}
+          </div>
+
+        </div>
+
       </div>
 
       {/* Secondary row of stubs (optional) */}
