@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import html2canvas from "html2canvas";
 import { proxyFetch } from "@/lib/api";
+import { supabase } from "@/lib/supabaseClient";
 import {
   LineChart,
   Line,
@@ -41,23 +43,37 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState(30);
   const [selectedRep, setSelectedRep] = useState<string>("all");
 
-  async function load() {
+  const load = useCallback(async () => {
+    const cacheKey = `crm:analytics:${days}:${selectedRep}`;
+
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+
+      if (cached) {
+        const parsed = JSON.parse(cached);
+
+        if (parsed?.conversion) setConversion(parsed.conversion);
+        if (parsed?.scoreTrend) setScoreTrend(parsed.scoreTrend);
+        if (parsed?.repActivity) setRepActivity(parsed.repActivity);
+      }
+    } catch {}
+
     const repParam = selectedRep !== "all" ? `&repId=${encodeURIComponent(selectedRep)}` : "";
 
     const conv = await proxyFetch(
-      `/api/proxy/v1/crm/analytics/stage-conversion?days=${days}${repParam}`,
+      `/v1/crm/analytics/stage-conversion?days=${days}${repParam}`,
       { cache: "no-store" }
     );
     const convJson = await conv.json();
 
     const score = await proxyFetch(
-      `/api/proxy/v1/crm/analytics/score-trend?days=${days}${repParam}`,
+      `/v1/crm/analytics/score-trend?days=${days}${repParam}`,
       { cache: "no-store" }
     );
     const scoreJson = await score.json();
 
     const rep = await proxyFetch(
-      `/api/proxy/v1/crm/analytics/activity-by-rep?days=${days}${repParam}`,
+      `/v1/crm/analytics/activity-by-rep?days=${days}${repParam}`,
       { cache: "no-store" }
     );
     const repJson = await rep.json();
@@ -75,21 +91,55 @@ export default function AnalyticsPage() {
         }))
       : [];
 
+    const repRows: RepActivity[] = Array.isArray(repJson?.reps) ? repJson.reps : [];
+
     setConversion(stageRows);
     setScoreTrend(trendRows);
-    setRepActivity(repJson?.reps ?? []);
-  }
+    setRepActivity(repRows);
+
+    try {
+      sessionStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          conversion: stageRows,
+          scoreTrend: trendRows,
+          repActivity: repRows,
+        })
+      );
+    } catch {}
+  }, [days, selectedRep]);
 
   useEffect(() => {
-    load();
-  }, [days, selectedRep]);
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("analytics-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "calls",
+        },
+        () => {
+          void load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
       try {
-        const rep = await proxyFetch(`/api/proxy/v1/crm/analytics/activity-by-rep?days=90`, {
+        const rep = await proxyFetch(`/v1/crm/analytics/activity-by-rep?days=90`, {
           cache: "no-store",
         });
         const repJson = await rep.json();
@@ -97,9 +147,9 @@ export default function AnalyticsPage() {
 
         const reps: RepOption[] = Array.isArray(repJson?.reps)
           ? repJson.reps.map((r: any) => ({
-              rep_id: String(r?.rep_id ?? ""),
-              rep_name: r?.rep_name ? String(r.rep_name) : undefined,
-            }))
+            rep_id: String(r?.rep_id ?? ""),
+            rep_name: r?.rep_name ? String(r.rep_name) : undefined,
+          }))
           : [];
 
         setRepOptions(reps);
@@ -112,6 +162,97 @@ export default function AnalyticsPage() {
       alive = false;
     };
   }, []);
+
+  function exportCSV(filename: string, rows: Array<Record<string, any>>) {
+    if (!rows.length) return;
+    const headers = Object.keys(rows[0]);
+    const csv = [
+      headers.join(","),
+      ...rows.map((row) =>
+        headers
+          .map((h) => {
+            const v = row[h] ?? "";
+            const s = String(v).replace(/"/g, '""');
+            return `"${s}"`;
+          })
+          .join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportPNG(elementId: string, filename: string) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const svg = el.querySelector("svg");
+
+    // Prefer exporting the chart SVG directly because html2canvas can choke on
+    // modern CSS colour functions like oklch used elsewhere in the app.
+    if (svg) {
+      const svgClone = svg.cloneNode(true) as SVGSVGElement;
+      const width = Number(svg.getAttribute("width")) || svg.clientWidth || 1200;
+      const height = Number(svg.getAttribute("height")) || svg.clientHeight || 500;
+
+      svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      svgClone.setAttribute("width", String(width));
+      svgClone.setAttribute("height", String(height));
+
+      const svgData = new XMLSerializer().serializeToString(svgClone);
+      const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("svg_export_failed"));
+        img.src = url;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      ctx.scale(2, 2);
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      URL.revokeObjectURL(url);
+
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      return;
+    }
+
+    // Fallback for non-chart blocks.
+    const canvas = await html2canvas(el, {
+      backgroundColor: "#0a0a0a",
+      scale: 2,
+    });
+
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
 
   /* -------------------------- KPI Values -------------------------- */
 
@@ -196,12 +337,28 @@ export default function AnalyticsPage() {
 
       {/* HERO CHART */}
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
+      <div id="score-performance-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
 
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-medium">Score Performance</h2>
             <p className="text-xs text-neutral-400">Average call score trend</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportCSV("score_trend.csv", scoreTrend)}
+              className="px-3 py-2 text-sm bg-neutral-800 rounded-lg"
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportPNG("score-performance-card", "score-performance.png")}
+              className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
+            >
+              Export PNG
+            </button>
           </div>
         </div>
 
@@ -245,11 +402,30 @@ export default function AnalyticsPage() {
 
         {/* Stage Conversion */}
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+        <div id="conversion-by-stage-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
 
-          <h3 className="text-sm font-medium text-neutral-300 mb-4">
-            Conversion by Stage
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-neutral-300">
+              Conversion by Stage
+            </h3>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportCSV("conversion-by-stage.csv", conversion)}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportPNG("conversion-by-stage-card", "conversion-by-stage.png")}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
+              >
+                Export PNG
+              </button>
+            </div>
+          </div>
 
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={conversion}>
@@ -276,7 +452,7 @@ export default function AnalyticsPage() {
               <Bar
                 dataKey="count"
                 fill="#3b82f6"
-                radius={[6,6,0,0]}
+                radius={[6, 6, 0, 0]}
               />
 
             </BarChart>
@@ -287,11 +463,30 @@ export default function AnalyticsPage() {
 
         {/* Rep Activity */}
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+        <div id="activity-by-rep-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
 
-          <h3 className="text-sm font-medium text-neutral-300 mb-4">
-            Activity by Rep
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-neutral-300">
+              Activity by Rep
+            </h3>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportCSV("activity-by-rep.csv", repActivity)}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportPNG("activity-by-rep-card", "activity-by-rep.png")}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
+              >
+                Export PNG
+              </button>
+            </div>
+          </div>
 
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={repActivity}>
@@ -318,7 +513,7 @@ export default function AnalyticsPage() {
               <Bar
                 dataKey="activities_created"
                 fill="#8b5cf6"
-                radius={[6,6,0,0]}
+                radius={[6, 6, 0, 0]}
               />
 
             </BarChart>

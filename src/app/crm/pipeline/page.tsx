@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
+import { supabase } from "@/lib/supabaseClient"
 
 
 type StageKey = string;
@@ -1019,6 +1020,28 @@ useEffect(() => {
   fetchSummary();
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
+
+useEffect(() => {
+  const channel = supabase
+    .channel("crm-opportunities")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "crm_opportunities",
+      },
+      () => {
+        void refresh();
+        void fetchSummary();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [refresh, fetchSummary]);
 
 useEffect(() => {
   // Manager-only, fetch on demand when switching to Team.
