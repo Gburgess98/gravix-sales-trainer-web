@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
+import { supabase } from "@/lib/supabaseClient";
 
 type TaskItem = {
   id: string;
@@ -99,6 +100,27 @@ export default function CrmTasksPage() {
 
   useEffect(() => {
     void loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("crm-activities")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "crm_activities",
+        },
+        () => {
+          void loadTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadTasks]);
 
   useEffect(() => {
