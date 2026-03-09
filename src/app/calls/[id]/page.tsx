@@ -39,12 +39,52 @@ function scoreColour(score: number) {
   return "bg-red-600/20 text-red-300";
 }
 
+
 function ScorePill({ score, className = "" }: { score: number; className?: string }) {
   return (
     <span className={`inline-flex items-center rounded border px-2 py-0.5 text-sm ${scoreColour(score)} ${className}`}>
       {score}/100
     </span>
   );
+}
+
+function ReviewTagChip({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+        ok
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+          : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function getVoiceData(callMeta: any) {
+  const directVoiceScore =
+    typeof callMeta?.voice_score === "number"
+      ? Math.round(Number(callMeta.voice_score))
+      : typeof callMeta?.rubric?.voice_score === "number"
+        ? Math.round(Number(callMeta.rubric.voice_score))
+        : null;
+
+  const voiceRubric =
+    callMeta?.voice_rubric ??
+    callMeta?.rubric?.voice_rubric ??
+    null;
+
+  const reviewTags =
+    callMeta?.review_tags ??
+    callMeta?.rubric?.review_tags ??
+    null;
+
+  return {
+    voiceScore: directVoiceScore,
+    voiceRubric,
+    reviewTags,
+  };
 }
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -844,6 +884,43 @@ export default function CallPage() {
       ? Math.round(Number(callMeta.score_overall))
       : null;
 
+  const reviewBot = useMemo(() => {
+    const { voiceScore, voiceRubric, reviewTags } = getVoiceData(callMeta);
+
+    const fillerCount =
+      typeof reviewTags?.filler_count === "number"
+        ? Number(reviewTags.filler_count)
+        : 0;
+
+    const fillerWords = Array.isArray(reviewTags?.filler_words)
+      ? reviewTags.filler_words.filter(Boolean)
+      : [];
+
+    const weakClose = Boolean(reviewTags?.weak_close);
+
+    const rubricRows = [
+      { key: "tone", label: "Tone", value: typeof voiceRubric?.tone === "number" ? Math.round(Number(voiceRubric.tone)) : null },
+      { key: "clarity", label: "Clarity", value: typeof voiceRubric?.clarity === "number" ? Math.round(Number(voiceRubric.clarity)) : null },
+      { key: "confidence", label: "Confidence", value: typeof voiceRubric?.confidence === "number" ? Math.round(Number(voiceRubric.confidence)) : null },
+      { key: "filler", label: "Filler", value: typeof voiceRubric?.filler === "number" ? Math.round(Number(voiceRubric.filler)) : null },
+      { key: "close", label: "Close", value: typeof voiceRubric?.close === "number" ? Math.round(Number(voiceRubric.close)) : null },
+    ].filter((x) => x.value !== null);
+
+    return {
+      voiceScore,
+      fillerCount,
+      fillerWords,
+      weakClose,
+      rubricRows,
+      hasData:
+        voiceScore !== null ||
+        fillerCount > 0 ||
+        fillerWords.length > 0 ||
+        rubricRows.length > 0 ||
+        reviewTags?.weak_close === true,
+    };
+  }, [callMeta]);
+
   function formatContactName(c: any): string | null {
     if (!c) return null;
     const first = String(c?.first_name ?? c?.firstName ?? "").trim();
@@ -1000,6 +1077,80 @@ export default function CallPage() {
             )}
           </div>
         </section>
+
+        {/* Review Bot */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review Bot</div>
+              <h2 className="text-lg font-medium text-neutral-100">Voice breakdown</h2>
+            </div>
+
+            {reviewBot.voiceScore != null ? (
+              <ScorePill score={reviewBot.voiceScore} className="text-xs px-2 py-1" />
+            ) : (
+              <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">No voice score yet</span>
+            )}
+          </div>
+
+          {reviewBot.hasData ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ReviewTagChip
+                    ok={!reviewBot.weakClose}
+                    label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
+                  />
+                  <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
+                    Filler count: {reviewBot.fillerCount}
+                  </span>
+                </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
+                  {reviewBot.fillerWords.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {reviewBot.fillerWords.map((word: string) => (
+                        <span
+                          key={word}
+                          className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
+                        >
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
+                {reviewBot.rubricRows.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {reviewBot.rubricRows.map((item) => (
+                      <div
+                        key={item.key}
+                        className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
+                      >
+                        <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
+                        <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-neutral-400">Voice rubric will appear once a scored review includes breakdown data.</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 text-sm text-neutral-400">
+              No Review Bot breakdown has been generated for this call yet.
+            </div>
+          )}
+        </section>
+
         {postAction ? (
           <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
