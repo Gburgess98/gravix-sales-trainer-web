@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import RunHistoryTable from "@/components/RunHistoryTable";
 
+// DAY 56 TEMP DISABLED
+// These controls depend on manager auto-assign endpoints that are not yet
+// implemented in the API. Keep the code in place, but hide/disable the UI.
+const AUTO_ASSIGN_UI_ENABLED = false;
+
 // ------------------------------
 // API helpers (status-aware)
 // ------------------------------
@@ -116,6 +121,42 @@ type LastRun = {
   };
 };
 
+type TeamSettings = {
+  org_id: string;
+  streak_threshold: number;
+  xp_multiplier: number;
+  comeback_bonus: number;
+  xp_cap_daily: number;
+  voice_score_threshold: number;
+  weak_close_threshold: number;
+  filler_density_threshold: number;
+  coaching_trigger_thresholds?: {
+    voice_score_lt?: number;
+    weak_close?: boolean;
+    inactive_days_gt?: number;
+    [k: string]: any;
+  };
+  updated_at?: string | null;
+  updated_by?: string | null;
+};
+
+type TeamSettingsResp = {
+  ok: boolean;
+  exists?: boolean;
+  settings?: TeamSettings;
+  error?: string;
+};
+
+type BatchAssignResp = {
+  ok: boolean;
+  matched_count?: number;
+  assigned_count?: number;
+  failed_count?: number;
+  assigned?: Array<{ user_id: string; id: string | null; table: string }>;
+  failed?: Array<{ user_id: string; error: string }>;
+  error?: string;
+};
+
 const SLACK_ALERT_ACTIONS_CREATED_THRESHOLD = 25;
 
 const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -158,6 +199,14 @@ export default function ManagerClient({ initial }: { initial: any }) {
   const [maxTotalContacts, setMaxTotalContacts] = useState<number>(8);
   const [preview, setPreview] = useState<any | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [settings, setSettings] = useState<TeamSettings | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchMsg, setBatchMsg] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchAssignResp | null>(null);
+  const [batchDrillId, setBatchDrillId] = useState("closing_drill");
+  const [batchMode, setBatchMode] = useState<"low_voice" | "weak_close" | "inactive">("low_voice");
 
   // Derived preview helpers
   const previewRunId = useMemo(() => {
@@ -181,6 +230,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
     let cancelled = false;
 
     (async () => {
+      if (!AUTO_ASSIGN_UI_ENABLED) return;
       const r = await apiGet<any>("/api/proxy/v1/crm/manager/auto-assign/runs/latest");
       if (cancelled) return;
 
@@ -207,6 +257,38 @@ export default function ManagerClient({ initial }: { initial: any }) {
           totals: item.totals ?? undefined,
         });
       }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setSettingsBusy(true);
+      setSettingsMsg(null);
+
+      const r = await apiGet<TeamSettingsResp>("/api/proxy/v1/crm/manager/settings");
+      if (cancelled) return;
+
+      if (!r.ok) {
+        setApiError(r);
+        setSettingsBusy(false);
+        return;
+      }
+
+      const j = r.data as TeamSettingsResp;
+      if (!j?.ok || !j?.settings) {
+        setSettingsMsg(String(j?.error ?? "Failed to load manager settings"));
+        setSettingsBusy(false);
+        return;
+      }
+
+      setSettings(j.settings);
+      setSettingsBusy(false);
     })();
 
     return () => {
@@ -413,8 +495,328 @@ export default function ManagerClient({ initial }: { initial: any }) {
     }
   }
 
+  async function saveSettings() {
+    if (!settings) return;
+
+    setSettingsBusy(true);
+    setSettingsMsg(null);
+    setApiError(null);
+
+    try {
+      const rr = await apiPost<TeamSettingsResp>("/api/proxy/v1/crm/manager/settings", {
+        streak_threshold: Number(settings.streak_threshold ?? 3),
+        xp_multiplier: Number(settings.xp_multiplier ?? 1),
+        comeback_bonus: Number(settings.comeback_bonus ?? 0),
+        xp_cap_daily: Number(settings.xp_cap_daily ?? 500),
+        voice_score_threshold: Number(settings.voice_score_threshold ?? 60),
+        weak_close_threshold: Number(settings.weak_close_threshold ?? 60),
+        filler_density_threshold: Number(settings.filler_density_threshold ?? 0.08),
+        coaching_trigger_thresholds: {
+          ...(settings.coaching_trigger_thresholds ?? {}),
+          voice_score_lt: Number(
+            settings.coaching_trigger_thresholds?.voice_score_lt ??
+              settings.voice_score_threshold ??
+              60
+          ),
+          weak_close: Boolean(settings.coaching_trigger_thresholds?.weak_close ?? true),
+          inactive_days_gt: Number(settings.coaching_trigger_thresholds?.inactive_days_gt ?? 3),
+        },
+      });
+
+      if (!rr.ok) {
+        setApiError(rr);
+        throw new Error(rr.error);
+      }
+
+      const j = rr.data as TeamSettingsResp;
+      if (!j?.ok || !j?.settings) {
+        throw new Error(String(j?.error ?? "Failed to save manager settings"));
+      }
+
+      setSettings(j.settings);
+      setSettingsMsg("Manager settings saved.");
+    } catch (e: any) {
+      setSettingsMsg(String(e?.message ?? "Failed to save manager settings"));
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function runBatchAssign() {
+    setBatchBusy(true);
+    setBatchMsg(null);
+    setBatchResult(null);
+    setApiError(null);
+
+    try {
+      const criteria =
+        batchMode === "low_voice"
+          ? { voice_score_lt: Number(settings?.voice_score_threshold ?? 60) }
+          : batchMode === "weak_close"
+            ? { weak_close: true }
+            : { inactive_days_gt: Number(settings?.coaching_trigger_thresholds?.inactive_days_gt ?? 3) };
+
+      const rr = await apiPost<BatchAssignResp>("/api/proxy/v1/crm/assignments/manager/batch-assign", {
+        drill_id: batchDrillId,
+        title:
+          batchMode === "low_voice"
+            ? "Low Voice Score Drill"
+            : batchMode === "weak_close"
+              ? "Weak Close Drill"
+              : "Inactive Rep Comeback Drill",
+        criteria,
+      });
+
+      if (!rr.ok) {
+        setApiError(rr);
+        throw new Error(rr.error);
+      }
+
+      const j = rr.data as BatchAssignResp;
+      if (!j?.ok) {
+        throw new Error(String(j?.error ?? "Batch assignment failed"));
+      }
+
+      setBatchResult(j);
+      setBatchMsg(
+        `Batch assignment complete — matched ${Number(j.matched_count ?? 0)}, assigned ${Number(
+          j.assigned_count ?? 0
+        )}, failed ${Number(j.failed_count ?? 0)}.`
+      );
+    } catch (e: any) {
+      setBatchMsg(String(e?.message ?? "Batch assignment failed"));
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">Manager settings</h2>
+              <p className="mt-1 text-xs text-neutral-500">
+                Configure XP, streaks and coaching thresholds for this org.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={saveSettings}
+              disabled={settingsBusy || !settings}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {settingsBusy ? "Saving..." : "Save settings"}
+            </button>
+          </div>
+
+          {!settings ? (
+            <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 text-sm text-neutral-400">
+              {settingsBusy ? "Loading manager settings..." : "No settings loaded."}
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Streak threshold</span>
+                <input
+                  type="number"
+                  value={settings.streak_threshold}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, streak_threshold: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">XP multiplier</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={settings.xp_multiplier}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, xp_multiplier: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Comeback bonus</span>
+                <input
+                  type="number"
+                  value={settings.comeback_bonus}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, comeback_bonus: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Daily XP cap</span>
+                <input
+                  type="number"
+                  value={settings.xp_cap_daily}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, xp_cap_daily: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Voice score threshold</span>
+                <input
+                  type="number"
+                  value={settings.voice_score_threshold}
+                  onChange={(e) =>
+                    setSettings((s) =>
+                      s
+                        ? {
+                            ...s,
+                            voice_score_threshold: Number(e.target.value || 0),
+                            coaching_trigger_thresholds: {
+                              ...(s.coaching_trigger_thresholds ?? {}),
+                              voice_score_lt: Number(e.target.value || 0),
+                            },
+                          }
+                        : s
+                    )
+                  }
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Weak close threshold</span>
+                <input
+                  type="number"
+                  value={settings.weak_close_threshold}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, weak_close_threshold: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Filler density threshold</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={settings.filler_density_threshold}
+                  onChange={(e) => setSettings((s) => (s ? { ...s, filler_density_threshold: Number(e.target.value || 0) } : s))}
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+
+              <label className="block text-xs text-neutral-400">
+                <span className="mb-1 block">Inactive days trigger</span>
+                <input
+                  type="number"
+                  value={Number(settings.coaching_trigger_thresholds?.inactive_days_gt ?? 3)}
+                  onChange={(e) =>
+                    setSettings((s) =>
+                      s
+                        ? {
+                            ...s,
+                            coaching_trigger_thresholds: {
+                              ...(s.coaching_trigger_thresholds ?? {}),
+                              inactive_days_gt: Number(e.target.value || 0),
+                            },
+                          }
+                        : s
+                    )
+                  }
+                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+                />
+              </label>
+            </div>
+          )}
+
+          {settingsMsg ? (
+            <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-xs text-neutral-300">
+              {settingsMsg}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">Batch assign drills</h2>
+              <p className="mt-1 text-xs text-neutral-500">
+                Create manager coaching tasks in bulk from live performance signals.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={runBatchAssign}
+              disabled={batchBusy}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {batchBusy ? "Assigning..." : "Run batch assign"}
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <label className="block text-xs text-neutral-400">
+              <span className="mb-1 block">Drill id</span>
+              <input
+                type="text"
+                value={batchDrillId}
+                onChange={(e) => setBatchDrillId(e.target.value)}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+              />
+            </label>
+
+            <label className="block text-xs text-neutral-400">
+              <span className="mb-1 block">Target group</span>
+              <select
+                value={batchMode}
+                onChange={(e) => setBatchMode(e.target.value as "low_voice" | "weak_close" | "inactive")}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none"
+              >
+                <option value="low_voice">Low voice score reps</option>
+                <option value="weak_close">Weak close reps</option>
+                <option value="inactive">Inactive reps</option>
+              </select>
+            </label>
+
+            <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-400">
+              {batchMode === "low_voice" ? (
+                <>
+                  This will assign <span className="text-neutral-200">{batchDrillId || "closing_drill"}</span> to reps with voice score below <span className="text-neutral-200">{Number(settings?.voice_score_threshold ?? 60)}</span>.
+                </>
+              ) : batchMode === "weak_close" ? (
+                <>
+                  This will assign <span className="text-neutral-200">{batchDrillId || "closing_drill"}</span> to reps flagged with weak close.
+                </>
+              ) : (
+                <>
+                  This will assign <span className="text-neutral-200">{batchDrillId || "comeback_drill"}</span> to reps inactive for more than <span className="text-neutral-200">{Number(settings?.coaching_trigger_thresholds?.inactive_days_gt ?? 3)}</span> days.
+                </>
+              )}
+            </div>
+          </div>
+
+          {batchMsg ? (
+            <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-xs text-neutral-300">
+              {batchMsg}
+            </div>
+          ) : null}
+
+          {batchResult?.ok ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+                <div className="text-[11px] text-neutral-500">Matched</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-100">{Number(batchResult.matched_count ?? 0)}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+                <div className="text-[11px] text-neutral-500">Assigned</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-100">{Number(batchResult.assigned_count ?? 0)}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+                <div className="text-[11px] text-neutral-500">Failed</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-100">{Number(batchResult.failed_count ?? 0)}</div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
       {apiError && (
         <div className="mb-3 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3">
           <div className="flex items-start justify-between gap-4">
@@ -438,137 +840,145 @@ export default function ManagerClient({ initial }: { initial: any }) {
           </div>
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <button
-          disabled={busy}
-          onClick={() => {
-            setMsg(null);
-            setApiError(null);
-            setConfirmExecute(true);
-          }}
-          className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
-        >
-          {busy ? "Running…" : "Run auto-assign now"}
-        </button>
+      {AUTO_ASSIGN_UI_ENABLED ? (
+        <div className="flex items-center gap-3">
+          <button
+            disabled={busy}
+            onClick={() => {
+              setMsg(null);
+              setApiError(null);
+              setConfirmExecute(true);
+            }}
+            className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
+          >
+            {busy ? "Running…" : "Run auto-assign now"}
+          </button>
 
-        <button
-          disabled={busy}
-          onClick={() => {
-            setMsg(null);
-            setApiError(null);
-            runNow(true);
-          }}
-          className="px-3 py-2 rounded border border-neutral-700 text-sm disabled:opacity-60"
-        >
-          Dry run
-        </button>
+          <button
+            disabled={busy}
+            onClick={() => {
+              setMsg(null);
+              setApiError(null);
+              runNow(true);
+            }}
+            className="px-3 py-2 rounded border border-neutral-700 text-sm disabled:opacity-60"
+          >
+            Dry run
+          </button>
 
-        <button
-          disabled={busy || previewBusy}
-          onClick={() => {
-            setMsg(null);
-            setApiError(null);
-            setConfirmExecutePreviewId(null);
-            runPreview();
-          }}
-          className="px-3 py-2 rounded border border-neutral-700 text-sm font-medium disabled:opacity-60"
-        >
-          {previewBusy ? "Previewing…" : "Preview"}
-        </button>
+          <button
+            disabled={busy || previewBusy}
+            onClick={() => {
+              setMsg(null);
+              setApiError(null);
+              setConfirmExecutePreviewId(null);
+              runPreview();
+            }}
+            className="px-3 py-2 rounded border border-neutral-700 text-sm font-medium disabled:opacity-60"
+          >
+            {previewBusy ? "Previewing…" : "Preview"}
+          </button>
 
-        <div className="text-xs text-neutral-400 ml-auto">
-          mode: <span className="text-neutral-200">{mode}</span>
-        </div>
-      </div>
-
-      {confirmExecutePreviewId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
-            <div className="text-neutral-200 font-medium">Confirm execute</div>
-
-            <div className="text-sm text-neutral-400">
-              This will create CRM actions using the selected preview. This cannot be undone.
-            </div>
-
-            <div className="text-xs text-neutral-500">
-              preview_run_id: <span className="font-mono text-neutral-200">{confirmExecutePreviewId}</span>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setConfirmExecutePreviewId(null)}
-                className="px-3 py-2 rounded border border-neutral-700 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  const id = confirmExecutePreviewId;
-                  setConfirmExecutePreviewId(null);
-                  if (id) await executeFromPreview(id);
-                }}
-                className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
-              >
-                Yes, execute preview
-              </button>
-            </div>
+          <div className="text-xs text-neutral-400 ml-auto">
+            mode: <span className="text-neutral-200">{mode}</span>
           </div>
         </div>
-      )}
-      {confirmExecute && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
-            <div className="text-neutral-200 font-medium">Confirm execute</div>
+      ) : null}
 
-            <div className="text-sm text-neutral-400">
-              This will create CRM actions for reps. This cannot be undone.
-            </div>
+      {AUTO_ASSIGN_UI_ENABLED ? (
+        <>
+          {confirmExecutePreviewId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
+                <div className="text-neutral-200 font-medium">Confirm execute</div>
 
-            <div className="text-xs text-neutral-500">
-              Caps: <span className="text-neutral-200">{contactsPerRep}</span> contacts/rep •{" "}
-              <span className="text-neutral-200">{maxTotalContacts}</span> max contacts total
-            </div>
+                <div className="text-sm text-neutral-400">
+                  This will create CRM actions using the selected preview. This cannot be undone.
+                </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setConfirmExecute(false)}
-                className="px-3 py-2 rounded border border-neutral-700 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setConfirmExecute(false);
-                  await runNow(false);
-                }}
-                className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
-              >
-                Yes, run auto-assign
-              </button>
+                <div className="text-xs text-neutral-500">
+                  preview_run_id: <span className="font-mono text-neutral-200">{confirmExecutePreviewId}</span>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setConfirmExecutePreviewId(null)}
+                    className="px-3 py-2 rounded border border-neutral-700 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const id = confirmExecutePreviewId;
+                      setConfirmExecutePreviewId(null);
+                      if (id) await executeFromPreview(id);
+                    }}
+                    className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+                  >
+                    Yes, execute preview
+                  </button>
+                </div>
+              </div>
             </div>
+          )}
+          {confirmExecute && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="bg-neutral-950 border border-neutral-800 rounded p-4 w-full max-w-md space-y-3">
+                <div className="text-neutral-200 font-medium">Confirm execute</div>
+
+                <div className="text-sm text-neutral-400">
+                  This will create CRM actions for reps. This cannot be undone.
+                </div>
+
+                <div className="text-xs text-neutral-500">
+                  Caps: <span className="text-neutral-200">{contactsPerRep}</span> contacts/rep •{" "}
+                  <span className="text-neutral-200">{maxTotalContacts}</span> max contacts total
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setConfirmExecute(false)}
+                    className="px-3 py-2 rounded border border-neutral-700 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setConfirmExecute(false);
+                      await runNow(false);
+                    }}
+                    className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+                  >
+                    Yes, run auto-assign
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
+
+      {AUTO_ASSIGN_UI_ENABLED ? (
+        <div className="flex gap-3 text-sm">
+          <div className="px-3 py-2 rounded border border-neutral-800">
+            Open: <span className="font-semibold">{totals.open}</span>
+          </div>
+          <div className="px-3 py-2 rounded border border-neutral-800">
+            Overdue: <span className="font-semibold">{totals.overdue}</span>
+          </div>
+          <div className="px-3 py-2 rounded border border-neutral-800">
+            Done today: <span className="font-semibold">{totals.done}</span>
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div className="flex gap-3 text-sm">
-        <div className="px-3 py-2 rounded border border-neutral-800">
-          Open: <span className="font-semibold">{totals.open}</span>
-        </div>
-        <div className="px-3 py-2 rounded border border-neutral-800">
-          Overdue: <span className="font-semibold">{totals.overdue}</span>
-        </div>
-        <div className="px-3 py-2 rounded border border-neutral-800">
-          Done today: <span className="font-semibold">{totals.done}</span>
-        </div>
-      </div>
-
-      {msg && (
+      {AUTO_ASSIGN_UI_ENABLED && msg ? (
         <div className="text-sm text-neutral-200 border border-neutral-800 rounded p-3">
           {msg}
         </div>
-      )}
+      ) : null}
 
-      {preview && (
+      {AUTO_ASSIGN_UI_ENABLED && preview ? (
         <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
           <div className="flex items-center gap-3">
             <div className="text-neutral-200 font-medium">Preview (dry run)</div>
@@ -656,8 +1066,8 @@ export default function ManagerClient({ initial }: { initial: any }) {
             </div>
           </div>
         </div>
-      )}
-      {lastRun && (
+      ) : null}
+      {AUTO_ASSIGN_UI_ENABLED && lastRun ? (
         <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
           <div className="flex items-center gap-3">
             <div className="text-neutral-200 font-medium">Latest run</div>
@@ -770,16 +1180,80 @@ export default function ManagerClient({ initial }: { initial: any }) {
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
-      {/* Run history */}
-      <div className="border border-neutral-800 rounded p-3">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="text-neutral-200 font-medium">Run history</div>
-          <div className="text-xs text-neutral-500">Last 10 runs (cron + manual)</div>
+      {AUTO_ASSIGN_UI_ENABLED ? (
+        <>
+          {/* Run history */}
+          <div className="border border-neutral-800 rounded p-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-neutral-200 font-medium">Run history</div>
+              <div className="text-xs text-neutral-500">Last 10 runs (cron + manual)</div>
+            </div>
+            <RunHistoryTable limit={10} />
+          </div>
+        </>
+      ) : null}
+
+      {!AUTO_ASSIGN_UI_ENABLED ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-200">Auto-Assign Runner</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Bulk-create manager actions from rep activity signals.
+                </p>
+              </div>
+              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                Backend pending
+              </span>
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-500">
+                Execute run
+              </div>
+              <div className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-500">
+                Dry run preview
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-200">Latest Run</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Last auto-assign execution summary and alert state.
+                </p>
+              </div>
+              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                Backend pending
+              </span>
+            </div>
+            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-500">
+              Run history + latest run endpoint not wired in API yet.
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-200">Run History</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Review previous cron/manual runs and inspect outcomes.
+                </p>
+              </div>
+              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                Backend pending
+              </span>
+            </div>
+            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-500">
+              Will re-enable once manager auto-assign run endpoints are live.
+            </div>
+          </section>
         </div>
-        <RunHistoryTable limit={10} />
-      </div>
+      ) : null}
 
       <div className="text-neutral-200 font-medium pt-2">Rep overview</div>
       <div className="overflow-auto border border-neutral-800 rounded">
