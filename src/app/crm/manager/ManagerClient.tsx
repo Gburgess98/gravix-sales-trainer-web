@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import RunHistoryTable from "@/components/RunHistoryTable";
 
-// DAY 56 TEMP DISABLED
-// These controls depend on manager auto-assign endpoints that are not yet
-// implemented in the API. Keep the code in place, but hide/disable the UI.
-const AUTO_ASSIGN_UI_ENABLED = false;
+// DAY 57
+// Read-only auto-assign surfaces are now live (latest run + run history).
+// Execute / preview controls stay disabled until the remaining write flow is finished.
+const AUTO_ASSIGN_READ_UI_ENABLED = true;
+const AUTO_ASSIGN_WRITE_UI_ENABLED = false;
 
 // ------------------------------
 // API helpers (status-aware)
@@ -230,7 +231,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
     let cancelled = false;
 
     (async () => {
-      if (!AUTO_ASSIGN_UI_ENABLED) return;
+      if (!AUTO_ASSIGN_READ_UI_ENABLED) return;
       const r = await apiGet<any>("/api/proxy/v1/crm/manager/auto-assign/runs/latest");
       if (cancelled) return;
 
@@ -515,8 +516,8 @@ export default function ManagerClient({ initial }: { initial: any }) {
           ...(settings.coaching_trigger_thresholds ?? {}),
           voice_score_lt: Number(
             settings.coaching_trigger_thresholds?.voice_score_lt ??
-              settings.voice_score_threshold ??
-              60
+            settings.voice_score_threshold ??
+            60
           ),
           weak_close: Boolean(settings.coaching_trigger_thresholds?.weak_close ?? true),
           inactive_days_gt: Number(settings.coaching_trigger_thresholds?.inactive_days_gt ?? 3),
@@ -667,13 +668,13 @@ export default function ManagerClient({ initial }: { initial: any }) {
                     setSettings((s) =>
                       s
                         ? {
-                            ...s,
-                            voice_score_threshold: Number(e.target.value || 0),
-                            coaching_trigger_thresholds: {
-                              ...(s.coaching_trigger_thresholds ?? {}),
-                              voice_score_lt: Number(e.target.value || 0),
-                            },
-                          }
+                          ...s,
+                          voice_score_threshold: Number(e.target.value || 0),
+                          coaching_trigger_thresholds: {
+                            ...(s.coaching_trigger_thresholds ?? {}),
+                            voice_score_lt: Number(e.target.value || 0),
+                          },
+                        }
                         : s
                     )
                   }
@@ -711,12 +712,12 @@ export default function ManagerClient({ initial }: { initial: any }) {
                     setSettings((s) =>
                       s
                         ? {
-                            ...s,
-                            coaching_trigger_thresholds: {
-                              ...(s.coaching_trigger_thresholds ?? {}),
-                              inactive_days_gt: Number(e.target.value || 0),
-                            },
-                          }
+                          ...s,
+                          coaching_trigger_thresholds: {
+                            ...(s.coaching_trigger_thresholds ?? {}),
+                            inactive_days_gt: Number(e.target.value || 0),
+                          },
+                        }
                         : s
                     )
                   }
@@ -840,7 +841,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
           </div>
         </div>
       )}
-      {AUTO_ASSIGN_UI_ENABLED ? (
+      {AUTO_ASSIGN_WRITE_UI_ENABLED ? (
         <div className="flex items-center gap-3">
           <button
             disabled={busy}
@@ -885,7 +886,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </div>
       ) : null}
 
-      {AUTO_ASSIGN_UI_ENABLED ? (
+      {AUTO_ASSIGN_WRITE_UI_ENABLED ? (
         <>
           {confirmExecutePreviewId && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -958,7 +959,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </>
       ) : null}
 
-      {AUTO_ASSIGN_UI_ENABLED ? (
+      {AUTO_ASSIGN_WRITE_UI_ENABLED ? (
         <div className="flex gap-3 text-sm">
           <div className="px-3 py-2 rounded border border-neutral-800">
             Open: <span className="font-semibold">{totals.open}</span>
@@ -972,13 +973,13 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </div>
       ) : null}
 
-      {AUTO_ASSIGN_UI_ENABLED && msg ? (
+      {AUTO_ASSIGN_WRITE_UI_ENABLED && msg ? (
         <div className="text-sm text-neutral-200 border border-neutral-800 rounded p-3">
           {msg}
         </div>
       ) : null}
 
-      {AUTO_ASSIGN_UI_ENABLED && preview ? (
+      {AUTO_ASSIGN_WRITE_UI_ENABLED && preview ? (
         <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
           <div className="flex items-center gap-3">
             <div className="text-neutral-200 font-medium">Preview (dry run)</div>
@@ -1067,7 +1068,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
           </div>
         </div>
       ) : null}
-      {AUTO_ASSIGN_UI_ENABLED && lastRun ? (
+      {AUTO_ASSIGN_READ_UI_ENABLED && lastRun ? (
         <div className="text-sm border border-neutral-800 rounded p-3 space-y-2">
           <div className="flex items-center gap-3">
             <div className="text-neutral-200 font-medium">Latest run</div>
@@ -1182,7 +1183,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </div>
       ) : null}
 
-      {AUTO_ASSIGN_UI_ENABLED ? (
+      {AUTO_ASSIGN_READ_UI_ENABLED ? (
         <>
           {/* Run history */}
           <div className="border border-neutral-800 rounded p-3">
@@ -1195,18 +1196,18 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </>
       ) : null}
 
-      {!AUTO_ASSIGN_UI_ENABLED ? (
+      {!AUTO_ASSIGN_WRITE_UI_ENABLED ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-200">Auto-Assign Runner</h3>
                 <p className="mt-1 text-xs text-neutral-500">
-                  Bulk-create manager actions from rep activity signals.
+                  Execute / preview controls are staged next. Read-only latest run and history are now live below.
                 </p>
               </div>
               <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                Backend pending
+                Write flow pending
               </span>
             </div>
             <div className="mt-4 space-y-2">
@@ -1214,42 +1215,8 @@ export default function ManagerClient({ initial }: { initial: any }) {
                 Execute run
               </div>
               <div className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-500">
-                Dry run preview
+                Preview / execute-from-preview
               </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-200">Latest Run</h3>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Last auto-assign execution summary and alert state.
-                </p>
-              </div>
-              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                Backend pending
-              </span>
-            </div>
-            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-500">
-              Run history + latest run endpoint not wired in API yet.
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-200">Run History</h3>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Review previous cron/manual runs and inspect outcomes.
-                </p>
-              </div>
-              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                Backend pending
-              </span>
-            </div>
-            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-500">
-              Will re-enable once manager auto-assign run endpoints are live.
             </div>
           </section>
         </div>

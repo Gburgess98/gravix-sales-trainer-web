@@ -168,7 +168,20 @@ export default function RunHistoryTable({
         setItems([]);
         return;
       }
-      const rows = Array.isArray(j?.items) ? j.items : [];
+      let rows = Array.isArray(j?.items) ? j.items : [];
+
+      if (rows.length === 0) {
+        const latestRes = await fetch(`/api/proxy/v1/crm/manager/auto-assign/runs/latest`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+        const latestJson = await latestRes.json().catch(() => ({}));
+        const latestItem = latestRes.ok && latestJson?.ok !== false ? latestJson?.item : null;
+        if (latestItem?.run_id) {
+          rows = [latestItem];
+        }
+      }
+
       setItems(
         rows
           .map((x: any) => ({
@@ -186,7 +199,7 @@ export default function RunHistoryTable({
               (x as any)?.is_preview ??
                 (x as any)?.preview ??
                 (x as any)?.meta?.preview ??
-                x?.source === "preview" ??
+                (x?.source === "preview") ??
                 false
             ),
             executed_from_preview_run_id: (x as any)?.executed_from_preview_run_id ?? null,
