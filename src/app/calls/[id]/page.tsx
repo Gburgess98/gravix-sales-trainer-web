@@ -192,6 +192,7 @@ export default function CallPage() {
   const [assignee, setAssignee] = useState<string>("");
   const [quickDrill, setQuickDrill] = useState<string>("");
   const [assignBusy, setAssignBusy] = useState(false);
+  const isManager = process.env.NEXT_PUBLIC_SHOW_ADMIN === "true";
 
 
   // Score trend (sparkline)
@@ -356,7 +357,9 @@ export default function CallPage() {
         if (!alive) return;
 
         setCallMeta(res.call);
-        setAudioUrl(res?.call?.signedAudioUrl ?? null);
+        if (res?.call?.signedAudioUrl) {
+          setAudioUrl(res.call.signedAudioUrl);
+        }
         console.debug('[CallPage] loaded via proxy', { id: callId, ok: !!res?.call });
 
         setErr(null);
@@ -441,7 +444,7 @@ export default function CallPage() {
       try {
         const r = await fetchJsonWithRetry<any>(`/api/proxy/v1/calls/${callId}/signed-audio`, { cache: "no-store" });
         if (!cancelled && r?.ok && r.url) {
-          setAudioUrl((prev) => prev || r.url);
+          setAudioUrl(r.url);
         }
       } catch {
         // ignore; the player can still use the URL from getCall
@@ -462,8 +465,10 @@ export default function CallPage() {
         if (cancelled) return;
         setCallMeta(res.call);
 
-        if (res?.call?.signedAudioUrl && res.call.signedAudioUrl !== audioUrl) {
-          setAudioUrl(res.call.signedAudioUrl);
+        if (res?.call?.signedAudioUrl) {
+          setAudioUrl((prev) =>
+            prev !== res.call.signedAudioUrl ? res.call.signedAudioUrl : prev
+          );
         }
 
         if (res.call?.status !== 'scored') {
@@ -620,8 +625,10 @@ export default function CallPage() {
 
     const onError = async () => {
       try {
-        const res = await getCallViaProxy(callId);
-        setAudioUrl(res?.call?.signedAudioUrl ?? null);
+        const r = await fetchJsonWithRetry<any>(`/api/proxy/v1/calls/${callId}/signed-audio`, { cache: 'no-store' });
+        if (r?.ok && r.url) {
+          setAudioUrl(r.url);
+        }
       } catch { /* ignore */ }
     };
 
@@ -1196,7 +1203,7 @@ export default function CallPage() {
               )}
 
               <a
-                href="/calls"
+                href="/call-library"
                 className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900"
               >
                 Review another call
@@ -1349,63 +1356,67 @@ export default function CallPage() {
             )}
 
             {/* Quick-assign actionable form */}
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-              <label className="text-xs text-neutral-400">Drill</label>
-              <input
-                value={quickDrill}
-                onChange={(e) => setQuickDrill(e.target.value)}
-                placeholder="e.g. Objection: Budget"
-                className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
-              />
-            </div>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-              <label className="text-xs text-neutral-400">Assignee</label>
-              <select
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
-              >
-                <option value="">{usersLoading ? 'Loading users…' : 'Select a user'}</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}{u.email ? ` (${u.email})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-2">
-              <button
-                onClick={async () => {
-                  if (!quickDrill || !assignee) return;
-                  setAssignBusy(true);
-                  try {
-                    const r = await proxyFetch("/v1/coach/assign", {
-                      method: "POST",
-                      headers: { "content-type": "application/json" },
-                      body: JSON.stringify({
-                        callId,
-                        assigneeUserId: assignee,
-                        drillId: quickDrill,
-                        ...(assignmentId ? { assignmentId } : {}),
-                      }),
-                    });
-                    const j = await r.json();
-                    if (!r.ok || !j?.ok) throw new Error(j?.error || "failed");
-                    setAssignments((xs) => [j.item, ...xs]);
-                    setQuickDrill("");
-                    setAssignee("");
-                  } catch (e) {
-                    console.error(e);
-                  } finally {
-                    setAssignBusy(false);
-                  }
-                }}
-                disabled={assignBusy}
-                className="text-xs px-3 py-1.5 rounded border border-neutral-700"
-              >
-                {assignBusy ? "Assigning…" : "Assign to rep"}
-              </button>
-            </div>
+            {isManager && (
+              <>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                  <label className="text-xs text-neutral-400">Drill</label>
+                  <input
+                    value={quickDrill}
+                    onChange={(e) => setQuickDrill(e.target.value)}
+                    placeholder="e.g. Objection: Budget"
+                    className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                  <label className="text-xs text-neutral-400">Assignee</label>
+                  <select
+                    value={assignee}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
+                  >
+                    <option value="">{usersLoading ? 'Loading users…' : 'Select a user'}</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}{u.email ? ` (${u.email})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-2">
+                  <button
+                    onClick={async () => {
+                      if (!quickDrill || !assignee) return;
+                      setAssignBusy(true);
+                      try {
+                        const r = await proxyFetch("/v1/coach/assign", {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({
+                            callId,
+                            assigneeUserId: assignee,
+                            drillId: quickDrill,
+                            ...(assignmentId ? { assignmentId } : {}),
+                          }),
+                        });
+                        const j = await r.json();
+                        if (!r.ok || !j?.ok) throw new Error(j?.error || "failed");
+                        setAssignments((xs) => [j.item, ...xs]);
+                        setQuickDrill("");
+                        setAssignee("");
+                      } catch (e) {
+                        console.error(e);
+                      } finally {
+                        setAssignBusy(false);
+                      }
+                    }}
+                    disabled={assignBusy}
+                    className="text-xs px-3 py-1.5 rounded border border-neutral-700"
+                  >
+                    {assignBusy ? "Assigning…" : "Assign to rep"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -1753,39 +1764,41 @@ export default function CallPage() {
           <div className="mt-4 space-y-4 text-sm">
 
             {/* --- ADD: Assign form --- */}
-            <div id="assign-form" className="space-y-2 mt-3">
-              <label className="block text-sm opacity-80">Assignee User ID</label>
-              <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-                value={assigneeUserId} onChange={e => setAssigneeUserId(e.target.value)} />
+            {isManager && (
+              <div id="assign-form" className="space-y-2 mt-3">
+                <label className="block text-sm opacity-80">Assignee User ID</label>
+                <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                  value={assigneeUserId} onChange={e => setAssigneeUserId(e.target.value)} />
 
-              <label className="block text-sm opacity-80">Drill</label>
-              <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-                value={drillId} onChange={e => setDrillId(e.target.value)}>
-                {drills.length ? (
-                  drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)
-                ) : (
-                  <>
-                    <option value="intro-basics">Intro: Basics</option>
-                    <option value="discovery-5qs">Discovery: Top 5 Qs</option>
-                    <option value="objection-too-expensive">Objection: “Too expensive”</option>
-                    <option value="close-trial">Close: Trial close</option>
-                  </>
-                )}
-              </select>
+                <label className="block text-sm opacity-80">Drill</label>
+                <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                  value={drillId} onChange={e => setDrillId(e.target.value)}>
+                  {drills.length ? (
+                    drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)
+                  ) : (
+                    <>
+                      <option value="intro-basics">Intro: Basics</option>
+                      <option value="discovery-5qs">Discovery: Top 5 Qs</option>
+                      <option value="objection-too-expensive">Objection: “Too expensive”</option>
+                      <option value="close-trial">Close: Trial close</option>
+                    </>
+                  )}
+                </select>
 
-              <label className="block text-sm opacity-80">Notes</label>
-              <textarea className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-                rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+                <label className="block text-sm opacity-80">Notes</label>
+                <textarea className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                  rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
 
-              {assignError && <ErrorBox msg={assignError} />}
+                {assignError && <ErrorBox msg={assignError} />}
 
-              <button
-                onClick={onSaveAssign}
-                disabled={assignSaving || !assigneeUserId || !drillId}
-                className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">
-                {assignSaving ? "Saving..." : "Save Assignment"}
-              </button>
-            </div>
+                <button
+                  onClick={onSaveAssign}
+                  disabled={assignSaving || !assigneeUserId || !drillId}
+                  className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">
+                  {assignSaving ? "Saving..." : "Save Assignment"}
+                </button>
+              </div>
+            )}
 
             {/* Assignments list (remove) */}
             <div className="rounded-xl border p-3 space-y-2">
