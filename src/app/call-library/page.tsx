@@ -1,7 +1,7 @@
 // src/app/call-library/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
@@ -136,6 +136,7 @@ export default function CallLibraryPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sparPersona, setSparPersona] = useState<string>("price_sensitive");
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
+  const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
 
   // Sparring personas config (loaded from API)
   const [sparPersonas, setSparPersonas] = useState<SparringPersonaOption[]>([]);
@@ -152,6 +153,10 @@ export default function CallLibraryPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
+  const callsRef = useRef<CallItem[]>([]);
+  useEffect(() => {
+    callsRef.current = calls;
+  }, [calls]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -167,33 +172,42 @@ export default function CallLibraryPage() {
   const [sparringError, setSparringError] = useState<string | null>(null);
 
   // --- Uploads ---
-  const uploads = calls.filter((c) => c.type === "upload");
+  const uploads = calls.filter((c) => {
+    const type = String(c.type ?? "").toLowerCase();
+    return type === "upload" || type === "uploaded";
+  });
   const availableReps = Array.from(
     new Set(calls.map((c) => c.rep_name || "Unknown rep"))
   ).sort();
 
   // Load LIVE calls
   useEffect(() => {
-    if (tab !== "live") return;
+    if (tab !== "live" && tab !== "upload") return;
 
     let alive = true;
     setLoading(true);
     setError(null);
 
+    const loadCalls = async () => {
+      const res = await fetchJsonWithRetry<CallsPagedResp>(
+        `/api/proxy/v1/calls/paged?limit=20${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`
+      );
+
+      if (!alive) return;
+
+      if (!res || (res as any).ok === false) {
+        setError("Unable to load calls.");
+        return;
+      }
+
+      const list = (res.calls ?? res.items) || [];
+      setCalls(list);
+      setCursor(res.nextCursor ?? null);
+    };
+
     (async () => {
       try {
-        const res = await fetchJsonWithRetry<CallsPagedResp>(
-          `/api/proxy/v1/calls/paged?limit=20${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
-          }`
-        );
-        if (!alive) return;
-        if (!res || (res as any).ok === false) {
-          setError("Unable to load calls.");
-        } else {
-          const list = (res.calls ?? res.items) || [];
-          setCalls(list);
-          setCursor(res.nextCursor ?? null);
-        }
+        await loadCalls();
       } catch (e) {
         console.error("call-library: calls load failed", e);
         if (alive) setError("Something went wrong loading calls.");
@@ -202,8 +216,23 @@ export default function CallLibraryPage() {
       }
     })();
 
+    const interval = setInterval(async () => {
+      try {
+        const hasNonFinal = callsRef.current.some((c) => {
+          const s = String(c.status || "").toLowerCase();
+          return s === "queued" || s === "processing" || s === "running" || s === "processed";
+        });
+
+        if (!hasNonFinal) return;
+        await loadCalls();
+      } catch {
+        // fail-soft while polling
+      }
+    }, 5000);
+
     return () => {
       alive = false;
+      clearInterval(interval);
     };
   }, [tab, debouncedSearch]);
 
@@ -308,7 +337,7 @@ export default function CallLibraryPage() {
   }, [tab, sparPersona]);
 
 
-  // Load more paged calls for "live" tab
+  // Load more paged calls for the current calls view (live/upload)
   async function loadMore() {
     if (!cursor || loadingMore) return;
 
@@ -332,6 +361,13 @@ export default function CallLibraryPage() {
     } finally {
       setLoadingMore(false);
     }
+  }
+
+  function toggleSummary(callId: string) {
+    setExpandedSummaries((prev) => ({
+      ...prev,
+      [callId]: !prev[callId],
+    }));
   }
 
   // Apply status/score + rep + tag filters to live calls
@@ -711,7 +747,9 @@ export default function CallLibraryPage() {
                       : null;
                   const created = new Date(c.created_at).toLocaleString();
                   const durationLabel = formatCallDuration(c);
-                  const snippet = summarySnippet(c.summary);
+                  const isExpanded = !!expandedSummaries[c.id];
+                  const hasLongSummary = !!c.summary && c.summary.length > 120;
+                  const snippet = isExpanded ? (c.summary || "No summary yet.") : summarySnippet(c.summary);
 
                   return (
                     <div
@@ -731,9 +769,18 @@ export default function CallLibraryPage() {
                           {c.rep_name ? c.rep_name : "Unknown rep"} • {created}
                           {durationLabel && <> • {durationLabel}</>}
                         </div>
-                        <div className="mt-1 text-xs text-neutral-400 line-clamp-2">
+                        <div className={`mt-1 text-xs text-neutral-400 ${isExpanded ? "" : "line-clamp-2"}`}>
                           {snippet}
                         </div>
+                        {hasLongSummary && (
+                          <button
+                            type="button"
+                            onClick={() => toggleSummary(c.id)}
+                            className="mt-1 text-[11px] text-neutral-300 underline hover:text-white"
+                          >
+                            {isExpanded ? "Show less" : "Show more"}
+                          </button>
+                        )}
                         {Array.isArray(c.tags) && c.tags.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {c.tags.map((tag) => (
