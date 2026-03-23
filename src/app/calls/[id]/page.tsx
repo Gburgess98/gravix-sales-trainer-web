@@ -12,7 +12,7 @@ import ErrorBox from "@/components/ErrorBox";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
-import { proxyFetch } from "@/lib/api";
+import { proxyFetch, getAdminConfig } from "@/lib/api";
 
 import {
   listPins,
@@ -51,11 +51,10 @@ function ScorePill({ score, className = "" }: { score: number; className?: strin
 function ReviewTagChip({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
-        ok
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-      }`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${ok
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+        : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+        }`}
     >
       {label}
     </span>
@@ -128,6 +127,17 @@ function statusDotColour(status: string | undefined | null): string {
   return "bg-neutral-500";
 }
 
+function renderTranscriptText(meta: any): string | null {
+  const raw =
+    meta?.transcript ??
+    meta?.transcript_text ??
+    meta?.rubric?._meta?.transcript ??
+    null;
+
+  const text = typeof raw === "string" ? raw.trim() : "";
+  return text.length ? text : null;
+}
+
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const callId = (id ?? '').toString();
@@ -192,7 +202,32 @@ export default function CallPage() {
   const [assignee, setAssignee] = useState<string>("");
   const [quickDrill, setQuickDrill] = useState<string>("");
   const [assignBusy, setAssignBusy] = useState(false);
-  const isManager = process.env.NEXT_PUBLIC_SHOW_ADMIN === "true";
+  const [isManager, setIsManager] = useState(false);
+  const [managerCheckDone, setManagerCheckDone] = useState(false);
+  const [callMissing, setCallMissing] = useState(false);
+  const [pinsErr, setPinsErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        await getAdminConfig();
+        if (!alive) return;
+        setIsManager(true);
+      } catch {
+        if (!alive) return;
+        setIsManager(false);
+      } finally {
+        if (!alive) return;
+        setManagerCheckDone(true);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
 
   // Score trend (sparkline)
@@ -357,6 +392,7 @@ export default function CallPage() {
         if (!alive) return;
 
         setCallMeta(res.call);
+        setCallMissing(false);
         if (res?.call?.signedAudioUrl) {
           setAudioUrl(res.call.signedAudioUrl);
         }
@@ -365,7 +401,13 @@ export default function CallPage() {
         setErr(null);
       } catch (e: any) {
         if (!alive) return;
-        setErr(e?.message ?? 'Failed to load call');
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("not_found") || msg.includes("404")) {
+          setCallMissing(true);
+          setErr("Call not found or no longer available.");
+        } else {
+          setErr(e?.message ?? 'Failed to load call');
+        }
       } finally {
         if (alive) setLoadingCall(false);
       }
@@ -456,6 +498,7 @@ export default function CallPage() {
   // Poll until scored (refresh status, score, and history)
   useEffect(() => {
     if (!callId) return;
+    if (callMissing) return;
     let cancelled = false;
     let timer: any = null;
 
@@ -464,6 +507,7 @@ export default function CallPage() {
         const res = await getCallViaProxy(callId);
         if (cancelled) return;
         setCallMeta(res.call);
+        setCallMissing(false);
 
         if (res?.call?.signedAudioUrl) {
           setAudioUrl((prev) =>
@@ -496,12 +540,23 @@ export default function CallPage() {
             }
           }
         }
-      } catch {
+      } catch (e: any) {
+        const msg = String(e?.message || "").toLowerCase();
+        const isNotFound = msg.includes("not_found") || msg.includes("404");
+
+        if (isNotFound) {
+          if (!cancelled) {
+            setCallMissing(true);
+            setErr("Call not found or no longer available.");
+          }
+          return;
+        }
+
         timer = setTimeout(tick, 2000);
       }
     }
 
-    if (!callMeta || callMeta.status !== 'scored') {
+    if (!callMissing && (!callMeta || callMeta.status !== 'scored')) {
       tick();
     }
 
@@ -510,14 +565,15 @@ export default function CallPage() {
       if (timer) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callId, callMeta?.status, audioUrl]);
+  }, [callId, callMeta?.status, callMissing]);
 
   // Pins (initial)
   async function refreshPins() {
+    setPinsErr(null);
     // Demo calls may not have real pins; fail-soft.
     if (String(callId).startsWith("demo-")) {
       setPins([]);
-      setErr(null); // important: clear any previous request_failed state
+      setPinsErr(null);
       return;
     }
     const res = await listPins(callId);
@@ -528,7 +584,10 @@ export default function CallPage() {
     let alive = true;
     setLoadingPins(true);
     refreshPins()
-      .catch((e) => alive && setErr(e?.message ?? 'Failed to load pins'))
+      .catch((e) => {
+        if (!alive) return;
+        setPinsErr(e?.message ?? 'Failed to load pins');
+      })
       .finally(() => alive && setLoadingPins(false));
     return () => { alive = false; };
   }, [callId]);
@@ -650,7 +709,7 @@ export default function CallPage() {
       setNote('');
       await refreshPins();
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to create pin');
+      setPinsErr(e?.message ?? 'Failed to create pin');
     } finally {
       setCreating(false);
     }
@@ -661,7 +720,7 @@ export default function CallPage() {
       await deletePin(id);
       setPins((p) => p.filter((x) => x.id !== id));
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to delete pin');
+      setPinsErr(e?.message ?? 'Failed to delete pin');
     }
   }
 
@@ -948,6 +1007,8 @@ export default function CallPage() {
   const flags: string[] =
     Array.isArray(callMeta?.flags) ? (callMeta.flags as string[]).filter(Boolean) : [];
 
+  const transcriptText = renderTranscriptText(callMeta);
+
   return (
     <AuthGate>
       <main className="py-6 space-y-6">
@@ -975,9 +1036,11 @@ export default function CallPage() {
             <button onClick={openCrm} className="rounded-xl border px-3 py-1.5 text-sm">
               Link / Review CRM
             </button>
-            <button onClick={() => openCoach(true)} className="rounded-xl border px-3 py-1.5 text-sm">
-              Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-70">({assignmentCount})</span>}
-            </button>
+            {managerCheckDone && isManager && (
+              <button onClick={() => openCoach(true)} className="rounded-xl border px-3 py-1.5 text-sm">
+                Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-70">({assignmentCount})</span>}
+              </button>
+            )}
             {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
               <a
                 href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
@@ -1236,6 +1299,36 @@ export default function CallPage() {
           </section>
         ) : null}
 
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Transcript</div>
+              <h2 className="text-lg font-medium text-neutral-100">Call transcript</h2>
+            </div>
+            {transcriptText ? (
+              <span className="text-xs px-2 py-1 rounded border bg-emerald-600/10 text-emerald-300 border-emerald-500/20">
+                Available
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">
+                Not available yet
+              </span>
+            )}
+          </div>
+
+          {transcriptText ? (
+            <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
+                {transcriptText}
+              </pre>
+            </div>
+          ) : (
+            <div className="mt-4 text-sm text-neutral-400">
+              No transcript has been generated for this call yet.
+            </div>
+          )}
+        </section>
+
         {/* Player */}
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Player</h2>
@@ -1289,6 +1382,7 @@ export default function CallPage() {
         {/* Pins */}
         <section className="space-y-2">
           <h2 className="text-lg font-medium">Pins</h2>
+          {pinsErr ? <p className="text-sm text-red-400">{pinsErr}</p> : null}
           {loadingPins ? (
             <p className="text-sm opacity-70">Loading pins…</p>
           ) : pins.length === 0 ? (
@@ -1356,7 +1450,7 @@ export default function CallPage() {
             )}
 
             {/* Quick-assign actionable form */}
-            {isManager && (
+            {managerCheckDone && isManager && (
               <>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
                   <label className="text-xs text-neutral-400">Drill</label>
@@ -1503,7 +1597,9 @@ export default function CallPage() {
           <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {err === "invalid callId"
               ? "This is a demo placeholder call. No full metadata or audio is stored for this ID."
-              : err}
+              : err === "Call not found or no longer available."
+                ? "This call could not be found in the system. It may have been deleted, never fully created, or the page was opened from a stale link."
+                : err}
           </div>
         )}
       </main>
@@ -1764,7 +1860,7 @@ export default function CallPage() {
           <div className="mt-4 space-y-4 text-sm">
 
             {/* --- ADD: Assign form --- */}
-            {isManager && (
+            {managerCheckDone && isManager && (
               <div id="assign-form" className="space-y-2 mt-3">
                 <label className="block text-sm opacity-80">Assignee User ID</label>
                 <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
