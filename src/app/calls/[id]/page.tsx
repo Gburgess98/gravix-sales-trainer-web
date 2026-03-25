@@ -67,11 +67,14 @@ function getVoiceData(callMeta: any) {
       ? Math.round(Number(callMeta.voice_score))
       : typeof callMeta?.rubric?.voice_score === "number"
         ? Math.round(Number(callMeta.rubric.voice_score))
-        : null;
+        : typeof callMeta?.rubric?._meta?.voice?.overall === "number"
+          ? Math.round(Number(callMeta.rubric._meta.voice.overall))
+          : null;
 
   const voiceRubric =
     callMeta?.voice_rubric ??
     callMeta?.rubric?.voice_rubric ??
+    callMeta?.rubric?._meta?.voice ??
     null;
 
   const reviewTags =
@@ -965,11 +968,11 @@ export default function CallPage() {
     const weakClose = Boolean(reviewTags?.weak_close);
 
     const rubricRows = [
-      { key: "tone", label: "Tone", value: typeof voiceRubric?.tone === "number" ? Math.round(Number(voiceRubric.tone)) : null },
       { key: "clarity", label: "Clarity", value: typeof voiceRubric?.clarity === "number" ? Math.round(Number(voiceRubric.clarity)) : null },
       { key: "confidence", label: "Confidence", value: typeof voiceRubric?.confidence === "number" ? Math.round(Number(voiceRubric.confidence)) : null },
-      { key: "filler", label: "Filler", value: typeof voiceRubric?.filler === "number" ? Math.round(Number(voiceRubric.filler)) : null },
-      { key: "close", label: "Close", value: typeof voiceRubric?.close === "number" ? Math.round(Number(voiceRubric.close)) : null },
+      { key: "filler_density", label: "Filler density", value: typeof voiceRubric?.filler_density === "number" ? Math.round(Number(voiceRubric.filler_density)) : null },
+      { key: "pace", label: "Pace", value: typeof voiceRubric?.pace === "number" ? Math.round(Number(voiceRubric.pace)) : null },
+      { key: "overall", label: "Overall", value: typeof voiceRubric?.overall === "number" ? Math.round(Number(voiceRubric.overall)) : null },
     ].filter((x) => x.value !== null);
 
     return {
@@ -1153,7 +1156,7 @@ export default function CallPage() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review Bot</div>
-              <h2 className="text-lg font-medium text-neutral-100">Voice breakdown</h2>
+              <h2 className="text-lg font-medium text-neutral-100">Voice Personality Score</h2>
             </div>
 
             {reviewBot.voiceScore != null ? (
@@ -1210,7 +1213,7 @@ export default function CallPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-neutral-400">Voice rubric will appear once a scored review includes breakdown data.</div>
+                  <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
                 )}
               </div>
             </div>
