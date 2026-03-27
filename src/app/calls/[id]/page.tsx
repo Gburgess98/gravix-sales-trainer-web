@@ -62,18 +62,20 @@ function ReviewTagChip({ ok, label }: { ok: boolean; label: string }) {
 }
 
 function getVoiceData(callMeta: any) {
+  const analysis = callMeta?.analysis_json ?? null;
+
+  const voiceFromAnalysis = analysis?.voice ?? null;
+
   const directVoiceScore =
-    typeof callMeta?.voice_score === "number"
-      ? Math.round(Number(callMeta.voice_score))
-      : typeof callMeta?.rubric?.voice_score === "number"
-        ? Math.round(Number(callMeta.rubric.voice_score))
-        : typeof callMeta?.rubric?._meta?.voice?.overall === "number"
-          ? Math.round(Number(callMeta.rubric._meta.voice.overall))
-          : null;
+    typeof voiceFromAnalysis?.overall === "number"
+      ? Math.round(Number(voiceFromAnalysis.overall))
+      : typeof callMeta?.voice_score === "number"
+        ? Math.round(Number(callMeta.voice_score))
+        : null;
 
   const voiceRubric =
+    voiceFromAnalysis ??
     callMeta?.voice_rubric ??
-    callMeta?.rubric?.voice_rubric ??
     callMeta?.rubric?._meta?.voice ??
     null;
 
@@ -1011,6 +1013,10 @@ export default function CallPage() {
     Array.isArray(callMeta?.flags) ? (callMeta.flags as string[]).filter(Boolean) : [];
 
   const transcriptText = renderTranscriptText(callMeta);
+  const transcriptSegments = callMeta?.analysis_json?.transcript?.segments ?? null;
+  const analysisMoments = Array.isArray(callMeta?.analysis_json?.moments)
+    ? callMeta.analysis_json.moments
+    : [];
 
   return (
     <AuthGate>
@@ -1058,7 +1064,27 @@ export default function CallPage() {
           </div>
         </div>
 
-
+        {/* Section nav */}
+        <div className="flex gap-3 text-sm border-b pb-2 overflow-x-auto">
+          {[
+            { id: "summary", label: "Summary" },
+            { id: "review", label: "Review" },
+            { id: "transcript", label: "Transcript" },
+            { id: "player", label: "Player" },
+            { id: "crm", label: "CRM" },
+            { id: "coach", label: "Coach" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="opacity-70 hover:opacity-100 whitespace-nowrap"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
 
         {/* Live status + AI badge */}
         <div className="text-sm flex items-center gap-3">
@@ -1090,7 +1116,7 @@ export default function CallPage() {
         </div>
 
         {/* Summary header band (score + duration + summary + flags) */}
-        <section className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           {/* Left: score + status + duration */}
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full border border-neutral-600 text-lg font-semibold tabular-nums">
@@ -1152,7 +1178,7 @@ export default function CallPage() {
         </section>
 
         {/* Review Bot */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review Bot</div>
@@ -1302,7 +1328,7 @@ export default function CallPage() {
           </section>
         ) : null}
 
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+        <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Transcript</div>
@@ -1319,7 +1345,75 @@ export default function CallPage() {
             )}
           </div>
 
-          {transcriptText ? (
+          {analysisMoments.length > 0 && (
+            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <div className="text-sm font-semibold text-neutral-100">Key moments</div>
+              <div className="mt-3 space-y-2">
+                {analysisMoments.map((moment: any, i: number) => {
+                  const ts = typeof moment?.timestamp === "number" ? moment.timestamp : null;
+                  const type = String(moment?.type || "moment");
+                  const text = String(moment?.text || "");
+                  const severity = String(moment?.severity || "medium");
+
+                  return (
+                    <div
+                      key={`${type}-${ts ?? i}-${i}`}
+                      className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-200">
+                            {ts !== null ? fmt(ts) : "—"}
+                          </span>
+                          <span className="capitalize text-neutral-300">{type.replace(/_/g, " ")}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 capitalize ${severity === "high"
+                                ? "bg-red-500/10 text-red-300"
+                                : severity === "medium"
+                                  ? "bg-amber-500/10 text-amber-300"
+                                  : "bg-blue-500/10 text-blue-300"
+                              }`}
+                          >
+                            {severity}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-neutral-200">{text}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {transcriptSegments && Array.isArray(transcriptSegments) && transcriptSegments.length > 0 ? (
+            <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-3">
+              {transcriptSegments.map((seg: any, i: number) => {
+                const speaker = seg?.speaker || "Unknown";
+                const text = seg?.text || "";
+                const start = typeof seg?.start_sec === "number" ? seg.start_sec : null;
+
+                return (
+                  <div key={i} className="flex gap-3 text-sm">
+                    <div className="w-20 shrink-0 text-neutral-400 underline-offset-2 hover:text-neutral-200">
+                      {start !== null ? fmt(start) : ""}
+                    </div>
+
+                    <div className="flex-1">
+                      <span
+                        className={`font-semibold mr-2 ${speaker === "Rep"
+                          ? "text-emerald-300"
+                          : "text-blue-300"
+                          }`}
+                      >
+                        {speaker}:
+                      </span>
+                      <span className="text-neutral-200">{text}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : transcriptText ? (
             <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-neutral-800 bg-black/30 p-4">
               <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
                 {transcriptText}
@@ -1333,7 +1427,7 @@ export default function CallPage() {
         </section>
 
         {/* Player */}
-        <section className="space-y-3">
+        <section id="player" className="space-y-3">
           <h2 className="text-lg font-medium">Player</h2>
           {loadingCall ? (
             <p className="text-sm opacity-70">Loading call…</p>
@@ -1383,7 +1477,7 @@ export default function CallPage() {
         </section>
 
         {/* Pins */}
-        <section className="space-y-2">
+        <section id="crm" className="space-y-2">
           <h2 className="text-lg font-medium">Pins</h2>
           {pinsErr ? <p className="text-sm text-red-400">{pinsErr}</p> : null}
           {loadingPins ? (
@@ -1417,7 +1511,7 @@ export default function CallPage() {
         </section>
 
         {/* Coach assignments (main panel) */}
-        <section className="space-y-3">
+        <section id="coach" className="space-y-3">
           <h2 className="text-lg font-medium">Coach assignments</h2>
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex items-center justify-between mb-3">
