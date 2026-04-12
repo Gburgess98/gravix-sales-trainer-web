@@ -32,6 +32,7 @@ type Pin = {
 };
 
 type Contact = { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; account_id?: string | null };
+type Account = { id: string; name?: string | null; domain?: string | null };
 
 function scoreColour(score: number) {
   if (score >= 80) return "bg-green-600/20 text-green-400";
@@ -150,14 +151,15 @@ export default function CallPage() {
   const toast = useToast();
 
   // url controls for crm panel
-  const params = useSearchParams();
+  const searchParams = useSearchParams();
   const assignmentId =
-    params.get("assignmentId") || params.get("assignment") || undefined;
+    searchParams.get("assignmentId") || searchParams.get("assignment") || undefined;
   const router = useRouter();
   const pathname = usePathname();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoCompletedRef = useRef(false);
+
 
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
@@ -258,13 +260,19 @@ export default function CallPage() {
 
   // CRM drawer state
   const [crmOpen, setCrmOpen] = useState(false);
+  const crmRequested = String(searchParams?.get("crm") || "").trim() === "1";
+  const [crmAutoOpened, setCrmAutoOpened] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Contact[]>([]);
+  const [accountQ, setAccountQ] = useState("");
+  const [accountResults, setAccountResults] = useState<Account[]>([]);
   const [searchErr, setSearchErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [idx, setIdx] = useState(0); // highlighted result index for ↑/↓
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // debounce timer
   const searchAbortRef = useRef<AbortController | null>(null); // cancel in-flight request
+  const accountSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accountSearchAbortRef = useRef<AbortController | null>(null);
 
   // Coach drawer state (deep-linkable via ?panel=coach&assign=1)
   const [coachOpen, setCoachOpen] = useState(false);
@@ -381,6 +389,16 @@ export default function CallPage() {
 
     return { strongest, improve, xpGained: xp };
   }
+
+
+  useEffect(() => {
+    if (!crmRequested) return;
+    if (!callId) return;
+    if (crmAutoOpened) return;
+    setCrmOpen(true);
+    setCrmAutoOpened(true);
+  }, [crmRequested, callId, crmAutoOpened]);
+
 
   // ------- Data loaders -------
 
@@ -641,12 +659,12 @@ export default function CallPage() {
 
   // open drawers automatically based on URL params
   useEffect(() => {
-    const p = params.get("panel");
-    const isAssign = params.get("assign") === "1";
-    setCrmOpen(p === "crm");
+    const p = searchParams.get("panel");
+    const isAssign = searchParams.get("assign") === "1";
+    setCrmOpen(p === "crm" || (crmRequested && !crmAutoOpened));
     setCoachOpen(p === "coach");
     setAssignOpen(p === "coach" && isAssign);
-  }, [params]);
+  }, [searchParams, crmRequested]);
   useEffect(() => {
     if (coachOpen && assignOpen) {
       const el = document.getElementById("assign-form");
@@ -893,6 +911,63 @@ export default function CallPage() {
     }
   }
 
+  function debouncedSearchAccounts(term: string) {
+    setAccountQ(term);
+    setSearchErr(null);
+
+    if (accountSearchTimerRef.current) clearTimeout(accountSearchTimerRef.current);
+    accountSearchAbortRef.current?.abort();
+
+    const cleaned = term.trim();
+    if (cleaned.length < 2) {
+      setAccountResults([]);
+      return;
+    }
+
+    accountSearchTimerRef.current = setTimeout(async () => {
+      const ac = new AbortController();
+      accountSearchAbortRef.current = ac;
+      try {
+        const r = await proxyFetch(
+          `/v1/crm/accounts?query=${encodeURIComponent(cleaned)}&limit=12`,
+          { signal: ac.signal, cache: "no-store" }
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+        setAccountResults(j.items || []);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setSearchErr(e?.message || "Account search failed");
+      }
+    }, 250);
+  }
+
+  async function linkAccountId(accountId: string) {
+    setBusy(true);
+    setSearchErr(null);
+
+    try {
+      const resp: any = await fetchJsonWithRetry(`/api/proxy/v1/crm/link-call`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callId, accountId, account_id: accountId }),
+      });
+
+      if (resp?.ok === false) {
+        throw new Error(resp?.error || "Account link failed");
+      }
+
+      toast("Account linked ✓");
+      await loadLinkInfo();
+      setAccountQ("");
+      setAccountResults([]);
+    } catch (e: any) {
+      setSearchErr(e?.message || "Account link failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!results.length) return;
     if (e.key === "ArrowDown") {
@@ -914,6 +989,9 @@ export default function CallPage() {
     router.replace(`${pathname}?${url.searchParams.toString()}`);
   };
   const closeCrm = () => {
+    setCrmOpen(false);
+    setCrmAutoOpened(true);
+
     const url = new URL(window.location.href);
     url.searchParams.delete("panel");
     router.replace(`${pathname}?${url.searchParams.toString()}`);
@@ -1085,6 +1163,35 @@ export default function CallPage() {
             </button>
           ))}
         </div>
+
+        {/* Processing status banner */}
+        {callMeta && callMeta.status !== 'scored' && (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm flex items-center gap-2">
+            {callMeta.status === "queued" && (
+              <span>🎧 Transcribing call…</span>
+            )}
+
+            {callMeta.status === "processing" && (
+              <span>📝 Processing transcript…</span>
+            )}
+
+            {callMeta.status === "processed" && (
+              <span>📝 Transcript ready. Scoring…</span>
+            )}
+
+            {callMeta.status === "scoring" && (
+              <span>🤖 Scoring call…</span>
+            )}
+
+            {callMeta.status === "failed" && (
+              <span className="text-red-400">⚠️ Processing failed. Please retry.</span>
+            )}
+
+            {!["queued", "processing", "processed", "scoring", "failed"].includes(callMeta.status) && (
+              <span>⏳ Processing…</span>
+            )}
+          </div>
+        )}
 
         {/* Live status + AI badge */}
         <div className="text-sm flex items-center gap-3">
@@ -1347,7 +1454,10 @@ export default function CallPage() {
 
           {analysisMoments.length > 0 && (
             <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
-              <div className="text-sm font-semibold text-neutral-100">Key moments</div>
+              <div className="mb-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Moments</div>
+                <div className="mt-1 text-base font-medium text-neutral-100">Key moments</div>
+              </div>
               <div className="mt-3 space-y-2">
                 {analysisMoments.map((moment: any, i: number) => {
                   const ts = typeof moment?.timestamp === "number" ? moment.timestamp : null;
@@ -1368,10 +1478,10 @@ export default function CallPage() {
                           <span className="capitalize text-neutral-300">{type.replace(/_/g, " ")}</span>
                           <span
                             className={`rounded-full px-2 py-0.5 capitalize ${severity === "high"
-                                ? "bg-red-500/10 text-red-300"
-                                : severity === "medium"
-                                  ? "bg-amber-500/10 text-amber-300"
-                                  : "bg-blue-500/10 text-blue-300"
+                              ? "bg-red-500/10 text-red-300"
+                              : severity === "medium"
+                                ? "bg-amber-500/10 text-amber-300"
+                                : "bg-blue-500/10 text-blue-300"
                               }`}
                           >
                             {severity}
@@ -1386,38 +1496,50 @@ export default function CallPage() {
             </div>
           )}
           {transcriptSegments && Array.isArray(transcriptSegments) && transcriptSegments.length > 0 ? (
-            <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-3">
-              {transcriptSegments.map((seg: any, i: number) => {
-                const speaker = seg?.speaker || "Unknown";
-                const text = seg?.text || "";
-                const start = typeof seg?.start_sec === "number" ? seg.start_sec : null;
+            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <div className="mb-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
+                <div className="mt-1 text-base font-medium text-neutral-100">Full transcript</div>
+              </div>
+              <div className="max-h-[420px] overflow-auto space-y-3">
+                {transcriptSegments.map((seg: any, i: number) => {
+                  const speaker = seg?.speaker || "Unknown";
+                  const text = seg?.text || "";
+                  const start = typeof seg?.start_sec === "number" ? seg.start_sec : null;
 
-                return (
-                  <div key={i} className="flex gap-3 text-sm">
-                    <div className="w-20 shrink-0 text-neutral-400 underline-offset-2 hover:text-neutral-200">
-                      {start !== null ? fmt(start) : ""}
-                    </div>
+                  return (
+                    <div key={i} className="flex gap-3 text-sm">
+                      <div className="w-20 shrink-0 text-neutral-400 underline-offset-2 hover:text-neutral-200">
+                        {start !== null ? fmt(start) : ""}
+                      </div>
 
-                    <div className="flex-1">
-                      <span
-                        className={`font-semibold mr-2 ${speaker === "Rep"
-                          ? "text-emerald-300"
-                          : "text-blue-300"
-                          }`}
-                      >
-                        {speaker}:
-                      </span>
-                      <span className="text-neutral-200">{text}</span>
+                      <div className="flex-1">
+                        <span
+                          className={`font-semibold mr-2 ${speaker === "Rep"
+                            ? "text-emerald-300"
+                            : "text-blue-300"
+                            }`}
+                        >
+                          {speaker}:
+                        </span>
+                        <span className="text-neutral-200">{text}</span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ) : transcriptText ? (
-            <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-neutral-800 bg-black/30 p-4">
-              <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
-                {transcriptText}
-              </pre>
+            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <div className="mb-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
+                <div className="mt-1 text-base font-medium text-neutral-100">Full transcript</div>
+              </div>
+              <div className="max-h-[420px] overflow-auto">
+                <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
+                  {transcriptText}
+                </pre>
+              </div>
             </div>
           ) : (
             <div className="mt-4 text-sm text-neutral-400">
@@ -1477,7 +1599,7 @@ export default function CallPage() {
         </section>
 
         {/* Pins */}
-        <section id="crm" className="space-y-2">
+        <section id="pins" className="space-y-2">
           <h2 className="text-lg font-medium">Pins</h2>
           {pinsErr ? <p className="text-sm text-red-400">{pinsErr}</p> : null}
           {loadingPins ? (
@@ -1521,28 +1643,38 @@ export default function CallPage() {
               </div>
             </div>
 
-            {assignments.length === 0 && !assignmentsLoading && (
+            {(!Array.isArray(assignments) || assignments.filter(Boolean).length === 0) && !assignmentsLoading && (
               <div className="text-sm text-neutral-500">No assignments yet.</div>
             )}
 
-            {assignments.length > 0 && (
+            {Array.isArray(assignments) && assignments.filter(Boolean).length > 0 && (
               <ul className="divide-y divide-neutral-800">
-                {assignments.map((a: any) => (
-                  <li key={a.id} className="py-2 flex items-center justify-between gap-3">
-                    <div className="text-sm">
-                      <div className="font-medium">{a.drill_id}</div>
-                      {a.notes && <div className="text-neutral-400 text-xs mt-0.5">{a.notes}</div>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => deleteAssignment(a.id)}
-                        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {(Array.isArray(assignments) ? assignments : [])
+                  .filter((a): a is Record<string, any> => !!a && typeof a === "object")
+                  .map((a, idx) => {
+                    const id = String(a.id ?? `assignment-${idx}`);
+                    const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+                    const notes = typeof a.notes === "string" && a.notes.trim() ? a.notes.trim() : null;
+
+                    return (
+                      <li key={id} className="py-2 flex items-center justify-between gap-3">
+                        <div className="text-sm">
+                          <div className="font-medium">{drillLabel}</div>
+                          {notes && (
+                            <div className="text-neutral-400 text-xs mt-0.5">{notes}</div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => deleteAssignment(id)}
+                            className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
               </ul>
             )}
 
@@ -1612,7 +1744,7 @@ export default function CallPage() {
         </section>
 
         {/* CRM summary chips (quick glance) */}
-        <section className="space-y-2">
+        <section id="crm" className="space-y-2">
           <h2 className="text-lg font-medium">CRM</h2>
 
           <div className="flex flex-wrap gap-2 text-sm">
@@ -1918,8 +2050,51 @@ export default function CallPage() {
               )}
             </div>
 
+            {/* Search accounts */}
+            <div className="space-y-2">
+              <div className="opacity-80 text-xs">Search accounts</div>
+              <input
+                placeholder="Type company or domain…"
+                className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
+                value={accountQ}
+                onChange={(e) => debouncedSearchAccounts(e.target.value)}
+              />
+              {accountQ && (
+                <div className="rounded-xl border divide-y max-h-56 overflow-auto">
+                  {accountResults.length === 0 ? (
+                    <div className="p-3 text-xs opacity-70">No account results</div>
+                  ) : (
+                    accountResults.map((a) => {
+                      const label = a.name || a.domain || a.id;
+                      const linked = linkInfo?.account?.id === a.id;
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => linkAccountId(a.id)}
+                          className="w-full text-left p-3 hover:bg-neutral-900 disabled:opacity-60"
+                          disabled={busy || linked}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm truncate">{label}</div>
+                              {a.domain && <div className="text-xs opacity-70 truncate">{a.domain}</div>}
+                            </div>
+                            {linked ? (
+                              <span className="rounded-full border border-green-700/50 bg-green-600/20 px-2 py-0.5 text-[11px] text-green-300">
+                                Linked
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
             <p className="text-xs opacity-60">
-              Tip: ↑/↓ to move • Enter to attach. Selecting a contact links by email; linking by email auto-creates the account by domain.
+              Tip: ↑/↓ to move • Enter to attach. Selecting a contact links by email; use Search accounts to attach a company directly.
             </p>
           </div>
         </div>
@@ -1947,12 +2122,24 @@ export default function CallPage() {
               Close
             </button>
           </div>
-          {assignments.slice(0, 3).map((a: any) => (
-            <span key={a.id} className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs opacity-80">
-              <span>{a.drill_id}</span>
-              <span className="opacity-60">· {a.created_at ? new Date(a.created_at).toLocaleString() : ""}</span>
-            </span>
-          ))}
+          {(Array.isArray(assignments) ? assignments : [])
+            .filter((a): a is Record<string, any> => !!a && typeof a === "object")
+            .slice(0, 3)
+            .map((a, idx) => {
+              const id = String(a.id ?? `coach-drawer-assignment-${idx}`);
+              const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+              const createdLabel = a.created_at ? new Date(a.created_at).toLocaleString() : "";
+
+              return (
+                <span
+                  key={id}
+                  className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs opacity-80"
+                >
+                  <span>{drillLabel}</span>
+                  <span className="opacity-60">· {createdLabel}</span>
+                </span>
+              );
+            })}
 
           <div className="mt-4 space-y-4 text-sm">
 
@@ -2000,28 +2187,35 @@ export default function CallPage() {
                 <div className="text-sm opacity-70">No assignments yet.</div>
               ) : (
                 <ul className="divide-y divide-neutral-800">
-                  {assignments.map((a: any) => (
-                    <li key={a.id} className="py-2 flex items-center justify-between text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{a.drill_id}</span>
-                        <span className="opacity-60">{new Date(a.created_at).toLocaleString()}</span>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
-                            await loadAssignments();
-                            toast("Assignment removed.");
-                          } catch (e: any) {
-                            toast(e?.message || "Failed to remove.");
-                          }
-                        }}
-                        className="px-2 py-1 rounded bg-red-600 hover:bg-red-500"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
+                  {(Array.isArray(assignments) ? assignments : [])
+                    .filter((a): a is Record<string, any> => !!a && typeof a === "object")
+                    .map((a, idx) => {
+                      const id = String(a.id ?? `assignment-${idx}`);
+                      const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+                      const createdLabel = a.created_at ? new Date(a.created_at).toLocaleString() : "";
+                      return (
+                        <li key={id} className="py-2 flex items-center justify-between text-sm">
+                          <div className="flex flex-col">
+                            <span className="font-medium">{drillLabel}</span>
+                            <span className="opacity-60">{createdLabel}</span>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
+                                await loadAssignments();
+                                toast("Assignment removed.");
+                              } catch (e: any) {
+                                toast(e?.message || "Failed to remove.");
+                              }
+                            }}
+                            className="px-2 py-1 rounded bg-red-600 hover:bg-red-500"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      );
+                    })}
                 </ul>
               )}
             </div>
