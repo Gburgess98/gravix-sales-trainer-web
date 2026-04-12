@@ -1018,7 +1018,20 @@ export default function CallLibraryPage() {
                     </div>
                   </div>
 
-                  <div className="text-xs text-neutral-400">Open →</div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.location.href = `/calls/${c.id}?crm=1`;
+                      }}
+                      className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-200 hover:bg-neutral-800"
+                    >
+                      Open + link CRM
+                    </button>
+                    <span className="text-neutral-400">Open →</span>
+                  </div>
                 </div>
               </Link>
             ))}

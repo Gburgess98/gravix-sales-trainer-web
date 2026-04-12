@@ -26,6 +26,12 @@ type Contact = {
   next_action?: string | null;
 };
 
+type Account = {
+  id: string;
+  name?: string | null;
+  domain?: string | null;
+};
+
 export default function CRMPanel({
   callId,
   open,
@@ -39,6 +45,8 @@ export default function CRMPanel({
   const [link, setLink] = useState<LinkInfo | null>(null);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Contact[]>([]);
+  const [accountQ, setAccountQ] = useState("");
+  const [accountResults, setAccountResults] = useState<Account[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -47,33 +55,43 @@ export default function CRMPanel({
   const [autoAssignBusyId, setAutoAssignBusyId] = useState<string | null>(null);
   const [autoAssignedIds, setAutoAssignedIds] = useState<Record<string, true>>({});
 
+  async function loadLinkInfo() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/proxy/v1/crm/calls/${encodeURIComponent(callId)}/link`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      setLink(j.link);
+
+      if (j.link?.contact?.id) {
+        try {
+          const hr = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(j.link.contact.id)}/health`);
+          const hj = await hr.json();
+          if (hr.ok && hj.ok) {
+            setHealth(hj.health);
+          } else {
+            setHealth(null);
+          }
+        } catch {
+          setHealth(null);
+        }
+      } else {
+        setHealth(null);
+      }
+    } catch (e: any) {
+      setErr(e?.message || "Failed to load CRM link");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
-    (async () => {
-      setLoading(true);
-      setErr(null);
-      try {
-        const r = await fetch(`/api/proxy/v1/crm/calls/${encodeURIComponent(callId)}/link`, { method: "GET" });
-        const j = await r.json();
-        if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
-        setLink(j.link);
-        if (j.link?.contact?.id) {
-          try {
-            const hr = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(j.link.contact.id)}/health`);
-            const hj = await hr.json();
-            if (hr.ok && hj.ok) {
-              setHealth(hj.health);
-            }
-          } catch {
-            // non‑blocking
-          }
-        }
-      } catch (e: any) {
-        setErr(e?.message || "Failed to load CRM link");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    void loadLinkInfo();
   }, [open, callId]);
 
   async function searchContacts(term: string) {
@@ -98,6 +116,90 @@ export default function CRMPanel({
     }
   }
 
+  async function searchAccounts(term: string) {
+    setAccountQ(term);
+    if (!term) { setAccountResults([]); return; }
+    try {
+      const r = await fetch(`/api/proxy/v1/crm/accounts?query=${encodeURIComponent(term)}&limit=12`);
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      const items = Array.isArray(j.items) ? [...j.items] : [];
+      items.sort((a: any, b: any) => {
+        const na = String(a?.name || a?.domain || "").toLowerCase();
+        const nb = String(b?.name || b?.domain || "").toLowerCase();
+        return na.localeCompare(nb);
+      });
+      setAccountResults(items);
+    } catch (e: any) {
+      setErr(e?.message || "Account search failed");
+    }
+  }
+
+  async function linkAccountId(accountId: string) {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await fetch(`/api/proxy/v1/crm/link-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId,
+          account_id: accountId,
+          accountId,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+
+      await loadLinkInfo();
+      setMsg("Linked account.");
+      setAccountQ("");
+      setAccountResults([]);
+    } catch (e: any) {
+      setErr(e?.message || "Account link failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlink(target: "contact" | "account") {
+    setBusy(true); setErr(null); setMsg(null);
+    setLink((cur) => {
+      if (!cur) return cur;
+      if (target === "contact") {
+        return { ...cur, contact: null, opportunity: null };
+      }
+      return { ...cur, account: null, opportunity: null };
+    });
+    if (target === "contact") {
+      setHealth(null);
+    }
+    try {
+      const payload: any = {
+        callId,
+        target,
+        ...(target === "contact" ? { contact_id: null, contactId: null } : {}),
+        ...(target === "account" ? { account_id: null, accountId: null } : {}),
+        opportunity_id: null,
+        opportunityId: null,
+      };
+
+      const r = await fetch(`/api/proxy/v1/crm/unlink`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+
+      setMsg(`${target === "contact" ? "Contact" : "Account"} unlinked.`);
+    } catch (e: any) {
+      await loadLinkInfo();
+      setErr(e?.message || "Unlink failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function linkByEmail(email: string) {
     setBusy(true); setErr(null); setMsg(null);
     try {
@@ -108,7 +210,7 @@ export default function CRMPanel({
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      setLink(j.link);
+      await loadLinkInfo();
       setMsg("Linked via email.");
     } catch (e: any) {
       setErr(e?.message || "Link failed");
@@ -204,6 +306,18 @@ export default function CRMPanel({
 
   const accountName = link?.account?.name || link?.account?.domain || null;
 
+  function openContact() {
+    const id = link?.contact?.id;
+    if (!id) return;
+    window.location.href = `/crm/contacts/${encodeURIComponent(String(id))}`;
+  }
+
+  function openAccount() {
+    const id = link?.account?.id;
+    if (!id) return;
+    window.location.href = `/crm/accounts/${encodeURIComponent(String(id))}`;
+  }
+
   function HealthPill({ status, score }: { status?: string | null; score?: number | null }) {
     if (!status) return null;
     const s = String(status).toLowerCase();
@@ -212,8 +326,8 @@ export default function CRMPanel({
       s === "hot"
         ? "bg-green-600/20 text-green-400"
         : s === "warm"
-        ? "bg-yellow-600/20 text-yellow-400"
-        : "bg-neutral-700/30 text-neutral-300";
+          ? "bg-yellow-600/20 text-yellow-400"
+          : "bg-neutral-700/30 text-neutral-300";
     return (
       <span className={`text-xs px-2 py-0.5 rounded-full ${cls}`}>
         {label}
@@ -251,44 +365,86 @@ export default function CRMPanel({
           ) : (
             <>
               <div className="rounded-xl border p-3">
-                <div className="opacity-70 text-xs mb-1">Linked Contact</div>
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 truncate">{contactName || <span className="opacity-60">None</span>}</span>
-                  {health && <HealthPill status={health.status} score={health.score} />}
-
-                  {link?.contact?.id && (
-                    <div className="ml-auto flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => previewAutoAssignContact(link.contact!.id)}
-                        disabled={busy || autoAssignBusyId === link.contact.id}
-                        className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
-                        title="Preview next-action assignment"
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => autoAssignContact(link.contact!.id)}
-                        disabled={busy || autoAssignBusyId === link.contact.id}
-                        className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
-                        title="Create a next-action assignment from Health"
-                      >
-                        {autoAssignBusyId === link.contact.id ? "Assigning…" : autoAssignedIds[link.contact.id] ? "Auto-assigned" : "Auto-assign"}
-                      </button>
-                    </div>
-                  )}
+                <div className="opacity-70 text-xs mb-2">Current links</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={openContact}
+                    disabled={!link?.contact?.id}
+                    className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-900 disabled:opacity-60 disabled:hover:bg-transparent"
+                  >
+                    Contact: {contactName || "none"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openAccount}
+                    disabled={!link?.account?.id}
+                    className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-900 disabled:opacity-60 disabled:hover:bg-transparent"
+                    title={link?.account?.id ? "Open linked account" : "No linked account"}
+                  >
+                    Account: {accountName || "none"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!link?.opportunity?.id}
+                    className="rounded-full border border-neutral-700 px-3 py-1.5 text-sm opacity-60"
+                  >
+                    Opportunity: {link?.opportunity?.name || "none"}
+                  </button>
                 </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {health && <HealthPill status={health.status} score={health.score} />}
+                  {link?.contact?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => unlink("contact")}
+                      disabled={busy}
+                      className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
+                    >
+                      Unlink contact
+                    </button>
+                  ) : null}
+                  {link?.account?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => unlink("account")}
+                      disabled={busy}
+                      className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
+                    >
+                      Unlink account
+                    </button>
+                  ) : null}
+                  {link?.contact?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => previewAutoAssignContact(link.contact!.id)}
+                      disabled={busy || autoAssignBusyId === link.contact.id}
+                      className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
+                      title="Preview next-action assignment"
+                    >
+                      Preview
+                    </button>
+                  ) : null}
+                  {link?.contact?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => autoAssignContact(link.contact!.id)}
+                      disabled={busy || autoAssignBusyId === link.contact.id}
+                      className="rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-900 disabled:opacity-50"
+                      title="Create a next-action assignment from Health"
+                    >
+                      {autoAssignBusyId === link.contact.id ? "Assigning…" : autoAssignedIds[link.contact.id] ? "Auto-assigned" : "Auto-assign"}
+                    </button>
+                  ) : null}
+                </div>
+
                 {health?.next_action && (
                   <div className="mt-2 text-xs text-neutral-300">
                     <span className="opacity-60">Action:</span>{" "}
                     <span className="font-medium">{health.next_action}</span>
                   </div>
                 )}
-              </div>
-              <div className="rounded-xl border p-3">
-                <div className="opacity-70 text-xs mb-1">Linked Account</div>
-                <div>{accountName || <span className="opacity-60">None</span>}</div>
               </div>
             </>
           )}
@@ -362,9 +518,8 @@ export default function CRMPanel({
                               if (!busy && !isAutoBusy) autoAssignContact(c.id);
                             }}
                             disabled={busy || isAutoBusy}
-                            className={`rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-800 disabled:opacity-50 ${
-                              isAutoDone ? "bg-green-600/20 text-green-300 border-green-700/50" : ""
-                            }`}
+                            className={`rounded-lg px-2 py-1 text-xs border border-neutral-700 hover:bg-neutral-800 disabled:opacity-50 ${isAutoDone ? "bg-green-600/20 text-green-300 border-green-700/50" : ""
+                              }`}
                             title="Create a next-action assignment from Health"
                           >
                             {isAutoDone ? "Auto-assigned" : isAutoBusy ? "Assigning…" : "Auto-assign"}
@@ -378,7 +533,47 @@ export default function CRMPanel({
             )}
           </div>
 
+          <div className="space-y-2">
+            <div className="opacity-80 text-xs">Search accounts</div>
+            <input
+              placeholder="Type company or domain…"
+              className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
+              value={accountQ}
+              onChange={(e) => searchAccounts(e.target.value)}
+            />
+            {accountQ && (
+              <div className="rounded-xl border divide-y max-h-56 overflow-auto">
+                {accountResults.length === 0 ? (
+                  <div className="p-3 text-xs opacity-70">No account results</div>
+                ) : accountResults.map((a) => {
+                  const label = a.name || a.domain || a.id;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => linkAccountId(a.id)}
+                      className="w-full text-left p-3 hover:bg-neutral-900 disabled:opacity-60"
+                      disabled={busy || link?.account?.id === a.id}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm truncate">{label}</div>
+                          {a.domain && <div className="text-xs opacity-70 truncate">{a.domain}</div>}
+                        </div>
+                        {link?.account?.id === a.id ? (
+                          <span className="rounded-full border border-green-700/50 bg-green-600/20 px-2 py-0.5 text-[11px] text-green-300">
+                            Linked
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {msg && <div className="text-green-400 text-xs">{msg}</div>}
+          {link?.account?.id ? <div className="text-xs opacity-70">Linked account is now attached to this call.</div> : null}
         </div>
       </div>
     </div>

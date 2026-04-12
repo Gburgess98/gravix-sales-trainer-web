@@ -846,17 +846,54 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
     return r?.name || repId;
   }
 
+  function patchAssignmentInState(assignmentId: string, patch: Partial<Assignment>) {
+    setRowsByRep((prev) => {
+      const next: Record<string, Assignment[]> = {};
+      for (const repId of Object.keys(prev)) {
+        next[repId] = (prev[repId] || []).map((a) =>
+          a.id === assignmentId ? { ...a, ...patch } : a
+        );
+      }
+      return next;
+    });
+  }
+
+  function removeAssignmentInState(assignmentId: string) {
+    setRowsByRep((prev) => {
+      const next: Record<string, Assignment[]> = {};
+      for (const repId of Object.keys(prev)) {
+        next[repId] = (prev[repId] || []).filter((a) => a.id !== assignmentId);
+      }
+      return next;
+    });
+  }
+
   async function markComplete(assignmentId: string) {
+    const ok = window.confirm(
+      "Force complete this assignment? This is a manager override and should only be used when the rep has genuinely finished it or the task should be closed manually."
+    );
+    if (!ok) return;
+
     setActionMsg(null);
     setActioningId(assignmentId);
     try {
-      const res = await proxyFetch(`/api/proxy/v1/assignments/${encodeURIComponent(assignmentId)}/complete`, {
+      const completed_at = new Date().toISOString();
+      const res = await proxyFetch(`/api/proxy/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          completed_at,
+          completed_by: "manager",
+        }),
       });
       await readJsonOrThrow(res);
-      setActionMsg("Marked complete ✓");
-      await load();
+      patchAssignmentInState(assignmentId, {
+        status: "completed",
+        completed_at,
+        completed_by: "manager",
+      });
+      setActionMsg("Force completed ✓");
     } catch (e: any) {
       setActionMsg(e?.message || "complete_failed");
     } finally {
@@ -876,8 +913,8 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
         body: JSON.stringify({ due_at }),
       });
       await readJsonOrThrow(res);
+      patchAssignmentInState(assignmentId, { due_at: due_at ?? null });
       setActionMsg("Due set to today ✓");
-      await load();
     } catch (e: any) {
       setActionMsg(e?.message || "reschedule_failed");
     } finally {
@@ -898,9 +935,29 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       await readJsonOrThrow(res);
 
       setActionMsg("Nudge sent ✓");
-      await load();
     } catch (e: any) {
       setActionMsg(e?.message || "nudge_failed");
+    } finally {
+      setActioningId(null);
+      window.setTimeout(() => setActionMsg(null), 1500);
+    }
+  }
+
+  async function deleteAssignment(assignmentId: string) {
+    const ok = window.confirm("Delete this assignment?");
+    if (!ok) return;
+
+    setActionMsg(null);
+    setActioningId(assignmentId);
+    try {
+      const res = await proxyFetch(`/api/proxy/v1/assignments/${encodeURIComponent(assignmentId)}`, {
+        method: "DELETE",
+      });
+      await readJsonOrThrow(res);
+      removeAssignmentInState(assignmentId);
+      setActionMsg("Deleted ✓");
+    } catch (e: any) {
+      setActionMsg(e?.message || "delete_failed");
     } finally {
       setActioningId(null);
       window.setTimeout(() => setActionMsg(null), 1500);
@@ -1216,7 +1273,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
   }, [reps, rowsByRep, signals]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6 flex min-h-screen flex-col">
+    <div className="mx-auto w-full max-w-[1600px] p-6 flex min-h-screen flex-col">
       {/* Debug: confirms the correct component is rendering */}
       <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-neutral-800 bg-neutral-950 px-3 py-1 text-xs text-neutral-400">
         <span className="font-semibold text-neutral-200">AdminAssignmentsClient</span>
@@ -1848,7 +1905,6 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                 </div>
               </div>
 
-              {/* Rep panels */}
               <div className="mt-6 flex-1 overflow-y-auto pr-2 space-y-6 max-h-[65vh] rounded-2xl border border-neutral-900 bg-neutral-950/20 p-3">
                 {sortedReps.map((rep) => {
                   const raw = rowsByRep[rep.id] || [];
@@ -1883,13 +1939,26 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-base font-semibold">{rep.name || rep.id}</div>
-                          <div className="mt-1 text-xs text-neutral-500">
-                            Open: {open.length} · Completed: {done.length}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-base font-semibold text-neutral-100">{rep.name || rep.id}</div>
+                            {rep.tier ? (
+                              <span className="inline-flex items-center rounded-full border border-neutral-800 bg-black px-2 py-0.5 text-[11px] font-medium text-neutral-400">
+                                {rep.tier}
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="mt-1 text-xs text-neutral-400">
-                            <span className="font-semibold text-neutral-300">Why:</span> {sig.reason}
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className="inline-flex items-center rounded-full border border-neutral-800 bg-black px-2 py-0.5 text-neutral-300">
+                              Open: <span className="ml-1 font-semibold text-neutral-100">{open.length}</span>
+                            </span>
+                            <span className="inline-flex items-center rounded-full border border-neutral-800 bg-black px-2 py-0.5 text-neutral-300">
+                              Completed: <span className="ml-1 font-semibold text-neutral-100">{done.length}</span>
+                            </span>
+                            <span className="inline-flex items-center rounded-full border border-neutral-800 bg-black px-2 py-0.5 text-neutral-300">
+                              Why: <span className="ml-1 font-semibold text-neutral-100">{sig.reason}</span>
+                            </span>
                           </div>
                         </div>
 
@@ -1904,59 +1973,57 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
 
                           {stuckPill(sig)}
 
-                          {(sig.tone === "danger" || sig.tone === "warn") ? (
-                            <>
-                              <button
-                                type="button"
-                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                onClick={() =>
-                                  jumpToCreateAndPrefill({
-                                    repId: rep.id,
-                                    type: "sparring",
-                                    title: "Run 1 sparring drill today",
-                                  })
-                                }
-                              >
-                                Assign sparring drill today
-                              </button>
+                          <>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              onClick={() =>
+                                jumpToCreateAndPrefill({
+                                  repId: rep.id,
+                                  type: "sparring",
+                                  title: "Run 1 sparring drill today",
+                                })
+                              }
+                            >
+                              Assign sparring drill today
+                            </button>
 
-                              <button
-                                type="button"
-                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                onClick={() =>
-                                  jumpToCreateAndPrefill({
-                                    repId: rep.id,
-                                    type: "call_review",
-                                    title: "Review a sales call today",
-                                  })
-                                }
-                              >
-                                Assign call review today
-                              </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              onClick={() =>
+                                jumpToCreateAndPrefill({
+                                  repId: rep.id,
+                                  type: "call_review",
+                                  title: "Review a sales call today",
+                                })
+                              }
+                            >
+                              Assign call review today
+                            </button>
 
-                              <button
-                                type="button"
-                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                onClick={() =>
-                                  jumpToCreateAndPrefill({
-                                    repId: rep.id,
-                                    type: "custom",
-                                    title: "Follow up on current assignment",
-                                  })
-                                }
-                              >
-                                Assign follow-up task
-                              </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              onClick={() =>
+                                jumpToCreateAndPrefill({
+                                  repId: rep.id,
+                                  type: "custom",
+                                  title: "Follow up on current assignment",
+                                })
+                              }
+                            >
+                              Assign follow-up task
+                            </button>
 
-                              <button
-                                type="button"
-                                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                onClick={() => jumpToCreateAndPrefill({ repId: rep.id })}
-                              >
-                                Quick assign
-                              </button>
-                            </>
-                          ) : null}
+                            <button
+                              type="button"
+                              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                              onClick={() => jumpToCreateAndPrefill({ repId: rep.id })}
+                            >
+                              Quick assign
+                            </button>
+                          </>
                         </div>
                       </div>
 
@@ -1965,8 +2032,8 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                         if (!suggestion) return null;
 
                         return (
-                          <div className="mt-2 text-xs text-neutral-400">
-                            Suggested next move: <span className="text-neutral-200">{suggestion}</span>
+                          <div className="mt-3 rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-xs text-neutral-400">
+                            Suggested next move: <span className="font-medium text-neutral-200">{suggestion}</span>
                           </div>
                         );
                       })()}
@@ -2020,26 +2087,33 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                             }
                                             className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
                                           >
-                                            Assign again
+                                            Reassign
                                           </button>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center justify-end gap-2">
-                                          {a.type === "custom" ? (
-                                            <button
-                                              type="button"
-                                              disabled={actioningId === a.id}
-                                              onClick={() => markComplete(a.id)}
-                                              className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
-                                            >
-                                              {actioningId === a.id ? "…" : "Complete"}
-                                            </button>
-                                          ) : null}
 
                                           <button
                                             type="button"
                                             disabled={actioningId === a.id}
-                                            onClick={() => setDueToday(a.id)}
+                                            onClick={() => void deleteAssignment(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void markComplete(a.id)}
+                                            className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                                          >
+                                            Force complete
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void setDueToday(a.id)}
                                             className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                                           >
                                             Due today
@@ -2048,10 +2122,19 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                           <button
                                             type="button"
                                             disabled={actioningId === a.id}
-                                            onClick={() => nudgeRep(rep.id, a.id)}
+                                            onClick={() => void nudgeRep(rep.id, a.id)}
                                             className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                                           >
-                                            {actioningId === a.id ? "…" : "Nudge"}
+                                            Nudge
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void deleteAssignment(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Delete
                                           </button>
                                         </div>
                                       )}
@@ -2066,17 +2149,70 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                     </section>
                   );
                 })}
-
-                {sortedReps.every((r) => (rowsByRep[r.id] || []).length === 0) ? (
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-6 text-sm text-neutral-400">
-                    No assignments found for your reps.
-                  </div>
-                ) : null}
               </div>
             </>
           ) : null}
         </div>
       )}
+
+      {bulkOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-base font-semibold text-neutral-100">
+                  {bulkKind === "assign_stale_drill" ? "Assign drills to stale reps" : "Clear overdue noise"}
+                </div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  {bulkKind === "assign_stale_drill"
+                    ? `This will assign 1 sparring drill to ${bulkPreview.staleRepCount} stale rep${bulkPreview.staleRepCount === 1 ? "" : "s"}.`
+                    : `This will set due today for ${bulkPreview.overdueCount} overdue assignment${bulkPreview.overdueCount === 1 ? "" : "s"}.`}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeBulk}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+              >
+                Close
+              </button>
+            </div>
+
+            {bulkErr ? (
+              <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                {bulkErr}
+              </div>
+            ) : null}
+
+            {bulkResult ? (
+              <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Done. {bulkResult.ok} ok, {bulkResult.fail} failed.
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={closeBulk}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => void runBulkAction()}
+                className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+              >
+                {bulkBusy ? "Running…" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
