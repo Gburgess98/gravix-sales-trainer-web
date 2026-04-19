@@ -421,6 +421,10 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
   const sp = new URLSearchParams(searchParams.toString());
 
   const repIdFromUrl = readParam(sp, "rep_id", "");
+  const repIdCamelFromUrl = readParam(sp, "repId", "");
+  const repNameFromUrl = readParam(sp, "repName", "");
+  const sourceFromUrl = readParam(sp, "source", "");
+  const preferredRepIdFromUrl = repIdFromUrl || repIdCamelFromUrl;
   const createTypeFromUrl = readParam(sp, "create_type", "");
   const createTitleFromUrl = readParam(sp, "create_title", "");
 
@@ -492,19 +496,32 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
     }, 50);
   }
 
-  // Consume ?rep_id=... and ?create_type, ?create_title for the create panel (prefill)
   useEffect(() => {
-    if (!repIdFromUrl) return;
-    setCreateRepId(repIdFromUrl);
+    if (!preferredRepIdFromUrl) return;
+    if (sourceFromUrl !== "control-centre") return;
+    if (view === "create") return;
+
+    const next = new URLSearchParams();
+    next.set("rep_id", preferredRepIdFromUrl);
+    if (repNameFromUrl) next.set("repName", repNameFromUrl);
+    next.set("source", sourceFromUrl);
+
+    router.replace(`/admin/assignments/create?${next.toString()}#create-assignment`);
+  }, [preferredRepIdFromUrl, repNameFromUrl, router, sourceFromUrl, view]);
+
+  // Consume ?rep_id=.../?repId=... and ?create_type, ?create_title for the create panel (prefill)
+  useEffect(() => {
+    if (!preferredRepIdFromUrl) return;
+    setCreateRepId(preferredRepIdFromUrl);
     if (createTypeFromUrl && (["custom", "sparring", "call_review"] as string[]).includes(createTypeFromUrl)) {
       setCreateType(createTypeFromUrl as Assignment["type"]);
     }
     if (createTitleFromUrl) {
       setCreateTitle(createTitleFromUrl);
     }
-    // If manager came from Quick assign, keep momentum
+    // If manager came from Quick assign / Control Centre, keep momentum
     titleInputRef.current?.focus();
-  }, [repIdFromUrl, createTypeFromUrl, createTitleFromUrl]);
+  }, [preferredRepIdFromUrl, createTypeFromUrl, createTitleFromUrl]);
 
   // Consume #create-assignment anchor: scroll + focus title
   useEffect(() => {
@@ -1044,7 +1061,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       setReps(repList);
       // If URL asked for a rep, prefer it. Otherwise default to first rep.
       setCreateRepId((prev) => {
-        const wanted = repIdFromUrl || prev;
+        const wanted = preferredRepIdFromUrl || prev;
         if (wanted && repList.some((r) => r.id === wanted)) return wanted;
         if (prev && repList.some((r) => r.id === prev)) return prev;
         return repList[0]?.id || "";
@@ -1371,9 +1388,14 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                 <div>
                   <div className="text-sm font-semibold">Create assignment</div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Prefills from <span className="text-neutral-300">?rep_id=</span> and focuses title on
+                    Prefills from <span className="text-neutral-300">?rep_id=</span> / <span className="text-neutral-300">?repId=</span> and focuses title on
                     <span className="text-neutral-300"> #create-assignment</span>.
                   </div>
+                  {sourceFromUrl === "control-centre" && preferredRepIdFromUrl ? (
+                    <div className="mt-2 inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-200">
+                      Prefilled from Control Centre{repNameFromUrl ? ` · ${repNameFromUrl}` : ""}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="text-xs text-neutral-500">

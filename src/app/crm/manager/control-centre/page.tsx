@@ -126,6 +126,88 @@ function computeFallbackRiskScore(r: RepRiskRow) {
   return overdue * 100 + open * 10;
 }
 
+function normaliseReasonLabel(value: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const cleaned = raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  const map: Array<[RegExp, string]> = [
+    [/objection/, "Objection handling"],
+    [/weak close|closing|close/, "Closing"],
+    [/discovery/, "Discovery"],
+    [/intro|opening|opener/, "Intro"],
+    [/follow up|follow-up/, "Follow-up discipline"],
+    [/inactive|stale|no activity/, "Inactivity"],
+    [/overdue/, "Overdue actions"],
+    [/workload|too many open|open action/, "Workload"],
+    [/pricing|price/, "Price objection"],
+    [/next step|next-step/, "Next steps"],
+  ];
+
+  for (const [pattern, label] of map) {
+    if (pattern.test(cleaned)) return label;
+  }
+
+  return cleaned
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+function collectRepReasons(r: RepRiskRow): string[] {
+  const direct = Array.isArray(r?.reasons) ? r.reasons : [];
+  const metaReasons = Array.isArray((r as any)?.meta?.reasons) ? (r as any).meta.reasons : [];
+  return [...direct, ...metaReasons]
+    .map((x) => normaliseReasonLabel(String(x || "")))
+    .filter(Boolean);
+}
+
+function inferWeakestSkill(r: RepRiskRow): string {
+  const direct = String((r as any)?.weakest_skill ?? (r as any)?.meta?.weakest_skill ?? "").trim();
+  if (direct) return direct;
+
+  const reasons = collectRepReasons(r);
+  const joined = reasons.join(" | ").toLowerCase();
+
+  if (joined.includes("objection")) return "Objection handling";
+  if (joined.includes("closing") || joined.includes("next steps")) return "Closing";
+  if (joined.includes("discovery")) return "Discovery";
+  if (joined.includes("intro")) return "Intro";
+  if (joined.includes("price objection")) return "Price handling";
+  if (joined.includes("follow-up")) return "Follow-up discipline";
+  if (joined.includes("inactivity")) return "Consistency";
+  if (joined.includes("workload") || joined.includes("overdue actions")) return "Execution";
+
+  const overdue = Number(r?.counts?.overdue ?? 0);
+  const open = Number(r?.counts?.open ?? 0);
+
+  if (overdue > 0) return "Execution";
+  if (open > 6) return "Prioritisation";
+  if (open > 0) return "Follow-up discipline";
+  return "Unknown";
+}
+
+function recommendManagerAction(r: RepRiskRow) {
+  const overdue = Number(r?.counts?.overdue ?? 0);
+  const open = Number(r?.counts?.open ?? 0);
+  const weak = inferWeakestSkill(r);
+  const joined = collectRepReasons(r).join(" | ").toLowerCase();
+
+  if (overdue > 0) return "Clear overdue actions first";
+  if (joined.includes("objection")) return "Assign objection drill";
+  if (weak === "Closing") return "Review weak close calls";
+  if (weak === "Discovery") return "Coach discovery questions";
+  if (weak === "Intro") return "Tighten opener";
+  if (open > 6) return "Reduce workload and re-prioritise";
+  if (weak === "Follow-up discipline") return "Set follow-up target";
+  return "Review recent calls";
+}
+
 // Server action: best-effort create a rep follow-up task (fail-soft)
 async function createRepFollowUpAction(formData: FormData) {
   "use server";
@@ -266,8 +348,60 @@ export default async function ControlCentrePage({
   const openTotal = Number(headline.open_actions_total ?? 0);
   const overdueTotal = Number(headline.overdue_actions_total ?? 0);
 
+  const recurringReasonCounts = Array.from(
+    combined.reduce((acc, rep) => {
+      for (const reason of collectRepReasons(rep)) {
+        const key = normaliseReasonLabel(reason);
+        if (!key) continue;
+        acc.set(key, (acc.get(key) ?? 0) + 1);
+      }
+      return acc;
+    }, new Map<string, number>())
+  ).sort((a, b) => b[1] - a[1]);
+
+  const recurringObjections = recurringReasonCounts
+    .filter(([label]) =>
+      [
+        "Objection handling",
+        "Closing",
+        "Discovery",
+        "Intro",
+        "Price objection",
+        "Next steps",
+      ].includes(label)
+    )
+    .slice(0, 6);
+
+  const recurringOperationalIssues = recurringReasonCounts
+    .filter(([label]) => !recurringObjections.some(([picked]) => picked === label))
+    .slice(0, 6);
+
+  const weakestSkills = Array.from(
+    combined.reduce((acc, rep) => {
+      const key = inferWeakestSkill(rep);
+      if (!key || key === "Unknown") return acc;
+      acc.set(key, (acc.get(key) ?? 0) + 1);
+      return acc;
+    }, new Map<string, number>())
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const actionQueue = filtered.slice(0, 5).map((rep) => ({
+    rep_id: String(rep.rep_id ?? ""),
+    rep_name: String(rep.rep_name ?? "Rep"),
+    action: recommendManagerAction(rep),
+    weakest_skill: inferWeakestSkill(rep),
+    overdue: Number(rep?.counts?.overdue ?? 0),
+    open: Number(rep?.counts?.open ?? 0),
+    rowHref: rep.rep_id ? `/crm/reps/${encodeURIComponent(String(rep.rep_id))}` : "/crm/reps",
+    actionsHref: rep.rep_id
+      ? `/crm/actions?repId=${encodeURIComponent(String(rep.rep_id))}&status=open`
+      : "/crm/actions",
+  }));
+
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6">
+    <div className="mx-auto max-w-[1400px] p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-100">Manager Control Centre</h1>
@@ -322,6 +456,125 @@ export default async function ControlCentrePage({
             </div>
           </div>
 
+          {/* Daily control centre insights */}
+          <div className="grid gap-4 xl:grid-cols-3">
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">Who needs help</div>
+                <div className="text-xs text-neutral-500">Top five reps to coach right now.</div>
+              </div>
+              <div className="p-4 space-y-3">
+                {actionQueue.length === 0 ? (
+                  <div className="text-sm text-neutral-400">No reps need intervention right now.</div>
+                ) : (
+                  actionQueue.map((item, idx) => (
+                    <div key={`${item.rep_id}-${idx}`} className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
+                          <div className="mt-1 text-xs text-neutral-400">
+                            Weakest skill: <span className="text-neutral-200">{item.weakest_skill}</span>
+                          </div>
+                        </div>
+                        <div className="text-right text-[11px] text-neutral-500">
+                          <div>Overdue: <span className="text-neutral-200">{item.overdue}</span></div>
+                          <div>Open: <span className="text-neutral-200">{item.open}</span></div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs font-medium text-amber-200">{item.action}</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link
+                          href={item.rowHref}
+                          className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30"
+                        >
+                          View rep
+                        </Link>
+                        <Link
+                          href={item.actionsHref}
+                          className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+                        >
+                          Open actions
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">Recurring objections</div>
+                <div className="text-xs text-neutral-500">Most repeated call weaknesses across flagged reps.</div>
+              </div>
+              <div className="p-4 space-y-3">
+                {recurringObjections.length === 0 ? (
+                  recurringOperationalIssues.length === 0 ? (
+                    <div className="text-sm text-neutral-400">No recurring objections detected yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-xs uppercase tracking-wide text-neutral-500">Operational signals</div>
+                      {recurringOperationalIssues.map(([label, count]) => (
+                        <div key={label} className="space-y-1">
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-neutral-200">{label}</span>
+                            <span className="text-xs font-semibold text-neutral-400">{count}</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-neutral-900 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-neutral-500/70"
+                              style={{ width: `${Math.min(100, Math.max(8, count * 14))}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  recurringObjections.map(([label, count]) => (
+                    <div key={label} className="space-y-1">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-neutral-200">{label}</span>
+                        <span className="text-xs font-semibold text-neutral-400">{count}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-neutral-900 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-amber-400/70"
+                          style={{ width: `${Math.min(100, Math.max(8, count * 14))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">Weakest skill</div>
+                <div className="text-xs text-neutral-500">Where the team is losing the most ground.</div>
+              </div>
+              <div className="p-4 space-y-3">
+                {weakestSkills.length === 0 ? (
+                  <div className="text-sm text-neutral-400">No skill breakdown available yet.</div>
+                ) : (
+                  weakestSkills.map(([label, count], idx) => (
+                    <div
+                      key={`${label}-${idx}`}
+                      className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-neutral-100">{label}</div>
+                        <div className="text-[11px] text-neutral-500">Reps affected</div>
+                      </div>
+                      <div className="text-lg font-semibold text-neutral-100">{count}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Decision table */}
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
@@ -363,17 +616,17 @@ export default async function ControlCentrePage({
               <div className="p-4 text-sm text-neutral-400">No reps flagged in this window.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full table-fixed text-sm">
                   <thead className="text-xs text-neutral-500">
                     <tr className="border-b border-neutral-900">
-                      <th className="px-4 py-3 text-left font-medium">Rep</th>
-                      <th className="px-4 py-3 text-left font-medium">Urgency</th>
-                      <th className="px-4 py-3 text-right font-medium">Risk</th>
-                      <th className="px-4 py-3 text-right font-medium">Overdue</th>
-                      <th className="px-4 py-3 text-right font-medium">Open</th>
-                      <th className="px-4 py-3 text-right font-medium">Done today</th>
-                      <th className="px-4 py-3 text-left font-medium">Top reasons</th>
-                      <th className="px-4 py-3 text-right font-medium">Quick actions</th>
+                      <th className="w-[24%] px-4 py-3 text-left font-medium">Rep</th>
+                      <th className="w-[10%] px-4 py-3 text-left font-medium">Urgency</th>
+                      <th className="w-[7%] px-4 py-3 text-right font-medium">Risk</th>
+                      <th className="w-[7%] px-4 py-3 text-right font-medium">Overdue</th>
+                      <th className="w-[7%] px-4 py-3 text-right font-medium">Open</th>
+                      <th className="w-[8%] px-4 py-3 text-right font-medium">Done today</th>
+                      <th className="w-[18%] px-4 py-3 text-left font-medium">Top reasons</th>
+                      <th className="w-[19%] px-4 py-3 text-right font-medium">Quick actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -393,6 +646,7 @@ export default async function ControlCentrePage({
                           ? (r as any).meta.reasons
                           : [];
                       const topReasons = reasons.filter(Boolean).slice(0, 3);
+                      const weakestSkill = inferWeakestSkill(r);
 
                       const primaryReason =
                         String((r as any)?.reason ?? "").trim() ||
@@ -404,10 +658,21 @@ export default async function ControlCentrePage({
                               ? "Activity imbalance"
                               : "");
 
+                      const activityLabel =
+                        String((r as any)?.activity_label ?? (r as any)?.meta?.activity_label ?? "").trim() ||
+                        "No activity data";
+
+                      const activityScore = Number(
+                        (r as any)?.activity_score ?? (r as any)?.meta?.activity_score ?? 0
+                      );
+
                       const lastActivity =
+                        (r as any)?.meta?.last_active_at ??
                         (r as any)?.last_activity_at ??
-                        (r as any)?.meta?.last_activity_at ??
                         null;
+
+                      const lastLoginAt = (r as any)?.meta?.last_login_at ?? null;
+                      const lastCallAt = (r as any)?.meta?.last_call_at ?? null;
 
                       const inactiveDays =
                         lastActivity && Number.isFinite(new Date(String(lastActivity)).getTime())
@@ -439,7 +704,7 @@ export default async function ControlCentrePage({
                         >
                           {/* Click-anywhere row: put a link over the rep cell and style it like a row anchor */}
                           <td className="px-4 py-3">
-                            <div className="min-w-0">
+                            <div className="min-w-0 max-w-[320px]">
                               <Link
                                 href={rowHref}
                                 className="block truncate font-medium text-neutral-100 hover:underline"
@@ -447,17 +712,32 @@ export default async function ControlCentrePage({
                                 {repName}
                               </Link>
                               <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-                                <span>Last activity: {relTime(lastActivity)}</span>
+                                <span>Activity: {activityLabel}</span>
                                 <span className={pill.cls}>{pill.label}</span>
+                                {activityScore > 0 ? (
+                                  <span className="rounded-full border border-neutral-700 bg-neutral-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-200">
+                                    Score {Math.round(activityScore)}
+                                  </span>
+                                ) : null}
                                 {showInactive ? (
                                   <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-200">
                                     Inactive
                                   </span>
                                 ) : null}
                               </div>
+                              <div className="mt-1 text-[11px] text-neutral-500">
+                                Last call: <span className="text-neutral-300">{relTime(lastCallAt)}</span>
+                                <span className="mx-1 text-neutral-700">•</span>
+                                Last login: <span className="text-neutral-300">{relTime(lastLoginAt)}</span>
+                              </div>
                               {primaryReason ? (
                                 <div className="mt-1 text-xs font-medium text-neutral-300">
                                   {primaryReason}
+                                </div>
+                              ) : null}
+                              {weakestSkill && weakestSkill !== "Unknown" ? (
+                                <div className="mt-1 text-[11px] text-neutral-500">
+                                  Weakest skill: <span className="text-neutral-300">{weakestSkill}</span>
                                 </div>
                               ) : null}
                             </div>
@@ -534,8 +814,8 @@ export default async function ControlCentrePage({
                             )}
                           </td>
 
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-2">
+                          <td className="px-4 py-3 align-top">
+                            <div className="flex flex-wrap justify-end gap-2 max-w-[260px] ml-auto">
                               {/* Inline create follow-up (best-effort, fail-soft) */}
                               <form action={createRepFollowUpAction}>
                                 <input type="hidden" name="rep_id" value={repId} />
@@ -576,6 +856,15 @@ export default async function ControlCentrePage({
                                 className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30"
                               >
                                 View
+                              </Link>
+                              <Link
+                                href={repId
+                                  ? `/admin/assignments?repId=${encodeURIComponent(repId)}&repName=${encodeURIComponent(repName)}&source=control-centre`
+                                  : "/admin/assignments"
+                                }
+                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+                              >
+                                Assign drill
                               </Link>
                             </div>
                           </td>
