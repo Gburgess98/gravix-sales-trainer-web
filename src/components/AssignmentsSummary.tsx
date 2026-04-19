@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { completeCrmAction } from '@/lib/api';
 
@@ -10,6 +10,25 @@ export type AssignmentAction = {
   due_at?: string | null;
   importance?: string | null;
   status?: string | null;
+};
+
+type AssignmentItem = {
+  id: string;
+  title: string;
+  due_at?: string | null;
+  status?: string | null;
+};
+
+type AssignmentsSummaryResp = {
+  ok: boolean;
+  summary?: {
+    total: number;
+    open: number;
+    completed: number;
+    overdue: number;
+    today_focus?: AssignmentItem | null;
+  };
+  items?: AssignmentItem[];
 };
 
 export default function AssignmentsSummary(props: {
@@ -23,18 +42,66 @@ export default function AssignmentsSummary(props: {
   const [isPending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
+  const [loaded, setLoaded] = useState(false);
+  const [openCount, setOpenCount] = useState(open);
+  const [dueSoonCount, setDueSoonCount] = useState(dueSoon);
+  const [completedCount, setCompletedCount] = useState(completed7d);
+  const [actionItems, setActionItems] = useState<AssignmentAction[]>(actions);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch('/api/proxy/v1/assignments/summary');
+        const json: AssignmentsSummaryResp = await res.json();
+        if (cancelled || !json || json.ok === false) return;
+
+        const s = json.summary;
+        if (!s) return;
+
+        setOpenCount(s.open ?? 0);
+        setDueSoonCount(s.overdue ?? 0);
+        setCompletedCount(s.completed ?? 0);
+
+        const today = s.today_focus;
+        if (today) {
+          setActionItems([
+            {
+              id: today.id,
+              title: today.title,
+              due_at: today.due_at ?? null,
+              status: today.status ?? null,
+            },
+          ]);
+        } else {
+          setActionItems([]);
+        }
+
+        setLoaded(true);
+      } catch (e) {
+        console.error('AssignmentsSummary load failed', e);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="rounded border p-3 text-sm space-y-3">
       <div className="flex items-center gap-4">
-        <span className="px-2 py-1 rounded border">🟡 Open: {open}</span>
-        <span className="px-2 py-1 rounded border">🟠 Due soon: {dueSoon}</span>
-        <span className="px-2 py-1 rounded border">✅ Completed 7d: {completed7d}</span>
+        <span className="px-2 py-1 rounded border">🟡 Open: {openCount}</span>
+        <span className="px-2 py-1 rounded border">🟠 Due soon: {dueSoonCount}</span>
+        <span className="px-2 py-1 rounded border">✅ Completed: {completedCount}</span>
       </div>
 
-      {actions.length > 0 ? (
+      {actionItems.length > 0 ? (
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-wide text-neutral-400">Today’s Actions</div>
-          {actions.map((a) => (
+          {actionItems.map((a) => (
             <div key={a.id} className="flex items-start justify-between gap-3 border rounded p-2">
               <div className="min-w-0">
                 <div className="font-medium truncate">{a.title}</div>

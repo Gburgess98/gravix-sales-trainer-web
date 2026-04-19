@@ -371,6 +371,19 @@ function sparringHref(assignmentId: string, personaId: string | null) {
   return `/sparring/${encodeURIComponent(pid)}?assignmentId=${encodeURIComponent(assignmentId)}`;
 }
 
+function callReviewHref(assignment: Assignment) {
+  const qs = new URLSearchParams();
+  qs.set("assignment", assignment.id);
+  qs.set("assignmentId", assignment.id);
+
+  if (assignment.target_id) {
+    qs.set("callId", assignment.target_id);
+    return `/calls/${encodeURIComponent(assignment.target_id)}?${qs.toString()}`;
+  }
+
+  return `/call-library?${qs.toString()}`;
+}
+
 function SkeletonCard() {
   return (
     <div className="animate-pulse rounded-xl border border-neutral-800 bg-neutral-950 p-4">
@@ -528,7 +541,18 @@ export default function AssignmentsClient() {
   }, [snoozes]);
 
   const hasActiveSnoozes = activeSnoozedCount > 0;
-  const done = useMemo(() => rows.filter((r) => r.status === "completed"), [rows]);
+  const done = useMemo(
+    () =>
+      rows
+        .filter((r) => r.status === "completed")
+        .slice()
+        .sort((a, b) => {
+          const at = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+          const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+          return bt - at;
+        }),
+    [rows]
+  );
   const streak = useMemo(() => computeCompletionStreak(done, localCompletedDays), [done, localCompletedDays]);
 
   const [streakWarn, setStreakWarn] = useState<string | null>(null);
@@ -814,22 +838,13 @@ export default function AssignmentsClient() {
                         ) : null}
                       </div>
                     ) : todayFocus.type === "call_review" ? (
-                      todayFocus.target_id ? (
-                        <Link
-                          href={`/calls/${encodeURIComponent(todayFocus.target_id)}?assignment=${encodeURIComponent(todayFocus.id)}&assignmentId=${encodeURIComponent(todayFocus.id)}&callId=${encodeURIComponent(todayFocus.target_id)}`}
-                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
-                        >
-                          Start review
-                        </Link>
-                      ) : (
-                        <Link
-                          href={`/calls?assignment=${encodeURIComponent(todayFocus.id)}&assignmentId=${encodeURIComponent(todayFocus.id)}`}
-                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
-                          title="Rep can choose a call"
-                        >
-                          Pick a call
-                        </Link>
-                      )
+                      <Link
+                        href={callReviewHref(todayFocus)}
+                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                        title={todayFocus.target_id ? undefined : "Rep can choose a call"}
+                      >
+                        {todayFocus.target_id ? "Start review" : "Pick a call"}
+                      </Link>
                     ) : (
                       <button
                         onClick={() => complete(todayFocus.id)}
@@ -923,25 +938,20 @@ export default function AssignmentsClient() {
                   <div className="text-[11px] text-neutral-500">No persona set · using default</div>
                 ) : null}
               </div>
-            ) : todayFocus.type === "call_review" && todayFocus.target_id ? (
+            ) : todayFocus.type === "call_review" ? (
               <Link
-                href={`/calls/${encodeURIComponent(
-                  todayFocus.target_id
-                )}?assignment=${encodeURIComponent(
-                  todayFocus.id
-                )}&assignmentId=${encodeURIComponent(todayFocus.id)}&callId=${encodeURIComponent(
-                  todayFocus.target_id
-                )}`}
+                href={callReviewHref(todayFocus)}
                 className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                title={todayFocus.target_id ? undefined : "Rep can choose a call"}
               >
-                Review call
+                {todayFocus.target_id ? "Review call" : "Pick a call"}
               </Link>
             ) : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => complete(todayFocus.id)}
                   disabled={savingId === todayFocus.id}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
                 >
                   {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
                 </button>
@@ -1104,12 +1114,13 @@ export default function AssignmentsClient() {
                             <div className="text-[11px] text-neutral-500">No persona · default</div>
                           ) : null}
                         </div>
-                      ) : a.type === "call_review" && a.target_id ? (
+                      ) : a.type === "call_review" ? (
                         <Link
-                          href={`/calls/${encodeURIComponent(a.target_id)}?assignment=${encodeURIComponent(a.id)}&assignmentId=${encodeURIComponent(a.id)}&callId=${encodeURIComponent(a.target_id)}`}
+                          href={callReviewHref(a)}
                           className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                          title={a.target_id ? undefined : "Rep can choose a call"}
                         >
-                          Open call review
+                          {a.target_id ? "Open call review" : "Pick a call"}
                         </Link>
                       ) : a.type === "custom" ? (
                         <button

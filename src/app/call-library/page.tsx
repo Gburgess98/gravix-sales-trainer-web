@@ -1,7 +1,7 @@
 // src/app/call-library/page.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
@@ -21,6 +21,9 @@ type CallItem = {
   duration_ms?: number | null;
   summary?: string | null;
   flags?: string[] | null;
+  assignment_status?: string | null;
+  has_open_assignment?: boolean;
+  has_completed_assignment?: boolean;
 };
 
 type CallsPagedResp = {
@@ -28,6 +31,22 @@ type CallsPagedResp = {
   calls?: CallItem[];
   items?: CallItem[];
   nextCursor?: string | null;
+};
+
+type AssignmentTargetItem = {
+  target_id: string;
+  has_any: boolean;
+  has_open: boolean;
+  has_completed: boolean;
+  latest_status: string | null;
+  latest_assignment_id: string | null;
+  open_assignment_id: string | null;
+  completed_assignment_id: string | null;
+};
+
+type AssignmentsByTargetResp = {
+  ok: boolean;
+  items?: AssignmentTargetItem[];
 };
 
 type SparringSession = {
@@ -56,6 +75,7 @@ type SortBy =
   | "scoreLow"
   | "durationHigh"
   | "durationLow";
+type CallScope = "mine" | "company";
 
 const AVAILABLE_TAGS = [
   "Objection",
@@ -64,6 +84,22 @@ const AVAILABLE_TAGS = [
   "Price objection",
   "Low energy",
 ];
+
+function buildCallsPagedUrl(params: {
+  limit?: number;
+  cursor?: string | null;
+  q?: string;
+  scope?: CallScope;
+}) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("limit", String(params.limit ?? 20));
+
+  if (params.cursor) searchParams.set("cursor", params.cursor);
+  if (params.q) searchParams.set("q", params.q);
+  if (params.scope) searchParams.set("scope", params.scope);
+
+  return `/api/proxy/v1/calls/paged?${searchParams.toString()}`;
+}
 
 function formatCallDuration(call: CallItem): string {
   if (call.duration_ms && call.duration_ms > 0) {
@@ -107,6 +143,38 @@ function statusDotColour(status: string) {
   return "bg-neutral-500";
 }
 
+function buildAssignmentsByTargetUrl(targetIds: string[], type = "call_review") {
+  const searchParams = new URLSearchParams();
+  searchParams.set("target_ids", targetIds.join(","));
+  searchParams.set("type", type);
+  return `/api/proxy/v1/assignments/by-target?${searchParams.toString()}`;
+}
+
+function callAssignmentBadge(call: CallItem): { label: string; className: string } | null {
+  if (call.has_open_assignment) {
+    return {
+      label: "Assigned",
+      className: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+    };
+  }
+
+  const status = String(call.status || "").toLowerCase();
+  const isScored =
+    status === "scored" ||
+    status === "processed" ||
+    status === "completed" ||
+    typeof call.score_overall === "number";
+
+  if (isScored && !call.has_open_assignment) {
+    return {
+      label: "Needs Review",
+      className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    };
+  }
+
+  return null;
+}
+
 
 function displayType(type?: string | null): string {
   if (!type) return "Live";
@@ -137,6 +205,7 @@ export default function CallLibraryPage() {
   const [sparPersona, setSparPersona] = useState<string>("price_sensitive");
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
+  const [callScope, setCallScope] = useState<CallScope>("mine");
 
   // Sparring personas config (loaded from API)
   const [sparPersonas, setSparPersonas] = useState<SparringPersonaOption[]>([]);
@@ -153,6 +222,7 @@ export default function CallLibraryPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const callsRef = useRef<CallItem[]>([]);
   useEffect(() => {
     callsRef.current = calls;
@@ -190,7 +260,11 @@ export default function CallLibraryPage() {
 
     const loadCalls = async () => {
       const res = await fetchJsonWithRetry<CallsPagedResp>(
-        `/api/proxy/v1/calls/paged?limit=20${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`
+        buildCallsPagedUrl({
+          limit: 20,
+          q: debouncedSearch || undefined,
+          scope: tab === "live" ? callScope : "mine",
+        })
       );
 
       if (!alive) return;
@@ -234,7 +308,59 @@ export default function CallLibraryPage() {
       alive = false;
       clearInterval(interval);
     };
-  }, [tab, debouncedSearch]);
+  }, [tab, debouncedSearch, callScope]);
+
+  useEffect(() => {
+    if (tab !== "live") return;
+    if (calls.length === 0) return;
+
+    let cancelled = false;
+
+    async function loadAssignmentState() {
+      try {
+        setAssignmentsLoading(true);
+        const targetIds = Array.from(new Set(calls.map((c) => c.id).filter(Boolean)));
+        if (targetIds.length === 0) return;
+
+        const res = await fetchJsonWithRetry<AssignmentsByTargetResp>(
+          buildAssignmentsByTargetUrl(targetIds)
+        );
+
+        if (cancelled || !res || res.ok === false) return;
+
+        const byId = new Map((res.items || []).map((item) => [item.target_id, item]));
+
+        setCalls((prev) =>
+          prev.map((call) => {
+            const item = byId.get(call.id);
+            if (!item) {
+              return call;
+            }
+
+            return {
+              ...call,
+              assignment_status: item.latest_status,
+              has_open_assignment:
+                typeof call.has_open_assignment === "boolean"
+                  ? call.has_open_assignment || item.has_open
+                  : item.has_open,
+              has_completed_assignment: item.has_completed,
+            };
+          })
+        );
+      } catch (e) {
+        console.error("call-library: assignments state load failed", e);
+      } finally {
+        if (!cancelled) setAssignmentsLoading(false);
+      }
+    }
+
+    loadAssignmentState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, calls.length, callScope]);
 
 
   // Load SPARRING sessions
@@ -346,10 +472,12 @@ export default function CallLibraryPage() {
       setMoreError(null);
 
       const res = await fetchJsonWithRetry<CallsPagedResp>(
-        `/api/proxy/v1/calls/paged?limit=20&cursor=${encodeURIComponent(
-          cursor
-        )}${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
-        }`
+        buildCallsPagedUrl({
+          limit: 20,
+          cursor,
+          q: debouncedSearch || undefined,
+          scope: tab === "live" ? callScope : "mine",
+        })
       );
 
       const list = (res.calls ?? res.items) || [];
@@ -530,135 +658,160 @@ export default function CallLibraryPage() {
 
       {/* Status / score + rep filters for live calls */}
       {tab === "live" && (
-        <div className="mb-4 flex flex-col gap-2 text-xs md:flex-row md:items-center md:justify-between">
-          {/* Left: status chips */}
-          <div className="flex flex-wrap gap-3">
+        <div className="mb-4 flex flex-col gap-3 text-xs">
+          <div className="flex flex-wrap gap-2">
+            <span className="self-center text-neutral-500">View</span>
             {[
-              { id: "all", label: "All calls" },
-              { id: "scored", label: "Scored" },
-              { id: "processing", label: "Processing" },
-              { id: "failed", label: "Failed" },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setStatusFilter(opt.id as StatusFilter)}
-                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${statusFilter === opt.id
-                  ? "border-neutral-100 bg-neutral-100 text-neutral-900"
-                  : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                  }`}
-              >
-                <span>{opt.label}</span>
-              </button>
-            ))}
+              { id: "mine", label: "My calls" },
+              { id: "company", label: "Company calls" },
+            ].map((opt) => {
+              const active = callScope === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setCallScope(opt.id as CallScope)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${active
+                    ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                    : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                    }`}
+                >
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
           </div>
-
-          {/* Right: reps + score range + tags */}
-          <div className="flex flex-wrap items-center gap-2 md:gap-3">
-            {/* Rep multi-select */}
-            <div className="relative">
-              <details className="group">
-                <summary className="cursor-pointer rounded-md border border-neutral-700 px-3 py-1 text-neutral-300 group-open:bg-neutral-800 list-none">
-                  Reps ▾
-                </summary>
-                <div className="absolute z-20 mt-1 w-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 shadow-lg">
-                  {availableReps.length === 0 && (
-                    <div className="py-1 text-xs text-neutral-500">
-                      No reps yet
-                    </div>
-                  )}
-                  {availableReps.map((rep) => (
-                    <label
-                      key={rep}
-                      className="flex items-center gap-2 py-1 text-xs text-neutral-200"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={selectedReps.includes(rep)}
-                        onChange={() => {
-                          setSelectedReps((prev) =>
-                            prev.includes(rep)
-                              ? prev.filter((r) => r !== rep)
-                              : [...prev, rep]
-                          );
-                        }}
-                      />
-                      <span className="truncate">{rep}</span>
-                    </label>
-                  ))}
-                </div>
-              </details>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            {/* Left: status chips */}
+            <div className="flex flex-wrap gap-3">
+              {[
+                { id: "all", label: "All calls" },
+                { id: "scored", label: "Scored" },
+                { id: "processing", label: "Processing" },
+                { id: "failed", label: "Failed" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setStatusFilter(opt.id as StatusFilter)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${statusFilter === opt.id
+                    ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                    : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                    }`}
+                >
+                  <span>{opt.label}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Score range */}
-            <div className="flex items-center gap-1">
-              <span className="text-neutral-500">Score</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={minScore}
-                onChange={(e) => setMinScore(e.target.value)}
-                placeholder="Min"
-                className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
-              />
-              <span className="text-neutral-500">–</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={maxScore}
-                onChange={(e) => setMaxScore(e.target.value)}
-                placeholder="Max"
-                className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
-              />
-            </div>
+            {/* Right: reps + score range + tags */}
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+              {/* Rep multi-select */}
+              <div className="relative">
+                <details className="group">
+                  <summary className="cursor-pointer rounded-md border border-neutral-700 px-3 py-1 text-neutral-300 group-open:bg-neutral-800 list-none">
+                    Reps ▾
+                  </summary>
+                  <div className="absolute z-20 mt-1 w-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 shadow-lg">
+                    {availableReps.length === 0 && (
+                      <div className="py-1 text-xs text-neutral-500">
+                        No reps yet
+                      </div>
+                    )}
+                    {availableReps.map((rep) => (
+                      <label
+                        key={rep}
+                        className="flex items-center gap-2 py-1 text-xs text-neutral-200"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={selectedReps.includes(rep)}
+                          onChange={() => {
+                            setSelectedReps((prev) =>
+                              prev.includes(rep)
+                                ? prev.filter((r) => r !== rep)
+                                : [...prev, rep]
+                            );
+                          }}
+                        />
+                        <span className="truncate">{rep}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              </div>
 
-            {/* Tag multi-select */}
-            <div className="relative">
-              <details className="group">
-                <summary className="cursor-pointer rounded-md border border-neutral-700 px-3 py-1 text-neutral-300 group-open:bg-neutral-800 list-none">
-                  Tags ▾
-                </summary>
-                <div className="absolute z-20 mt-1 w-44 rounded-md border border-neutral-700 bg-neutral-900 p-2 shadow-lg">
-                  {AVAILABLE_TAGS.map((tag) => (
-                    <label
-                      key={tag}
-                      className="flex items-center gap-2 py-1 text-xs text-neutral-200"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={selectedTags.includes(tag)}
-                        onChange={() => {
-                          setSelectedTags((prev) =>
-                            prev.includes(tag)
-                              ? prev.filter((t) => t !== tag)
-                              : [...prev, tag]
-                          );
-                        }}
-                      />
-                      <span className="truncate">{tag}</span>
-                    </label>
-                  ))}
-                </div>
-              </details>
-            </div>
+              {/* Score range */}
+              <div className="flex items-center gap-1">
+                <span className="text-neutral-500">Score</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={minScore}
+                  onChange={(e) => setMinScore(e.target.value)}
+                  placeholder="Min"
+                  className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+                />
+                <span className="text-neutral-500">–</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={maxScore}
+                  onChange={(e) => setMaxScore(e.target.value)}
+                  placeholder="Max"
+                  className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+                />
+              </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("all");
-                setSelectedReps([]);
-                setSelectedTags([]);
-                setMinScore("");
-                setMaxScore("");
-              }}
-              className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-300 hover:bg-neutral-800"
-            >
-              Reset
-            </button>
+              {/* Tag multi-select */}
+              <div className="relative">
+                <details className="group">
+                  <summary className="cursor-pointer rounded-md border border-neutral-700 px-3 py-1 text-neutral-300 group-open:bg-neutral-800 list-none">
+                    Tags ▾
+                  </summary>
+                  <div className="absolute z-20 mt-1 w-44 rounded-md border border-neutral-700 bg-neutral-900 p-2 shadow-lg">
+                    {AVAILABLE_TAGS.map((tag) => (
+                      <label
+                        key={tag}
+                        className="flex items-center gap-2 py-1 text-xs text-neutral-200"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={selectedTags.includes(tag)}
+                          onChange={() => {
+                            setSelectedTags((prev) =>
+                              prev.includes(tag)
+                                ? prev.filter((t) => t !== tag)
+                                : [...prev, tag]
+                            );
+                          }}
+                        />
+                        <span className="truncate">{tag}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setCallScope("mine");
+                  setSelectedReps([]);
+                  setSelectedTags([]);
+                  setMinScore("");
+                  setMaxScore("");
+                }}
+                className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-300 hover:bg-neutral-800"
+              >
+                Reset
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -667,7 +820,12 @@ export default function CallLibraryPage() {
       {tab === "live" && (
         <div className="rounded-lg border border-neutral-800 bg-neutral-950">
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-            <div className="text-sm text-neutral-400">Latest analysed calls</div>
+            <div className="flex items-center gap-2 text-sm text-neutral-400">
+              <span>Latest analysed calls</span>
+              {assignmentsLoading && (
+                <span className="text-[11px] text-neutral-500">Checking assignments…</span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs text-neutral-400">
               <span>Sort by</span>
               <select
@@ -747,6 +905,7 @@ export default function CallLibraryPage() {
                       : null;
                   const created = new Date(c.created_at).toLocaleString();
                   const durationLabel = formatCallDuration(c);
+                  const badge = callAssignmentBadge(c);
                   const isExpanded = !!expandedSummaries[c.id];
                   const hasLongSummary = !!c.summary && c.summary.length > 120;
                   const snippet = isExpanded ? (c.summary || "No summary yet.") : summarySnippet(c.summary);
@@ -757,13 +916,20 @@ export default function CallLibraryPage() {
                       className="px-4 py-3 flex items-center justify-between gap-4"
                     >
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <div className="text-sm text-neutral-100 truncate">
                             {c.filename || `Call ${c.id.slice(0, 8)}…`}
                           </div>
                           <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
                             {displayType(c.type)}
                           </span>
+                          {badge && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${badge.className}`}
+                            >
+                              {badge.label}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-neutral-500">
                           {c.rep_name ? c.rep_name : "Unknown rep"} • {created}
