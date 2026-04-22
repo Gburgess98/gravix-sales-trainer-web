@@ -22,13 +22,19 @@ type AssignmentItem = {
 type AssignmentsSummaryResp = {
   ok: boolean;
   summary?: {
-    total: number;
-    open: number;
-    completed: number;
-    overdue: number;
+    total?: number;
+    open?: number;
+    completed?: number;
+    overdue?: number;
+    open_count?: number;
+    completed_count?: number;
+    overdue_count?: number;
+    due_today_count?: number;
     today_focus?: AssignmentItem | null;
   };
+  today_focus?: AssignmentItem | null;
   items?: AssignmentItem[];
+  assignments?: AssignmentItem[];
 };
 
 export default function AssignmentsSummary(props: {
@@ -42,7 +48,6 @@ export default function AssignmentsSummary(props: {
   const [isPending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
-  const [loaded, setLoaded] = useState(false);
   const [openCount, setOpenCount] = useState(open);
   const [dueSoonCount, setDueSoonCount] = useState(dueSoon);
   const [completedCount, setCompletedCount] = useState(completed7d);
@@ -60,11 +65,11 @@ export default function AssignmentsSummary(props: {
         const s = json.summary;
         if (!s) return;
 
-        setOpenCount(s.open ?? 0);
-        setDueSoonCount(s.overdue ?? 0);
-        setCompletedCount(s.completed ?? 0);
+        setOpenCount(s.open_count ?? s.open ?? 0);
+        setDueSoonCount(s.due_today_count ?? s.overdue_count ?? s.overdue ?? 0);
+        setCompletedCount(s.completed_count ?? s.completed ?? 0);
 
-        const today = s.today_focus;
+        const today = json.today_focus ?? s.today_focus;
         if (today) {
           setActionItems([
             {
@@ -77,8 +82,6 @@ export default function AssignmentsSummary(props: {
         } else {
           setActionItems([]);
         }
-
-        setLoaded(true);
       } catch (e) {
         console.error('AssignmentsSummary load failed', e);
       }

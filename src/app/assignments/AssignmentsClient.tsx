@@ -21,7 +21,16 @@ type Assignment = {
 type AssignmentsResponse = {
   ok: true;
   repId: string;
-  assignments: Assignment[];
+  items?: Assignment[];
+  assignments?: Assignment[];
+  summary?: {
+    open_count?: number;
+    completed_count?: number;
+    overdue_count?: number;
+    due_today_count?: number;
+    today_focus?: Assignment | null;
+  };
+  today_focus?: Assignment | null;
 };
 
 type CompleteResponse = {
@@ -428,6 +437,8 @@ async function proxyJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function AssignmentsClient() {
   const [rows, setRows] = useState<Assignment[]>([]);
+  const [summary, setSummary] = useState<AssignmentsResponse["summary"] | null>(null);
+  const [apiTodayFocus, setApiTodayFocus] = useState<Assignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -456,7 +467,10 @@ export default function AssignmentsClient() {
     setLoading(true);
     try {
       const data = await proxyJson<AssignmentsResponse>("/v1/assignments");
-      setRows(data.assignments || []);
+
+      setRows(data.items ?? data.assignments ?? []);
+      setSummary(data.summary ?? null);
+      setApiTodayFocus(data.today_focus ?? data.summary?.today_focus ?? null);
     } catch (e: any) {
       setErr(e?.message || "failed_to_load");
     } finally {
@@ -559,10 +573,10 @@ export default function AssignmentsClient() {
   const [streakResetMsg, setStreakResetMsg] = useState<string | null>(null);
 
   const momentum = useMemo(() => {
-    const openCount = open.length;
+    const openCount = summary?.open_count ?? open.length;
 
-    const overdueCount = open.filter((a) => isOverdue(a)).length;
-    const dueTodayCount = open.filter((a) => isDueToday(a.due_at) && !isOverdue(a)).length;
+    const overdueCount = summary?.overdue_count ?? open.filter((a) => isOverdue(a)).length;
+    const dueTodayCount = summary?.due_today_count ?? open.filter((a) => isDueToday(a.due_at) && !isOverdue(a)).length;
 
     const completed7d = done.filter((a) => isWithinLastDays(a.completed_at, 7)).length;
     const completedTodayCount = done.filter((a) => isSameLocalDay(a.completed_at)).length;
@@ -581,7 +595,7 @@ export default function AssignmentsClient() {
       assignedTodayCount,
       completionRate7d,
     };
-  }, [open, done, rows]);
+  }, [open, done, rows, summary]);
 
   // Day 23 Task 3: Streak enforcement effect (warn + reset)
   useEffect(() => {
@@ -634,7 +648,7 @@ export default function AssignmentsClient() {
 
   // Today’s Focus should match the same prioritisation we use for the Open list.
   // (overdue → due today → due later → no due date, then earliest due / oldest created)
-  const todayFocus = open.length > 0 ? open[0] : null;
+  const todayFocus = apiTodayFocus ?? (open.length > 0 ? open[0] : null);
   const focus = useMemo(() => focusMeta(todayFocus), [todayFocus]);
 
   function showToast(type: "success" | "error", msg: string) {
