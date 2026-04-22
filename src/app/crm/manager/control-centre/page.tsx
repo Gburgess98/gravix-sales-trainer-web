@@ -167,9 +167,65 @@ function collectRepReasons(r: RepRiskRow): string[] {
     .filter(Boolean);
 }
 
+function titleCase(value: string) {
+  return String(value || "")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function pickPrimaryIssueLabel(r: RepRiskRow): string {
+  const explicit =
+    String((r as any)?.recurring_objection ?? "").trim() ||
+    String((r as any)?.top_objection ?? "").trim() ||
+    String((r as any)?.primary_objection ?? "").trim();
+
+  if (explicit) return explicit.toLowerCase();
+
+  const reasons = collectRepReasons(r);
+  const picked = reasons.find((reason) => {
+    const lowered = reason.toLowerCase();
+    return (
+      lowered.includes("objection") ||
+      lowered.includes("price") ||
+      lowered.includes("closing") ||
+      lowered.includes("discovery") ||
+      lowered.includes("intro") ||
+      lowered.includes("next steps")
+    );
+  });
+
+  if (picked) return picked.toLowerCase();
+  return reasons[0] ? String(reasons[0]).toLowerCase() : "";
+}
+
 function inferWeakestSkill(r: RepRiskRow): string {
   const direct = String((r as any)?.weakest_skill ?? (r as any)?.meta?.weakest_skill ?? "").trim();
-  if (direct) return direct;
+  if (direct && direct.toLowerCase() !== "unknown") return direct;
+
+  const breakdown = (r as any)?.skill_breakdown ?? (r as any)?.meta?.skill_breakdown;
+  if (breakdown && typeof breakdown === "object") {
+    const labelMap: Record<string, string> = {
+      intro: "Intro",
+      discovery: "Discovery",
+      objection: "Objection handling",
+      close: "Closing",
+      closing: "Closing",
+      price_handling: "Price handling",
+      follow_up: "Follow-up discipline",
+      execution: "Execution",
+    };
+
+    const scored = Object.entries(breakdown)
+      .map(([key, value]) => ({ key, value: Number(value) }))
+      .filter((x) => Number.isFinite(x.value) && labelMap[x.key]);
+
+    if (scored.length) {
+      scored.sort((a, b) => a.value - b.value);
+      return labelMap[scored[0].key];
+    }
+  }
 
   const reasons = collectRepReasons(r);
   const joined = reasons.join(" | ").toLowerCase();
@@ -206,6 +262,31 @@ function recommendManagerAction(r: RepRiskRow) {
   if (open > 6) return "Reduce workload and re-prioritise";
   if (weak === "Follow-up discipline") return "Set follow-up target";
   return "Review recent calls";
+}
+
+function recommendAssignment(r: RepRiskRow) {
+  const weak = inferWeakestSkill(r);
+  const joined = collectRepReasons(r).join(" | ").toLowerCase();
+
+  if (joined.includes("price objection") || weak === "Price handling") {
+    return "Assign: Price objection drill";
+  }
+  if (joined.includes("objection") || weak === "Objection handling") {
+    return "Assign: Objection handling drill";
+  }
+  if (weak === "Closing" || joined.includes("next steps")) {
+    return "Assign: Closing practice (next steps + urgency)";
+  }
+  if (weak === "Discovery") {
+    return "Assign: Discovery question drill";
+  }
+  if (weak === "Intro") {
+    return "Assign: Opener improvement drill";
+  }
+  if (weak === "Follow-up discipline" || weak === "Execution") {
+    return "Assign: Follow-up task";
+  }
+  return "Assign: Review last 3 calls + feedback summary";
 }
 
 // Server action: best-effort create a rep follow-up task (fail-soft)
@@ -350,11 +431,9 @@ export default async function ControlCentrePage({
 
   const recurringReasonCounts = Array.from(
     combined.reduce((acc, rep) => {
-      for (const reason of collectRepReasons(rep)) {
-        const key = normaliseReasonLabel(reason);
-        if (!key) continue;
-        acc.set(key, (acc.get(key) ?? 0) + 1);
-      }
+      const key = pickPrimaryIssueLabel(rep);
+      if (!key) return acc;
+      acc.set(key, (acc.get(key) ?? 0) + 1);
       return acc;
     }, new Map<string, number>())
   ).sort((a, b) => b[1] - a[1]);
@@ -406,7 +485,7 @@ export default async function ControlCentrePage({
         <div>
           <h1 className="text-2xl font-semibold text-neutral-100">Manager Control Centre</h1>
           <p className="mt-1 text-sm text-neutral-400">
-            The highest-impact fixes first — risk signals across the last {windowDays} days.
+            Answer 3 questions fast: who needs help, what they are bad at, and what to assign next.
           </p>
         </div>
 
@@ -457,57 +536,70 @@ export default async function ControlCentrePage({
           </div>
 
           {/* Daily control centre insights */}
-          <div className="grid gap-4 xl:grid-cols-3">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
-              <div className="border-b border-neutral-800 px-4 py-3">
-                <div className="text-sm font-semibold text-neutral-100">Who needs help</div>
+          <div className="grid gap-4 xl:grid-cols-3 items-stretch">
+            <div className="flex h-full flex-col rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="min-h-[76px] border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">1. Who needs help?</div>
                 <div className="text-xs text-neutral-500">Top five reps to coach right now.</div>
               </div>
-              <div className="p-4 space-y-3">
+              <div className="flex-1 p-4 space-y-3">
                 {actionQueue.length === 0 ? (
                   <div className="text-sm text-neutral-400">No reps need intervention right now.</div>
                 ) : (
-                  actionQueue.map((item, idx) => (
-                    <div key={`${item.rep_id}-${idx}`} className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
-                          <div className="mt-1 text-xs text-neutral-400">
-                            Weakest skill: <span className="text-neutral-200">{item.weakest_skill}</span>
+                  actionQueue.map((item, idx) => {
+                    const source = filtered[idx] ?? ({} as RepRiskRow);
+                    const sourceScore = Number((source as any)?._score ?? 0);
+                    const isCritical = item.overdue > 0 || sourceScore >= 150;
+                    const urgencyLabel = isCritical ? "Critical" : "Watch";
+                    const urgencyCls = isCritical ? "text-red-300" : "text-amber-300";
+
+                    return (
+                      <div key={`${item.rep_id}-${idx}`} className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
+                            <div className="mt-1 text-xs text-neutral-400">
+                              Weakest skill: <span className="text-neutral-200">{item.weakest_skill}</span>
+                            </div>
+                          </div>
+                          <div className="text-right text-[11px] text-neutral-500">
+                            <div>Overdue: <span className="text-neutral-200">{item.overdue}</span></div>
+                            <div>Open: <span className="text-neutral-200">{item.open}</span></div>
                           </div>
                         </div>
-                        <div className="text-right text-[11px] text-neutral-500">
-                          <div>Overdue: <span className="text-neutral-200">{item.overdue}</span></div>
-                          <div>Open: <span className="text-neutral-200">{item.open}</span></div>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <div className="text-xs font-medium text-amber-200">{item.action}</div>
+                          <div className={`text-[11px] font-semibold uppercase tracking-wide ${urgencyCls}`}>
+                            {urgencyLabel}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Link
+                            href={item.rowHref}
+                            className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30"
+                          >
+                            View rep
+                          </Link>
+                          <Link
+                            href={item.actionsHref}
+                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+                          >
+                            Open actions
+                          </Link>
                         </div>
                       </div>
-                      <div className="mt-2 text-xs font-medium text-amber-200">{item.action}</div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Link
-                          href={item.rowHref}
-                          className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30"
-                        >
-                          View rep
-                        </Link>
-                        <Link
-                          href={item.actionsHref}
-                          className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
-                        >
-                          Open actions
-                        </Link>
-                      </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
-              <div className="border-b border-neutral-800 px-4 py-3">
-                <div className="text-sm font-semibold text-neutral-100">Recurring objections</div>
-                <div className="text-xs text-neutral-500">Most repeated call weaknesses across flagged reps.</div>
+            <div className="flex h-full flex-col rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="min-h-[76px] border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">2. What are they bad at?</div>
+                <div className="text-xs text-neutral-500">Most repeated weaknesses and objections across flagged reps.</div>
               </div>
-              <div className="p-4 space-y-3">
+              <div className="flex-1 p-4 space-y-3">
                 {recurringObjections.length === 0 ? (
                   recurringOperationalIssues.length === 0 ? (
                     <div className="text-sm text-neutral-400">No recurring objections detected yet.</div>
@@ -517,7 +609,7 @@ export default async function ControlCentrePage({
                       {recurringOperationalIssues.map(([label, count]) => (
                         <div key={label} className="space-y-1">
                           <div className="flex items-center justify-between gap-3 text-sm">
-                            <span className="text-neutral-200">{label}</span>
+                            <span className="text-neutral-200">{titleCase(label)}</span>
                             <span className="text-xs font-semibold text-neutral-400">{count}</span>
                           </div>
                           <div className="h-2 rounded-full bg-neutral-900 overflow-hidden">
@@ -534,7 +626,7 @@ export default async function ControlCentrePage({
                   recurringObjections.map(([label, count]) => (
                     <div key={label} className="space-y-1">
                       <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="text-neutral-200">{label}</span>
+                        <span className="text-neutral-200">{titleCase(label)}</span>
                         <span className="text-xs font-semibold text-neutral-400">{count}</span>
                       </div>
                       <div className="h-2 rounded-full bg-neutral-900 overflow-hidden">
@@ -549,25 +641,35 @@ export default async function ControlCentrePage({
               </div>
             </div>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950">
-              <div className="border-b border-neutral-800 px-4 py-3">
-                <div className="text-sm font-semibold text-neutral-100">Weakest skill</div>
-                <div className="text-xs text-neutral-500">Where the team is losing the most ground.</div>
+            <div className="flex h-full flex-col rounded-xl border border-neutral-800 bg-neutral-950">
+              <div className="min-h-[76px] border-b border-neutral-800 px-4 py-3">
+                <div className="text-sm font-semibold text-neutral-100">3. What should I assign?</div>
+                <div className="text-xs text-neutral-500">Translate the coaching gap into the clearest next drill or action.</div>
               </div>
-              <div className="p-4 space-y-3">
-                {weakestSkills.length === 0 ? (
-                  <div className="text-sm text-neutral-400">No skill breakdown available yet.</div>
+              <div className="flex-1 p-4 space-y-3">
+                {actionQueue.length === 0 ? (
+                  <div className="text-sm text-neutral-400">No assignment recommendations available yet.</div>
                 ) : (
-                  weakestSkills.map(([label, count], idx) => (
+                  actionQueue.map((item, idx) => (
                     <div
-                      key={`${label}-${idx}`}
-                      className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2"
+                      key={`${item.rep_id}-${idx}`}
+                      className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3"
                     >
-                      <div>
-                        <div className="text-sm font-medium text-neutral-100">{label}</div>
-                        <div className="text-[11px] text-neutral-500">Reps affected</div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
+                          <div className="mt-1 text-[11px] text-neutral-500">
+                            Weakest skill: <span className="text-neutral-300">{item.weakest_skill}</span>
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-neutral-500">
+                          Open: <span className="text-neutral-200">{item.open}</span>
+                        </div>
                       </div>
-                      <div className="text-lg font-semibold text-neutral-100">{count}</div>
+                      <div className="mt-2 text-sm font-semibold text-indigo-200">
+                        {recommendAssignment(filtered[idx] ?? ({} as RepRiskRow))}
+                      </div>
+                      <div className="mt-1 text-[11px] text-neutral-500">Suggested next coaching action</div>
                     </div>
                   ))
                 )}
@@ -647,6 +749,7 @@ export default async function ControlCentrePage({
                           : [];
                       const topReasons = reasons.filter(Boolean).slice(0, 3);
                       const weakestSkill = inferWeakestSkill(r);
+                      const recommendedAssignment = recommendAssignment(r);
 
                       const primaryReason =
                         String((r as any)?.reason ?? "").trim() ||
@@ -736,9 +839,14 @@ export default async function ControlCentrePage({
                                 </div>
                               ) : null}
                               {weakestSkill && weakestSkill !== "Unknown" ? (
-                                <div className="mt-1 text-[11px] text-neutral-500">
-                                  Weakest skill: <span className="text-neutral-300">{weakestSkill}</span>
-                                </div>
+                                <>
+                                  <div className="mt-1 text-[11px] text-neutral-500">
+                                    Weakest skill: <span className="text-neutral-300">{weakestSkill}</span>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-neutral-500">
+                                    Assign next: <span className="text-neutral-300">{recommendedAssignment}</span>
+                                  </div>
+                                </>
                               ) : null}
                             </div>
                           </td>

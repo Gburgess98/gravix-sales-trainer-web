@@ -35,10 +35,10 @@ type CallsPagedResp = {
 
 type AssignmentTargetItem = {
   target_id: string;
-  has_any: boolean;
+  has_assignment: boolean;
   has_open: boolean;
   has_completed: boolean;
-  latest_status: string | null;
+  status: "assigned" | "completed" | null;
   latest_assignment_id: string | null;
   open_assignment_id: string | null;
   completed_assignment_id: string | null;
@@ -158,14 +158,10 @@ function callAssignmentBadge(call: CallItem): { label: string; className: string
     };
   }
 
-  const status = String(call.status || "").toLowerCase();
-  const isScored =
-    status === "scored" ||
-    status === "processed" ||
-    status === "completed" ||
-    typeof call.score_overall === "number";
+  const score = typeof call.score_overall === "number" ? call.score_overall : null;
+  const hasFlags = Array.isArray(call.flags) && call.flags.length > 0;
 
-  if (isScored && !call.has_open_assignment) {
+  if ((score !== null && score < 65) || hasFlags) {
     return {
       label: "Needs Review",
       className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
@@ -339,7 +335,7 @@ export default function CallLibraryPage() {
 
             return {
               ...call,
-              assignment_status: item.latest_status,
+              assignment_status: item.status,
               has_open_assignment:
                 typeof call.has_open_assignment === "boolean"
                   ? call.has_open_assignment || item.has_open

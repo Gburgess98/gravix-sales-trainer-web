@@ -282,10 +282,10 @@ export default function CallPage() {
   // --- ADD: Assign form state ---
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
-  const DEV_UID = process.env.NEXT_PUBLIC_DEV_USER_ID || "11111111-1111-1111-8111-111111111111";
-  const [assigneeUserId, setAssigneeUserId] = useState(DEV_UID);
+  const [assigneeUserId, setAssigneeUserId] = useState("");
   const [drillId, setDrillId] = useState("intro-basics");
   const [notes, setNotes] = useState("");
+  const coachAssigneeAutofilledRef = useRef(false);
 
   const [coachNotes, setCoachNotes] = useState("");
   const [notesSaving, setNotesSaving] = useState(false);
@@ -489,6 +489,20 @@ export default function CallPage() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (coachAssigneeAutofilledRef.current) return;
+    if (!callMeta?.user_id) return;
+    if (!Array.isArray(users) || users.length === 0) return;
+
+    const ownerId = String(callMeta.user_id);
+    const hasOwnerInUsers = users.some((u) => String(u.id) === ownerId);
+    if (!hasOwnerInUsers) return;
+
+    if (!assigneeUserId) setAssigneeUserId(ownerId);
+    if (!assignee) setAssignee(ownerId);
+    coachAssigneeAutofilledRef.current = true;
+  }, [callMeta?.user_id, users, assigneeUserId, assignee]);
 
   // --- ADD: deleteAssignment helper ---
   async function deleteAssignment(id: string) {
@@ -2146,9 +2160,22 @@ export default function CallPage() {
             {/* --- ADD: Assign form --- */}
             {managerCheckDone && isManager && (
               <div id="assign-form" className="space-y-2 mt-3">
-                <label className="block text-sm opacity-80">Assignee User ID</label>
-                <input className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
-                  value={assigneeUserId} onChange={e => setAssigneeUserId(e.target.value)} />
+                <label className="block text-sm opacity-80">Assignee</label>
+                <select
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                  value={assigneeUserId}
+                  onChange={e => setAssigneeUserId(e.target.value)}
+                  disabled={usersLoading}
+                >
+                  <option value="">
+                    {usersLoading ? "Loading reps…" : "Select a rep"}
+                  </option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}{u.email ? ` (${u.email})` : ""}
+                    </option>
+                  ))}
+                </select>
 
                 <label className="block text-sm opacity-80">Drill</label>
                 <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
