@@ -40,6 +40,31 @@ type ControlCentreResp = {
   error?: string;
 };
 
+type ReportingSummaryResp = {
+  ok: boolean;
+  critical_calls_today?: number;
+  critical_calls_this_week?: number;
+  flagged_calls_this_week?: number;
+  flagged_call_rate?: number;
+  auto_assignments_created?: number;
+  manual_assignments_created?: number;
+  assignment_auto_rate?: number;
+  assignment_completion_rate?: number;
+  weakest_team_skill?: { skill?: string; count?: number } | null;
+  weakest_skills?: Array<{ key?: string; label?: string; count?: number }>;
+  review_flags_by_type?: Array<{ key?: string; label?: string; count?: number }>;
+  review_flags_by_severity?: Array<{ key?: string; label?: string; count?: number }>;
+  reps_needing_help?: Array<{
+    rep_id: string;
+    flagged_calls?: number;
+    critical_calls?: number;
+    open_assignments?: number;
+    avg_score?: number | null;
+    weakest_skill?: string | null;
+  }>;
+  error?: string;
+};
+
 function relTime(iso?: string | null) {
   if (!iso) return "—";
   const t = new Date(String(iso)).getTime();
@@ -116,6 +141,37 @@ async function loadControlCentre(): Promise<ControlCentreResp> {
     };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "control_centre_failed" };
+  }
+}
+
+async function loadReportingSummary(): Promise<ReportingSummaryResp> {
+  try {
+    const res = await proxyFetch("/v1/dashboard/reporting-summary?days=7");
+    const json = (await res.json().catch(() => ({}))) as any;
+
+    if (!res.ok) {
+      return { ok: false, error: json?.error ?? "reporting_summary_failed" };
+    }
+
+    return {
+      ok: Boolean(json?.ok),
+      critical_calls_today: Number(json?.critical_calls_today ?? 0),
+      critical_calls_this_week: Number(json?.critical_calls_this_week ?? 0),
+      flagged_calls_this_week: Number(json?.flagged_calls_this_week ?? 0),
+      flagged_call_rate: Number(json?.flagged_call_rate ?? 0),
+      auto_assignments_created: Number(json?.auto_assignments_created ?? 0),
+      manual_assignments_created: Number(json?.manual_assignments_created ?? 0),
+      assignment_auto_rate: Number(json?.assignment_auto_rate ?? 0),
+      assignment_completion_rate: Number(json?.assignment_completion_rate ?? 0),
+      weakest_team_skill: json?.weakest_team_skill ?? null,
+      weakest_skills: Array.isArray(json?.weakest_skills) ? json.weakest_skills : [],
+      review_flags_by_type: Array.isArray(json?.review_flags_by_type) ? json.review_flags_by_type : [],
+      review_flags_by_severity: Array.isArray(json?.review_flags_by_severity) ? json.review_flags_by_severity : [],
+      reps_needing_help: Array.isArray(json?.reps_needing_help) ? json.reps_needing_help : [],
+      error: json?.error,
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "reporting_summary_failed" };
   }
 }
 
@@ -372,7 +428,10 @@ export default async function ControlCentrePage({
 }: {
   searchParams?: { filter?: string };
 }) {
-  const data = await loadControlCentre();
+  const [data, reporting] = await Promise.all([
+    loadControlCentre(),
+    loadReportingSummary(),
+  ]);
 
   const headline = data.headline ?? {};
   const windowDays = Number(headline.window_days ?? 7);
@@ -428,6 +487,9 @@ export default async function ControlCentrePage({
   const repsWatch = Number(headline.reps_watch ?? 0);
   const openTotal = Number(headline.open_actions_total ?? 0);
   const overdueTotal = Number(headline.overdue_actions_total ?? 0);
+  const reportingByRep = new Map(
+    (reporting.reps_needing_help ?? []).map((r) => [String(r.rep_id), r])
+  );
 
   const recurringReasonCounts = Array.from(
     combined.reduce((acc, rep) => {
@@ -466,18 +528,28 @@ export default async function ControlCentrePage({
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
 
-  const actionQueue = filtered.slice(0, 5).map((rep) => ({
-    rep_id: String(rep.rep_id ?? ""),
-    rep_name: String(rep.rep_name ?? "Rep"),
-    action: recommendManagerAction(rep),
-    weakest_skill: inferWeakestSkill(rep),
-    overdue: Number(rep?.counts?.overdue ?? 0),
-    open: Number(rep?.counts?.open ?? 0),
-    rowHref: rep.rep_id ? `/crm/reps/${encodeURIComponent(String(rep.rep_id))}` : "/crm/reps",
-    actionsHref: rep.rep_id
-      ? `/crm/actions?repId=${encodeURIComponent(String(rep.rep_id))}&status=open`
-      : "/crm/actions",
-  }));
+  const actionQueue = filtered.slice(0, 5).map((rep) => {
+    const repId = String(rep.rep_id ?? "");
+    const reportRow = reportingByRep.get(repId);
+    const reportedWeakestSkill = String(reportRow?.weakest_skill ?? "").trim();
+    const weakestSkill = reportedWeakestSkill || inferWeakestSkill(rep);
+
+    return {
+      rep_id: repId,
+      rep_name: String(rep.rep_name ?? "Rep"),
+      action: recommendManagerAction({ ...(rep as any), weakest_skill: weakestSkill }),
+      weakest_skill: weakestSkill,
+      overdue: Number(rep?.counts?.overdue ?? 0),
+      open: Number(rep?.counts?.open ?? reportRow?.open_assignments ?? 0),
+      flagged_calls: Number(reportRow?.flagged_calls ?? 0),
+      critical_calls: Number(reportRow?.critical_calls ?? 0),
+      avg_score: typeof reportRow?.avg_score === "number" ? reportRow.avg_score : null,
+      rowHref: rep.rep_id ? `/crm/reps/${encodeURIComponent(String(rep.rep_id))}` : "/crm/reps",
+      actionsHref: rep.rep_id
+        ? `/crm/actions?repId=${encodeURIComponent(String(rep.rep_id))}&status=open`
+        : "/crm/actions",
+    };
+  });
 
   return (
     <div className="mx-auto max-w-[1400px] p-6 space-y-6">
@@ -533,6 +605,18 @@ export default async function ControlCentrePage({
               <div className="text-xs text-neutral-500">Overdue actions</div>
               <div className="mt-1 text-2xl font-semibold text-neutral-100">{overdueTotal}</div>
             </div>
+            <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4">
+              <div className="text-xs text-red-200/70">Critical calls today</div>
+              <div className="mt-1 text-2xl font-semibold text-red-100">{reporting.critical_calls_today ?? 0}</div>
+            </div>
+            <div className="rounded-xl border border-amber-900/40 bg-amber-950/15 p-4">
+              <div className="text-xs text-amber-200/70">Flagged calls 7d</div>
+              <div className="mt-1 text-2xl font-semibold text-amber-100">{reporting.flagged_calls_this_week ?? 0}</div>
+            </div>
+            <div className="rounded-xl border border-sky-900/40 bg-sky-950/15 p-4">
+              <div className="text-xs text-sky-200/70">Auto assignments</div>
+              <div className="mt-1 text-2xl font-semibold text-sky-100">{reporting.auto_assignments_created ?? 0}</div>
+            </div>
           </div>
 
           {/* Daily control centre insights */}
@@ -549,7 +633,7 @@ export default async function ControlCentrePage({
                   actionQueue.map((item, idx) => {
                     const source = filtered[idx] ?? ({} as RepRiskRow);
                     const sourceScore = Number((source as any)?._score ?? 0);
-                    const isCritical = item.overdue > 0 || sourceScore >= 150;
+                    const isCritical = item.critical_calls > 0 || item.overdue > 0 || sourceScore >= 150;
                     const urgencyLabel = isCritical ? "Critical" : "Watch";
                     const urgencyCls = isCritical ? "text-red-300" : "text-amber-300";
 
@@ -560,6 +644,17 @@ export default async function ControlCentrePage({
                             <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
                             <div className="mt-1 text-xs text-neutral-400">
                               Weakest skill: <span className="text-neutral-200">{item.weakest_skill}</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-neutral-500">
+                              Flags: <span className="text-neutral-300">{item.flagged_calls}</span>
+                              <span className="mx-1 text-neutral-700">•</span>
+                              Critical: <span className="text-red-200">{item.critical_calls}</span>
+                              {typeof item.avg_score === "number" ? (
+                                <>
+                                  <span className="mx-1 text-neutral-700">•</span>
+                                  Avg: <span className="text-neutral-300">{item.avg_score}</span>
+                                </>
+                              ) : null}
                             </div>
                           </div>
                           <div className="text-right text-[11px] text-neutral-500">
@@ -660,6 +755,11 @@ export default async function ControlCentrePage({
                           <div className="text-sm font-medium text-neutral-100">{item.rep_name}</div>
                           <div className="mt-1 text-[11px] text-neutral-500">
                             Weakest skill: <span className="text-neutral-300">{item.weakest_skill}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-neutral-500">
+                            Critical calls: <span className="text-red-200">{item.critical_calls}</span>
+                            <span className="mx-1 text-neutral-700">•</span>
+                            Flagged: <span className="text-neutral-300">{item.flagged_calls}</span>
                           </div>
                         </div>
                         <div className="text-[11px] text-neutral-500">

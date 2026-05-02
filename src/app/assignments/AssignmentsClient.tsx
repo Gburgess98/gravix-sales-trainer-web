@@ -16,6 +16,20 @@ type Assignment = {
   created_at: string;
   completed_at: string | null;
   completed_by?: string | null;
+  source?: string | null;
+  flagged_call?: boolean | null;
+  threshold_band?: string | null;
+  needs_manager_review?: boolean | null;
+  meta?: {
+    source?: string | null;
+    assignment_origin?: string | null;
+    flagged_call?: boolean | null;
+    threshold_band?: string | null;
+    needs_manager_review?: boolean | null;
+    review_flag_count?: number | null;
+    score_overall?: number | null;
+    [key: string]: any;
+  } | null;
 };
 
 type AssignmentsResponse = {
@@ -201,6 +215,64 @@ function pill(status: string) {
       ASSIGNED
     </span>
   );
+}
+
+function assignmentOrigin(a: Assignment) {
+  const meta = a.meta && typeof a.meta === "object" ? a.meta : null;
+  const source = String(a.source ?? meta?.source ?? meta?.assignment_origin ?? "").trim().toLowerCase();
+  const thresholdBand = String(a.threshold_band ?? meta?.threshold_band ?? "").trim().toLowerCase();
+  const needsManagerReview = Boolean(a.needs_manager_review ?? meta?.needs_manager_review);
+  const flaggedCall = Boolean(a.flagged_call ?? meta?.flagged_call);
+
+  if (thresholdBand === "critical" || needsManagerReview) {
+    return { label: "Critical", tone: "critical" as const };
+  }
+
+  if (source === "flagged_call_auto") {
+    return { label: "Auto-created", tone: "auto" as const };
+  }
+
+  if (flaggedCall || thresholdBand || source === "flagged_call") {
+    return { label: "Flagged call", tone: "flagged" as const };
+  }
+
+  if (source === "manual") {
+    return { label: "Manual", tone: "manual" as const };
+  }
+
+  return { label: "Manual", tone: "manual" as const };
+}
+
+function assignmentOriginBadge(a: Assignment) {
+  const origin = assignmentOrigin(a);
+  const cls =
+    origin.tone === "critical"
+      ? "border-red-500/40 bg-red-500/10 text-red-200"
+      : origin.tone === "auto"
+        ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+        : origin.tone === "flagged"
+          ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+          : "border-neutral-700 bg-neutral-900 text-neutral-300";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {origin.label}
+    </span>
+  );
+}
+
+function assignmentReportingLine(a: Assignment) {
+  const meta = a.meta && typeof a.meta === "object" ? a.meta : null;
+  const reviewFlagCount = Number(meta?.review_flag_count ?? 0) || 0;
+  const score = Number(meta?.score_overall);
+  const thresholdBand = String(a.threshold_band ?? meta?.threshold_band ?? "").trim();
+
+  const parts: string[] = [];
+  if (thresholdBand) parts.push(`Band: ${thresholdBand}`);
+  if (reviewFlagCount > 0) parts.push(`${reviewFlagCount} flag${reviewFlagCount === 1 ? "" : "s"}`);
+  if (Number.isFinite(score)) parts.push(`Score: ${Math.round(score)}`);
+
+  return parts.join(" · ");
 }
 
 function daysLate(dueAt?: string | null) {
@@ -1091,11 +1163,17 @@ export default function AssignmentsClient() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="text-sm text-neutral-400">{a.type}</div>
                           {pill(a.status)}
+                          {assignmentOriginBadge(a)}
                         </div>
                         <div className="mt-1 text-base font-semibold">{a.title || "(Untitled)"}</div>
+                        {assignmentReportingLine(a) ? (
+                          <div className="mt-1 text-xs text-neutral-500">
+                            {assignmentReportingLine(a)}
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-xs">
                           {(() => {
                             const d = dueLabel(a);
@@ -1165,13 +1243,19 @@ export default function AssignmentsClient() {
                   <div key={a.id} className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="text-sm text-neutral-500">{a.type}</div>
                           {pill(a.status)}
+                          {assignmentOriginBadge(a)}
                         </div>
                         <div className="mt-1 text-base font-semibold text-neutral-200">
                           {a.title || "(Untitled)"}
                         </div>
+                        {assignmentReportingLine(a) ? (
+                          <div className="mt-1 text-xs text-neutral-500">
+                            {assignmentReportingLine(a)}
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-xs text-neutral-500">
                           Completed: {fmt(a.completed_at)} {a.completed_by ? `· by ${a.completed_by}` : ""}
                         </div>

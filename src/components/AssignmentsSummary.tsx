@@ -17,6 +17,10 @@ type AssignmentItem = {
   title: string;
   due_at?: string | null;
   status?: string | null;
+  source?: string | null;
+  flagged_call?: boolean | null;
+  threshold_band?: string | null;
+  needs_manager_review?: boolean | null;
 };
 
 type AssignmentsSummaryResp = {
@@ -30,6 +34,13 @@ type AssignmentsSummaryResp = {
     completed_count?: number;
     overdue_count?: number;
     due_today_count?: number;
+    flagged?: number;
+    critical?: number;
+    flagged_count?: number;
+    critical_count?: number;
+    auto_created_count?: number;
+    manual_created_count?: number;
+    completion_rate?: number;
     today_focus?: AssignmentItem | null;
   };
   today_focus?: AssignmentItem | null;
@@ -52,6 +63,11 @@ export default function AssignmentsSummary(props: {
   const [dueSoonCount, setDueSoonCount] = useState(dueSoon);
   const [completedCount, setCompletedCount] = useState(completed7d);
   const [actionItems, setActionItems] = useState<AssignmentAction[]>(actions);
+  const [flaggedCount, setFlaggedCount] = useState(0);
+  const [criticalCount, setCriticalCount] = useState(0);
+  const [autoCreatedCount, setAutoCreatedCount] = useState(0);
+  const [manualCreatedCount, setManualCreatedCount] = useState(0);
+  const [completionRate, setCompletionRate] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +84,11 @@ export default function AssignmentsSummary(props: {
         setOpenCount(s.open_count ?? s.open ?? 0);
         setDueSoonCount(s.due_today_count ?? s.overdue_count ?? s.overdue ?? 0);
         setCompletedCount(s.completed_count ?? s.completed ?? 0);
+        setFlaggedCount(s.flagged_count ?? s.flagged ?? 0);
+        setCriticalCount(s.critical_count ?? s.critical ?? 0);
+        setAutoCreatedCount(s.auto_created_count ?? 0);
+        setManualCreatedCount(s.manual_created_count ?? 0);
+        setCompletionRate(s.completion_rate ?? 0);
 
         const today = json.today_focus ?? s.today_focus;
         if (today) {
@@ -77,6 +98,12 @@ export default function AssignmentsSummary(props: {
               title: today.title,
               due_at: today.due_at ?? null,
               status: today.status ?? null,
+              importance:
+                today.threshold_band === 'critical' || today.needs_manager_review
+                  ? 'critical'
+                  : today.flagged_call || today.threshold_band
+                    ? 'flagged'
+                    : today.source ?? null,
             },
           ]);
         } else {
@@ -95,10 +122,15 @@ export default function AssignmentsSummary(props: {
 
   return (
     <div className="rounded border p-3 text-sm space-y-3">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="px-2 py-1 rounded border">🟡 Open: {openCount}</span>
         <span className="px-2 py-1 rounded border">🟠 Due soon: {dueSoonCount}</span>
         <span className="px-2 py-1 rounded border">✅ Completed: {completedCount}</span>
+        <span className="px-2 py-1 rounded border border-amber-700/60 text-amber-300">⚠️ Flagged: {flaggedCount}</span>
+        <span className="px-2 py-1 rounded border border-red-700/60 text-red-300">🚨 Critical: {criticalCount}</span>
+        <span className="px-2 py-1 rounded border border-sky-700/60 text-sky-300">🤖 Auto: {autoCreatedCount}</span>
+        <span className="px-2 py-1 rounded border border-neutral-700 text-neutral-300">Manual: {manualCreatedCount}</span>
+        <span className="px-2 py-1 rounded border border-emerald-700/60 text-emerald-300">Completion: {completionRate}%</span>
       </div>
 
       {actionItems.length > 0 ? (
@@ -108,6 +140,11 @@ export default function AssignmentsSummary(props: {
             <div key={a.id} className="flex items-start justify-between gap-3 border rounded p-2">
               <div className="min-w-0">
                 <div className="font-medium truncate">{a.title}</div>
+                {a.importance ? (
+                  <div className="mt-1 text-[11px] uppercase tracking-wide text-neutral-400">
+                    Source: <span className={a.importance === 'critical' ? 'text-red-300' : a.importance === 'flagged' ? 'text-amber-300' : 'text-neutral-300'}>{a.importance}</span>
+                  </div>
+                ) : null}
                 {a.due_at ? (
                   <div className="text-xs text-neutral-400">Due {new Date(a.due_at).toLocaleDateString()}</div>
                 ) : null}

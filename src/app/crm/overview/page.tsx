@@ -17,6 +17,7 @@ import {
 import { getBackendBase } from "@/lib/config"; // or your config utility if already available
 import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 // --- Medal helpers (Top Reps UI polish) ---
 function rankMedal(rank: number) {
@@ -154,6 +155,80 @@ export default function CrmOverviewPage() {
   const [loadingNudges, setLoadingNudges] = useState<boolean>(true);
   const [controlCentre, setControlCentre] = useState<ControlCentreResp | null>(null);
   const [loadingControlCentre, setLoadingControlCentre] = useState<boolean>(true);
+  // --- Day 65 Reporting ---
+  const [reporting, setReporting] = useState<any>(null);
+  const [flagsSummary, setFlagsSummary] = useState<any>(null);
+  const [loadingFlags, setLoadingFlags] = useState<boolean>(true);
+  const [loadingReporting, setLoadingReporting] = useState<boolean>(true);
+
+  // 🔥 Assign drill from section (Day 65)
+  async function assignDrillFromSection(section: string) {
+    try {
+      await fetchJsonWithRetry('/api/proxy/v1/assignments', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: `Improve ${section}`,
+          type: 'drill',
+          meta: {
+            source: 'flags',
+            section,
+          },
+        }),
+      });
+      console.debug('[CRM Overview] Drill assigned for section:', section);
+    } catch (e) {
+      console.debug('[CRM Overview] Failed to assign drill', e);
+    }
+  }
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoadingReporting(true);
+      try {
+        const resp = await fetchJsonWithRetry<any>(
+          '/api/proxy/v1/dashboard/reporting-summary?days=7'
+        );
+
+        if (!alive) return;
+        setReporting(resp);
+      } catch (e) {
+        if (alive) setReporting(null);
+        console.debug('[CRM Overview] Reporting load failed', e);
+      } finally {
+        if (alive) setLoadingReporting(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoadingFlags(true);
+      try {
+        const resp = await fetchJsonWithRetry<any>(
+          '/api/proxy/v1/dashboard/flags-summary?days=7'
+        );
+
+        if (!alive) return;
+        setFlagsSummary(resp);
+      } catch (e) {
+        if (alive) setFlagsSummary(null);
+        console.debug('[CRM Overview] Flags summary load failed', e);
+      } finally {
+        if (alive) setLoadingFlags(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
   // --- Day 53 Analytics ---
   const [analyticsSummary, setAnalyticsSummary] = useState<any | null>(null);
   const [stageConversion, setStageConversion] = useState<Record<string, number> | null>(null);
@@ -540,6 +615,140 @@ export default function CrmOverviewPage() {
             <span>🕑 Due soon: <span className="tabular-nums">{sumDueSoon}</span></span>
             <span>✅ Completed 7d: <span className="tabular-nums">{sumDone7d}</span></span>
           </>
+        )}
+      </div>
+
+      {/* 🔥 Manager Reporting (Day 65) */}
+      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+        <div className="text-sm font-semibold text-neutral-100 mb-2">Performance Signals</div>
+
+        {/* 🔥 Flag Intelligence (NEW) */}
+        <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+          <div className="text-sm font-semibold text-neutral-100 mb-2">
+            Flag Intelligence (7d)
+          </div>
+
+          {loadingFlags ? (
+            <div className="h-16 animate-pulse rounded-xl bg-white/10" />
+          ) : !flagsSummary?.ok ? (
+            <div className="text-sm text-neutral-400">No flag data.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="text-white/50">Total Flags</div>
+                  <div className="text-lg font-semibold text-amber-300">
+                    {flagsSummary.total_flags ?? 0}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="text-white/50">Critical</div>
+                  <div className="text-lg font-semibold text-red-300">
+                    {flagsSummary.critical_flags ?? 0}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="text-white/50">Low Score</div>
+                  <div className="text-lg font-semibold text-orange-300">
+                    {flagsSummary.low_score_flags ?? 0}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="text-white/50">Top Issue</div>
+                  <div className="text-sm font-semibold text-white/80">
+                    {flagsSummary.top_flag_type ?? "—"}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* 🔥 Section Breakdown + Actions */}
+              {flagsSummary?.sections?.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-xs text-white/50 mb-2">Weakness Breakdown</div>
+
+                  <div className="space-y-2">
+                    {flagsSummary.sections.map((s: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2"
+                      >
+                        <div className="text-sm text-white/80">
+                          {s.section}
+                          <span className="ml-2 text-xs text-white/40">
+                            ({s.count})
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => assignDrillFromSection(s.section)}
+                          className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                        >
+                          Assign drill
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {loadingReporting ? (
+          <div className="h-16 animate-pulse rounded-xl bg-white/10" />
+        ) : !reporting?.ok ? (
+          <div className="text-sm text-neutral-400">No reporting data available.</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Critical Today</div>
+              <div className="text-lg font-semibold text-red-300">
+                {reporting.critical_calls_today ?? 0}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Flagged (7d)</div>
+              <div className="text-lg font-semibold text-amber-300">
+                {reporting.flagged_calls_this_week ?? 0}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Auto Assign</div>
+              <div className="text-lg font-semibold text-sky-300">
+                {reporting.auto_assignments_created ?? 0}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Completion</div>
+              <div className="text-lg font-semibold text-emerald-300">
+                {reporting.assignment_completion_rate ?? 0}%
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Weakest Skill</div>
+              <div className="text-sm font-semibold text-white/80">
+                {reporting.weakest_team_skill?.skill ?? '—'}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-2">
+              <div className="text-white/50">Reps Needing Help</div>
+              <div className="text-lg font-semibold text-red-200">
+                {(reporting.reps_needing_help ?? []).length}
+              </div>
+            </div>
+
+          </div>
         )}
       </div>
 
