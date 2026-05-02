@@ -24,6 +24,20 @@ type Assignment = {
   created_at: string;
   completed_at: string | null;
   completed_by?: string | null;
+  source?: string | null;
+  flagged_call?: boolean | null;
+  threshold_band?: string | null;
+  needs_manager_review?: boolean | null;
+  meta?: {
+    source?: string | null;
+    assignment_origin?: string | null;
+    flagged_call?: boolean | null;
+    threshold_band?: string | null;
+    needs_manager_review?: boolean | null;
+    review_flag_count?: number | null;
+    score_overall?: number | null;
+    [key: string]: any;
+  } | null;
 };
 
 type Signals = {
@@ -170,6 +184,51 @@ function statusPill(status: string, overdue: boolean) {
       ASSIGNED
     </span>
   );
+}
+
+function assignmentOrigin(a: Assignment) {
+  const meta = a.meta && typeof a.meta === "object" ? a.meta : null;
+  const source = String(a.source ?? meta?.source ?? meta?.assignment_origin ?? "").trim().toLowerCase();
+  const thresholdBand = String(a.threshold_band ?? meta?.threshold_band ?? "").trim().toLowerCase();
+  const needsManagerReview = Boolean(a.needs_manager_review ?? meta?.needs_manager_review);
+  const flaggedCall = Boolean(a.flagged_call ?? meta?.flagged_call);
+
+  if (thresholdBand === "critical" || needsManagerReview) return { label: "Critical", tone: "critical" as const };
+  if (source === "flagged_call_auto") return { label: "Auto-created", tone: "auto" as const };
+  if (flaggedCall || thresholdBand || source === "flagged_call") return { label: "Flagged call", tone: "flagged" as const };
+  return { label: "Manual", tone: "manual" as const };
+}
+
+function assignmentOriginBadge(a: Assignment) {
+  const origin = assignmentOrigin(a);
+  const cls =
+    origin.tone === "critical"
+      ? "border-red-500/40 bg-red-500/10 text-red-200"
+      : origin.tone === "auto"
+        ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+        : origin.tone === "flagged"
+          ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+          : "border-neutral-700 bg-neutral-900 text-neutral-300";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {origin.label}
+    </span>
+  );
+}
+
+function assignmentReportingLine(a: Assignment) {
+  const meta = a.meta && typeof a.meta === "object" ? a.meta : null;
+  const reviewFlagCount = Number(meta?.review_flag_count ?? 0) || 0;
+  const score = Number(meta?.score_overall);
+  const thresholdBand = String(a.threshold_band ?? meta?.threshold_band ?? "").trim();
+
+  const parts: string[] = [];
+  if (thresholdBand) parts.push(`Band: ${thresholdBand}`);
+  if (reviewFlagCount > 0) parts.push(`${reviewFlagCount} flag${reviewFlagCount === 1 ? "" : "s"}`);
+  if (Number.isFinite(score)) parts.push(`Score: ${Math.round(score)}`);
+
+  return parts.join(" · ");
 }
 
 function fmt(dt?: string | null) {
@@ -2082,100 +2141,102 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                             <div className="mt-4 overflow-x-auto">
                               <table className="w-full text-left text-sm">
                                 <thead className="text-xs text-neutral-500">
-                                  <tr>
-                                    <th className="py-2 pr-3">Title</th>
-                                    <th className="py-2 pr-3">Type</th>
-                                    <th className="py-2 pr-3">Status</th>
-                                    <th className="py-2 pr-3">Due</th>
-                                    <th className="py-2 pr-3">Created</th>
-                                    <th className="py-2 pr-0 text-right">Actions</th>
+                                  <tr
+                                    key={a.id}
+                                    className={["border-t border-neutral-900", overdue ? "bg-red-500/5" : ""].join(" ")}
+                                  >
+                                    <td className="py-2 pr-3">
+                                      <div className="font-semibold text-neutral-200">
+                                        {a.title || "(Untitled)"}
+                                      </div>
+                                      {assignmentReportingLine(a) ? (
+                                        <div className="mt-1 text-xs text-neutral-500">
+                                          {assignmentReportingLine(a)}
+                                        </div>
+                                      ) : null}
+                                    </td>
+
+                                    <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
+
+                                    <td className="py-2 pr-3">
+                                      <div className="flex items-center gap-2">
+                                        {statusPill(a.status, isOverdue(a))}
+                                        {assignmentOriginBadge(a)}
+                                      </div>
+                                    </td>
+
+                                    <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
+                                    <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
+
+                                    <td className="py-2 pr-0">
+                                      {String(a.status).toLowerCase() === "completed" ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              jumpToCreateAndPrefill({
+                                                repId: rep.id,
+                                                type: a.type,
+                                                title: a.title || "",
+                                                dueYmd: todayYmd(),
+                                              })
+                                            }
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+                                          >
+                                            Reassign
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void deleteAssignment(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void markComplete(a.id)}
+                                            className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                                          >
+                                            Force complete
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void setDueToday(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Due today
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void nudgeRep(rep.id, a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Nudge
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            disabled={actioningId === a.id}
+                                            onClick={() => void deleteAssignment(a.id)}
+                                            className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
                                   </tr>
-                                </thead>
-
-                                <tbody className="align-top">
-                                  {filtered.map((a) => {
-                                    const overdue = isOverdue(a);
-                                    return (
-                                      <tr
-                                        key={a.id}
-                                        className={["border-t border-neutral-900", overdue ? "bg-red-500/5" : ""].join(" ")}
-                                      >
-                                        <td className="py-2 pr-3">
-                                          <div className="font-semibold text-neutral-200">{a.title || "(Untitled)"}</div>
-                                        </td>
-                                        <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
-                                        <td className="py-2 pr-3">{statusPill(a.status, overdue)}</td>
-                                        <td className="py-2 pr-3 text-neutral-300">{fmt(a.due_at)}</td>
-                                        <td className="py-2 pr-3 text-neutral-500">{fmt(a.created_at)}</td>
-                                        <td className="py-2 pr-0">
-                                          {String(a.status).toLowerCase() === "completed" ? (
-                                            <div className="flex items-center justify-end gap-2">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  jumpToCreateAndPrefill({
-                                                    repId: rep.id,
-                                                    type: a.type,
-                                                    title: a.title || "",
-                                                    dueYmd: todayYmd(),
-                                                  })
-                                                }
-                                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-                                              >
-                                                Reassign
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                disabled={actioningId === a.id}
-                                                onClick={() => void deleteAssignment(a.id)}
-                                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                              >
-                                                Delete
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <div className="flex items-center justify-end gap-2">
-                                              <button
-                                                type="button"
-                                                disabled={actioningId === a.id}
-                                                onClick={() => void markComplete(a.id)}
-                                                className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
-                                              >
-                                                Force complete
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                disabled={actioningId === a.id}
-                                                onClick={() => void setDueToday(a.id)}
-                                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                              >
-                                                Due today
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                disabled={actioningId === a.id}
-                                                onClick={() => void nudgeRep(rep.id, a.id)}
-                                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                              >
-                                                Nudge
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                disabled={actioningId === a.id}
-                                                onClick={() => void deleteAssignment(a.id)}
-                                                className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-                                              >
-                                                Delete
-                                              </button>
-                                            </div>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
+                                  );
                                   })}
                                 </tbody>
                               </table>
