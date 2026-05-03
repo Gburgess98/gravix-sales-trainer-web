@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
 import { getAdminConfig, patchAdminConfig, AdminConfig } from "@/lib/api";
 
 type FormState = {
@@ -21,6 +22,9 @@ export default function AdminSettingsPage() {
     xp_multiplier: "1",
     comeback_bonus: "0",
   });
+
+  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled">("everyone");
+  const [visLoading, setVisLoading] = useState(true);
 
   const forbidden =
     (err || "").includes("forbidden_not_manager") ||
@@ -51,6 +55,25 @@ export default function AdminSettingsPage() {
         setErr(e?.message || "Failed to load admin config");
       } finally {
         setLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setVisLoading(true);
+        const res = await fetch("/api/proxy/v1/admin/org-settings", {
+          headers: { "x-user-id": localStorage.getItem("uid") || "" },
+        });
+        const d = await res.json();
+        if (d?.settings?.call_visibility) {
+          setVisibility(d.settings.call_visibility);
+        }
+      } catch (e) {
+        console.warn("failed to load org settings", e);
+      } finally {
+        setVisLoading(false);
       }
     })();
   }, []);
@@ -99,6 +122,22 @@ export default function AdminSettingsPage() {
     }
   }
 
+  const updateVisibility = useCallback(async (val: typeof visibility) => {
+    setVisibility(val);
+    try {
+      await fetch("/api/proxy/v1/admin/org-settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": localStorage.getItem("uid") || "",
+        },
+        body: JSON.stringify({ call_visibility: val }),
+      });
+    } catch (e) {
+      console.warn("failed to update visibility", e);
+    }
+  }, []);
+
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-2xl font-semibold">Admin Settings</h1>
@@ -110,6 +149,34 @@ export default function AdminSettingsPage() {
         <div className="mt-6 text-sm">Loading…</div>
       ) : (
         <div className="mt-6 space-y-4">
+          <div className="rounded border p-4 space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold">Company Call Visibility</h2>
+              <p className="text-xs text-muted-foreground">
+                Control who can access company-wide calls.
+              </p>
+            </div>
+
+            {visLoading ? (
+              <div className="text-sm">Loading visibility…</div>
+            ) : (
+              <div className="flex gap-2">
+                {["everyone", "managers", "disabled"].map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => updateVisibility(opt as any)}
+                    className={`px-3 py-1 rounded text-sm ${
+                      visibility === opt
+                        ? "bg-black text-white"
+                        : "bg-gray-200"
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {err && (
             <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm">
               {err}
