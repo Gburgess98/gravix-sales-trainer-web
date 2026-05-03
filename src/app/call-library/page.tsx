@@ -202,6 +202,14 @@ export default function CallLibraryPage() {
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
   const [callScope, setCallScope] = useState<CallScope>("mine");
+  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled">("everyone");
+
+  useEffect(() => {
+    // 🔥 If company becomes restricted, force back to "mine"
+    if (visibility !== "everyone" && callScope === "company") {
+      setCallScope("mine");
+    }
+  }, [visibility, callScope]);
 
   // Sparring personas config (loaded from API)
   const [sparPersonas, setSparPersonas] = useState<SparringPersonaOption[]>([]);
@@ -232,6 +240,22 @@ export default function CallLibraryPage() {
     return () => clearTimeout(handle);
   }, [search]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/proxy/v1/admin/org-settings", {
+          headers: { "x-user-id": localStorage.getItem("uid") || "" },
+        });
+        const d = await res.json();
+        if (d?.settings?.call_visibility) {
+          setVisibility(d.settings.call_visibility);
+        }
+      } catch (e) {
+        console.warn("failed to load visibility", e);
+      }
+    })();
+  }, []);
+
   // --- Sparring ---
   const [sparring, setSparring] = useState<SparringSession[]>([]);
   const [loadingSparring, setLoadingSparring] = useState(false);
@@ -259,7 +283,12 @@ export default function CallLibraryPage() {
         buildCallsPagedUrl({
           limit: 20,
           q: debouncedSearch || undefined,
-          scope: tab === "live" ? callScope : "mine",
+          scope:
+            tab === "live"
+              ? visibility === "everyone"
+                ? callScope
+                : "mine"
+              : "mine",
         })
       );
 
@@ -472,7 +501,12 @@ export default function CallLibraryPage() {
           limit: 20,
           cursor,
           q: debouncedSearch || undefined,
-          scope: tab === "live" ? callScope : "mine",
+          scope:
+            tab === "live"
+              ? visibility === "everyone"
+                ? callScope
+                : "mine"
+              : "mine",
         })
       );
 
@@ -659,24 +693,43 @@ export default function CallLibraryPage() {
             <span className="self-center text-neutral-500">View</span>
             {[
               { id: "mine", label: "My calls" },
-              { id: "company", label: "Company calls" },
+              { id: "company", label: "Company calls", disabled: visibility !== "everyone" },
             ].map((opt) => {
+              const isDisabled = (opt as any).disabled;
               const active = callScope === opt.id;
+
               return (
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setCallScope(opt.id as CallScope)}
-                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${active
-                    ? "border-neutral-100 bg-neutral-100 text-neutral-900"
-                    : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                    }`}
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    setCallScope(opt.id as CallScope);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${
+                    active
+                      ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                      : isDisabled
+                      ? "border-neutral-700 bg-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                      : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                  }`}
                 >
                   <span>{opt.label}</span>
                 </button>
               );
             })}
           </div>
+          {visibility === "managers" && (
+            <div className="text-[11px] text-amber-400 mt-1">
+              Company calls are restricted to managers.
+            </div>
+          )}
+          {visibility === "disabled" && (
+            <div className="text-[11px] text-red-400 mt-1">
+              Company call visibility is disabled.
+            </div>
+          )}
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             {/* Left: status chips */}
             <div className="flex flex-wrap gap-3">
