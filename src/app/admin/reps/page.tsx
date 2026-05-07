@@ -11,7 +11,14 @@ export default function AdminRepsPage() {
   const [usage, setUsage] = useState<{ used: number; max: number } | null>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [visibilityScope, setVisibilityScope] = useState("team");
-  const [officeId, setOfficeId] = useState("office_1");
+  const [officeId, setOfficeId] = useState(() => {
+    if (typeof window === "undefined") return "office_1";
+
+    return (
+      localStorage.getItem("active_office_id") ||
+      "office_1"
+    );
+  });
 
   const uid =
     typeof window !== "undefined"
@@ -20,19 +27,28 @@ export default function AdminRepsPage() {
 
   useEffect(() => {
     fetch("/api/proxy/v1/admin/users", {
-      headers: { "x-user-id": uid },
+      headers: { "x-user-id": uid, "x-active-office-id": officeId },
     })
       .then((r) => r.json())
       .then((d) => {
         if (d?.users) setUsers(d.users);
+        const savedOffice = localStorage.getItem("active_office_id");
+
+        if (savedOffice) {
+          setOfficeId(savedOffice);
+        }
         fetch("/api/proxy/v1/admin/usage", {
-          headers: { "x-user-id": uid },
+          headers: { "x-user-id": uid, "x-active-office-id": officeId },
         })
           .then((r) => r.json())
           .then((d) => {
             if (d?.usage) setUsage(d.usage);
           });
       });
+
+    if (officeId) {
+      localStorage.setItem("active_office_id", officeId);
+    }
   }, []);
 
   async function createUser() {
@@ -53,13 +69,16 @@ export default function AdminRepsPage() {
       headers: {
         "Content-Type": "application/json",
         "x-user-id": uid,
+        "x-active-office-id": officeId,
       },
       body: JSON.stringify({
         email,
         role,
         manager_id: role === "rep" ? managerId : null,
         visibility_scope:
-          role === "manager" ? visibilityScope : "team",
+          role === "office_manager" || role === "company_manager"
+            ? visibilityScope
+            : "team",
         office_id: officeId,
       }),
     });
@@ -73,13 +92,13 @@ export default function AdminRepsPage() {
       setVisibilityScope("team");
 
       const r = await fetch("/api/proxy/v1/admin/users", {
-        headers: { "x-user-id": uid },
+        headers: { "x-user-id": uid, "x-active-office-id": officeId },
       });
       const d = await r.json();
       setUsers(d.users || []);
 
       const u = await fetch("/api/proxy/v1/admin/usage", {
-        headers: { "x-user-id": uid },
+        headers: { "x-user-id": uid, "x-active-office-id": officeId },
       });
       const uData = await u.json();
       if (uData?.usage) setUsage(uData.usage);
@@ -114,6 +133,31 @@ export default function AdminRepsPage() {
         </div>
       )}
 
+      <div className="p-4 border border-blue-900/40 rounded-xl bg-blue-950/20 flex items-center justify-between">
+        <div>
+          <div className="text-xs text-blue-300 uppercase tracking-wide">
+            Active Office Context
+          </div>
+
+          <div className="text-sm text-white font-medium">
+            {officeId.replace("_", " ")}
+          </div>
+        </div>
+
+        <select
+          value={officeId}
+          onChange={(e) => {
+            setOfficeId(e.target.value);
+            localStorage.setItem("active_office_id", e.target.value);
+          }}
+          className="border border-neutral-700 bg-neutral-800 px-3 py-2 rounded text-white"
+        >
+          <option value="office_1">Office 1</option>
+          <option value="office_2">Office 2</option>
+          <option value="office_3">Office 3</option>
+        </select>
+      </div>
+
       <div className="p-6 border border-neutral-700 rounded-xl bg-neutral-900 space-y-4 shadow-lg">
         <input
           placeholder="Email"
@@ -131,15 +175,18 @@ export default function AdminRepsPage() {
               setManagerId("");
             }
 
-            if (e.target.value !== "manager") {
+            if (
+              e.target.value !== "office_manager" &&
+              e.target.value !== "company_manager"
+            ) {
               setVisibilityScope("team");
             }
           }}
           className="border border-neutral-700 bg-neutral-800 px-3 py-2 w-full rounded text-white"
         >
           <option value="rep">Rep</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Admin</option>
+          <option value="office_manager">Office Manager</option>
+          <option value="company_manager">Company Manager</option>
         </select>
 
         <div className="space-y-2">
@@ -168,7 +215,11 @@ export default function AdminRepsPage() {
             {role === "rep" ? "Select Manager" : "Not required"}
           </option>
 
-          {users.filter((u) => u.role === "manager").length === 0 && (
+          {users.filter(
+            (u) =>
+              u.role === "office_manager" ||
+              u.role === "company_manager"
+          ).length === 0 && (
             <option disabled>No managers yet</option>
           )}
 
@@ -176,7 +227,8 @@ export default function AdminRepsPage() {
             .filter((u) => {
               // only managers/admins can manage reps
               const validRole =
-                u.role === "manager" || u.role === "admin";
+                u.role === "office_manager" ||
+                u.role === "company_manager";
 
               // office-aware filtering
               const sameOffice =
@@ -201,7 +253,8 @@ export default function AdminRepsPage() {
             ))}
         </select>
 
-        {role === "manager" && (
+        {(role === "office_manager" ||
+          role === "company_manager") && (
           <div className="space-y-2">
             <label className="text-sm text-gray-400">
               Manager Visibility
@@ -217,8 +270,8 @@ export default function AdminRepsPage() {
             </select>
 
             <p className="text-xs text-gray-500">
-              Team Only = manager only sees assigned reps.
-              Entire Company = manager can view all reps in the organisation.
+              Team Only = office manager only sees assigned reps.
+              Entire Company = company manager can view all reps in the organisation.
             </p>
           </div>
         )}
@@ -259,7 +312,8 @@ export default function AdminRepsPage() {
                   <div className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
                     <span>{u.role}</span>
 
-                    {u.role === "manager" && (
+                    {(u.role === "office_manager" ||
+                      u.role === "company_manager") && (
                       <span className="text-xs px-2 py-1 rounded bg-neutral-700 text-gray-300">
                         {u.visibility_scope === "company"
                           ? "Company Access"
