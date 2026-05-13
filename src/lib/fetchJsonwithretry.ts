@@ -18,7 +18,13 @@ type NormalisedError = Error & {
 
 function normaliseError(e: any, fallbackMsg: string): NormalisedError {
   const err: NormalisedError =
-    e instanceof Error ? e : new Error(fallbackMsg);
+    e instanceof Error
+      ? e
+      : new Error(
+          typeof e?.message === "string" && e.message.trim()
+            ? e.message
+            : fallbackMsg
+        );
 
   if (typeof e?.status === "number") err.status = e.status;
   if (typeof e?.code === "string") err.code = e.code;
@@ -110,8 +116,26 @@ export async function fetchJsonWithRetry<T = any>(
 
       const res = await fetch(input, finalInit);
       const text = await res.text();
-      const isJson = (res.headers.get("content-type") || "").includes("application/json");
-      const data = isJson && text ? JSON.parse(text) : (text as unknown as T);
+
+      const isJson = (res.headers.get("content-type") || "").includes(
+        "application/json"
+      );
+
+      let data: any = text as unknown as T;
+
+      if (isJson && text && text.trim().length > 0) {
+        try {
+          data = JSON.parse(text);
+        } catch (parseErr) {
+          console.error("fetchJsonWithRetry: invalid JSON", {
+            input,
+            status: res.status,
+            text,
+          });
+
+          throw new Error("Invalid JSON response from server.");
+        }
+      }
 
       if (!res.ok) {
         throw normaliseError(
@@ -121,7 +145,9 @@ export async function fetchJsonWithRetry<T = any>(
             message:
               isJson && data && (data as any).error
                 ? (data as any).error
-                : `${res.status} ${res.statusText}`,
+                : typeof data === "string" && data.trim().length > 0
+                  ? data
+                  : `${res.status} ${res.statusText}`,
           },
           "request_failed"
         );

@@ -262,10 +262,12 @@ export default function CallLibraryPage() {
   const [sparringError, setSparringError] = useState<string | null>(null);
 
   // --- Uploads ---
-  const uploads = calls.filter((c) => {
-    const type = String(c.type ?? "").toLowerCase();
-    return type === "upload" || type === "uploaded";
-  });
+  const uploads = Array.isArray(calls)
+    ? calls.filter((c) => {
+        const type = String(c.type ?? "").toLowerCase();
+        return type === "upload" || type === "uploaded";
+      })
+    : [];
   const availableReps = Array.from(
     new Set(calls.map((c) => c.rep_name || "Unknown rep"))
   ).sort();
@@ -295,13 +297,24 @@ export default function CallLibraryPage() {
       if (!alive) return;
 
       if (!res || (res as any).ok === false) {
+        setCalls([]);
+        setCursor(null);
         setError("Unable to load calls.");
         return;
       }
 
-      const list = (res.calls ?? res.items) || [];
+      const rawList = res.calls ?? res.items;
+
+      const list = Array.isArray(rawList)
+        ? rawList
+        : [];
+
       setCalls(list);
-      setCursor(res.nextCursor ?? null);
+      setCursor(
+        typeof res.nextCursor === "string"
+          ? res.nextCursor
+          : null
+      );
     };
 
     (async () => {
@@ -510,9 +523,19 @@ export default function CallLibraryPage() {
         })
       );
 
-      const list = (res.calls ?? res.items) || [];
+      const rawList = res?.calls ?? res?.items;
+
+      const list = Array.isArray(rawList)
+        ? rawList
+        : [];
+
       setCalls((prev) => [...prev, ...list]);
-      setCursor(res.nextCursor ?? null);
+
+      setCursor(
+        typeof res?.nextCursor === "string"
+          ? res.nextCursor
+          : null
+      );
     } catch (e: any) {
       console.error("call-library: loadMore failed", e);
       setMoreError(e?.message || "Failed to load more calls.");

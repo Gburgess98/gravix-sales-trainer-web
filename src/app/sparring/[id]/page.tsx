@@ -92,6 +92,79 @@ type WhisperItem = {
 };
 
 type WhispererHit = {
+};
+
+type FailedMoment = {
+  turn: number;
+  reason: string;
+  buyer_message: string;
+  rep_response: string;
+  score: number;
+  created_at: string;
+};
+
+type EmotionalTimelinePoint = {
+  at_turn: number;
+  anger: number;
+  boredom: number;
+  trust: number;
+  created_at: string;
+};
+
+type ObjectionHistoryItem = {
+  objection: string;
+  at_turn: number;
+  anger: number;
+  boredom: number;
+  trust: number;
+  created_at: string;
+};
+
+type BehaviourDiagnostics = {
+  trustCollapseDetected: boolean;
+  angerSpikeDetected: boolean;
+  disengagedDetected: boolean;
+  escalationScore: number;
+  strongestEmotion: string;
+  recoveryDetected: boolean;
+};
+
+type SparringAnalytics = {
+  diagnostics?: BehaviourDiagnostics;
+  emotional_timeline?: EmotionalTimelinePoint[];
+  objection_history?: ObjectionHistoryItem[];
+  failed_moments?: FailedMoment[];
+  coaching_insights?: string[];
+  analytics_state?: Record<string, any>;
+
+  replay_comparison?: {
+    original_session_id?: string | null;
+    replay_attempt?: number;
+    original_score?: number | null;
+    replay_score?: number | null;
+    score_delta?: number | null;
+    trust_recovery_delta?: number | null;
+    anger_reduction_delta?: number | null;
+    objection_improvement_delta?: number | null;
+    replay_improvement_score?: number | null;
+    confidence_recovery_detected?: boolean;
+  };
+
+  coaching_progression?: {
+    replay_attempt?: number;
+    confidence_recovery_detected?: boolean;
+    improvement_detected?: boolean;
+    trust_recovery_delta?: number | null;
+    replay_improvement_score?: number | null;
+  };
+};
+
+type ReplayState = {
+  source_session_id: string;
+  source_turn: number;
+  source_reason: string;
+  replay_started_at: string;
+  replay_attempt: number;
   t: number | null;
   type: string;
   text: string;
@@ -659,6 +732,66 @@ export default function SparringSessionPage() {
 
   const [scoringBusy, setScoringBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
+  const [replayLoading, setReplayLoading] = useState<number | null>(null);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<SparringAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!session?.id) return;
+
+    let active = true;
+
+    (async () => {
+      try {
+        setAnalyticsLoading(true);
+        setAnalyticsError(null);
+
+        const res = await fetchJsonWithRetry(
+          `/api/proxy/v1/sparring/sessions/${encodeURIComponent(session.id)}/analytics`
+        );
+
+        if (!active) return;
+
+        if (!res || res.ok === false) {
+          throw new Error(res?.error || 'Failed to load analytics');
+        }
+
+        setAnalytics(res.analytics || null);
+      } catch (e: any) {
+        if (!active) return;
+        console.error('Failed loading analytics', e);
+        setAnalyticsError(e?.message || 'Failed to load analytics');
+      } finally {
+        if (!active) return;
+        setAnalyticsLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [session?.id]);
+  const failedMoments = useMemo<FailedMoment[]>(() => {
+    const list = session?.meta?.failed_moments;
+
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    return list as FailedMoment[];
+  }, [session]);
+
+  const replayState = useMemo<ReplayState | null>(() => {
+    const state = session?.meta?.replay_state;
+
+    if (!state || typeof state !== "object") {
+      return null;
+    }
+
+    return state as ReplayState;
+  }, [session]);
+
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [timerFinished, setTimerFinished] = useState(false);
 
@@ -1164,6 +1297,38 @@ export default function SparringSessionPage() {
   }
 
   async function onReplaySession() {
+  async function onReplayFailure(turn: number) {
+    if (!session?.id) return;
+
+    try {
+      setReplayLoading(turn);
+      setReplayError(null);
+
+      const res = await fetchJsonWithRetry(
+        `/api/proxy/v1/sparring/sessions/${encodeURIComponent(session.id)}/replay`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            failed_turn: turn,
+          }),
+        }
+      );
+
+      if (!res || res.ok === false || !res.replay_session?.id) {
+        throw new Error(res?.error || "Failed to create replay session.");
+      }
+
+      toast("Replay session created — retry the failed objection.");
+
+      router.push(`/sparring/${encodeURIComponent(res.replay_session.id)}`);
+    } catch (e: any) {
+      console.error("Replay failure failed", e);
+      setReplayError(e?.message || "Failed to replay this moment.");
+    } finally {
+      setReplayLoading(null);
+    }
+  }
     if (!session) return;
 
     try {
@@ -1758,6 +1923,30 @@ export default function SparringSessionPage() {
             </div>
           )}
 
+          {replayState && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">
+                    Failure replay mode
+                  </div>
+
+                  <div className="mt-1 text-sm text-neutral-100">
+                    Retrying failed objection from turn {replayState.source_turn}
+                  </div>
+
+                  <div className="mt-1 text-[11px] text-neutral-300">
+                    Previous failure: {replayState.source_reason.replace(/_/g, " ")}
+                  </div>
+                </div>
+
+                <div className="rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-200">
+                  Attempt #{replayState.replay_attempt}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Session summary */}
           {(session.summary || (session.flags && session.flags.length > 0)) && (
             <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
@@ -1781,6 +1970,401 @@ export default function SparringSessionPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium text-neutral-100">
+                  Behavioural analytics
+                </h2>
+
+                <p className="mt-1 text-[11px] text-neutral-400">
+                  Emotional pressure tracking, objection escalation, and AI coaching diagnostics.
+                </p>
+              </div>
+
+              {analytics?.diagnostics && (
+                <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-200">
+                  Escalation {analytics.diagnostics.escalationScore}/100
+                </div>
+              )}
+            </div>
+
+            {analyticsLoading && (
+              <div className="mt-4 text-xs text-neutral-400">
+                Loading behavioural analytics…
+              </div>
+            )}
+
+            {analyticsError && (
+              <div className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {analyticsError}
+              </div>
+            )}
+
+                {analytics && (
+                  <div className="mt-4 space-y-5">
+                    {analytics.replay_comparison && (
+                      <div>
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="text-xs font-medium text-neutral-200">
+                            Replay progression analytics
+                          </div>
+
+                          {typeof analytics.replay_comparison.replay_improvement_score === 'number' && (
+                            <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                              Improvement {analytics.replay_comparison.replay_improvement_score}/100
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                              Replay vs original
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-neutral-100">
+                              <span>
+                                {analytics.replay_comparison.original_score ?? '—'}
+                              </span>
+
+                              <span className="text-neutral-500">→</span>
+
+                              <span>
+                                {analytics.replay_comparison.replay_score ?? '—'}
+                              </span>
+                            </div>
+
+                            {typeof analytics.replay_comparison.score_delta === 'number' && (
+                              <div className="mt-2 text-[11px] text-emerald-300">
+                                {analytics.replay_comparison.score_delta >= 0 ? '+' : ''}
+                                {analytics.replay_comparison.score_delta} score delta
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                              Trust recovery
+                            </div>
+
+                            <div className="mt-2 text-sm font-semibold text-neutral-100">
+                              {typeof analytics.replay_comparison.trust_recovery_delta === 'number'
+                                ? `${Math.round(analytics.replay_comparison.trust_recovery_delta)} pts`
+                                : '—'}
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-neutral-400">
+                              Buyer trust regained after replay coaching.
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                              Confidence recovery
+                            </div>
+
+                            <div className="mt-2 text-sm font-semibold text-neutral-100">
+                              {analytics.replay_comparison.confidence_recovery_detected
+                                ? 'Recovered'
+                                : 'Not detected'}
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-neutral-400">
+                              AI detected improved emotional control during replay.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-300">
+                              Objection handling improvement
+                            </div>
+
+                            <div className="mt-2 text-lg font-semibold text-neutral-100">
+                              {typeof analytics.replay_comparison.objection_improvement_delta === 'number'
+                                ? `${Math.round(analytics.replay_comparison.objection_improvement_delta)}%`
+                                : '—'}
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-neutral-300">
+                              Reduced objection escalation during replay.
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-sky-300">
+                              AI says you improved here
+                            </div>
+
+                            <div className="mt-2 space-y-2 text-[11px] text-sky-100">
+                              {(analytics.replay_comparison.score_delta || 0) > 0 && (
+                                <div>
+                                  • Your replay score improved versus the original failed attempt.
+                                </div>
+                              )}
+
+                              {(analytics.replay_comparison.trust_recovery_delta || 0) > 0 && (
+                                <div>
+                                  • Buyer trust recovered faster after objection handling.
+                                </div>
+                              )}
+
+                              {analytics.replay_comparison.confidence_recovery_detected && (
+                                <div>
+                                  • Emotional control and confidence improved during pressure.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                {analytics.diagnostics && (
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        Strongest emotion
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-neutral-100 capitalize">
+                        {analytics.diagnostics.strongestEmotion}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        Trust collapse
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-neutral-100">
+                        {analytics.diagnostics.trustCollapseDetected ? 'Detected' : 'Stable'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        Anger spikes
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-neutral-100">
+                        {analytics.diagnostics.angerSpikeDetected ? 'Detected' : 'Controlled'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-neutral-800 bg-black/40 p-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        Recovery moments
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-neutral-100">
+                        {analytics.diagnostics.recoveryDetected ? 'Recovered trust' : 'None'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(analytics.emotional_timeline) &&
+                  analytics.emotional_timeline.length > 0 && (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-xs font-medium text-neutral-200">
+                          Emotional graph
+                        </div>
+
+                        <div className="text-[10px] text-neutral-500">
+                          Trust vs anger vs boredom
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-neutral-800 bg-black/30 p-3">
+                        <div className="flex h-36 items-end gap-2 overflow-hidden">
+                          {analytics.emotional_timeline.map((point, idx) => {
+                            const trustHeight = Math.max(6, point.trust);
+                            const angerHeight = Math.max(6, point.anger);
+                            const boredomHeight = Math.max(6, point.boredom);
+
+                            return (
+                              <div
+                                key={`${point.at_turn}-${idx}`}
+                                className="flex flex-1 items-end justify-center gap-1"
+                              >
+                                <div
+                                  className="w-2 rounded-sm bg-emerald-500/80"
+                                  style={{ height: `${trustHeight}px` }}
+                                  title={`Trust ${point.trust}`}
+                                />
+
+                                <div
+                                  className="w-2 rounded-sm bg-red-500/80"
+                                  style={{ height: `${angerHeight}px` }}
+                                  title={`Anger ${point.anger}`}
+                                />
+
+                                <div
+                                  className="w-2 rounded-sm bg-amber-500/80"
+                                  style={{ height: `${boredomHeight}px` }}
+                                  title={`Boredom ${point.boredom}`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-neutral-400">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                            Trust
+                          </span>
+
+                          <span className="inline-flex items-center gap-1">
+                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                            Anger
+                          </span>
+
+                          <span className="inline-flex items-center gap-1">
+                            <span className="h-2 w-2 rounded-full bg-amber-500" />
+                            Boredom
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {Array.isArray(analytics.objection_history) &&
+                  analytics.objection_history.length > 0 && (
+                    <div>
+                      <div className="mb-2 text-xs font-medium text-neutral-200">
+                        Objection escalation timeline
+                      </div>
+
+                      <div className="space-y-2">
+                        {analytics.objection_history.map((item, idx) => (
+                          <div
+                            key={`${item.at_turn}-${idx}`}
+                            className="rounded-lg border border-neutral-800 bg-black/30 p-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-sm text-neutral-100">
+                                {item.objection}
+                              </div>
+
+                              <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                                Turn {item.at_turn}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-neutral-400">
+                              <span>Trust {item.trust}</span>
+                              <span>Anger {item.anger}</span>
+                              <span>Boredom {item.boredom}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {Array.isArray(analytics.coaching_insights) &&
+                  analytics.coaching_insights.length > 0 && (
+                    <div>
+                      <div className="mb-2 text-xs font-medium text-neutral-200">
+                        AI coaching insights
+                      </div>
+
+                      <div className="space-y-2">
+                        {analytics.coaching_insights.map((insight, idx) => (
+                          <div
+                            key={idx}
+                            className="rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-sky-100"
+                          >
+                            🧠 {insight}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+
+          {failedMoments.length > 0 && (
+            <div className="rounded-lg border border-red-500/20 bg-neutral-950 px-4 py-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-medium text-neutral-100">
+                    Failed moments replay
+                  </h2>
+
+                  <p className="mt-1 text-[11px] text-neutral-400">
+                    Restart sparring from weak objection-handling moments.
+                  </p>
+                </div>
+
+                <div className="rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-red-300">
+                  {failedMoments.length} saved
+                </div>
+              </div>
+
+              {replayError && (
+                <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-300">
+                  {replayError}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {failedMoments.map((moment, idx) => (
+                  <div
+                    key={`${moment.turn}-${idx}`}
+                    className="rounded-lg border border-neutral-800 bg-black/40 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-red-300">
+                          Turn {moment.turn}
+                        </span>
+
+                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                          {moment.reason.replace(/_/g, " ")}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-400">
+                        Score {moment.score}/100
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-2 text-[11px]">
+                      <div>
+                        <div className="mb-1 text-neutral-500">Buyer objection</div>
+                        <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-100">
+                          {moment.buyer_message}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-1 text-neutral-500">Your failed response</div>
+                        <div className="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-red-100">
+                          {moment.rep_response}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => onReplayFailure(moment.turn)}
+                        disabled={replayLoading === moment.turn}
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/60 bg-amber-500/10 px-3 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-150 active:scale-[0.98]"
+                      >
+                        {replayLoading === moment.turn
+                          ? "Creating replay…"
+                          : "Replay failure"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
