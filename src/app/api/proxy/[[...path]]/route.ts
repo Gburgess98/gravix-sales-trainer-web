@@ -406,6 +406,40 @@ async function handle(req: NextRequest, context: any) {
       headers.set("x-org-id", finalOrgId);
     }
 
+    // ---- Hierarchy-aware forwarding
+
+    const existingCompanyId = (
+      headers.get("x-company-id") || ""
+    ).trim();
+
+    if (existingCompanyId) {
+      headers.set("x-company-id", existingCompanyId);
+    }
+
+    const activeOfficeId = (
+      headers.get("x-active-office-id") || ""
+    ).trim();
+
+    if (activeOfficeId) {
+      headers.set("x-active-office-id", activeOfficeId);
+    }
+
+    // ---- Support impersonation forwarding
+
+    const impersonatedUserId = (
+      headers.get("x-impersonated-user-id") || ""
+    ).trim();
+
+    if (impersonatedUserId) {
+      headers.set(
+        "x-impersonated-user-id",
+        impersonatedUserId
+      );
+    }
+
+    // Preserve real authenticated user lineage for audit logging
+    headers.set("x-real-user-id", resolvedUserId);
+
     // Ensure a request id for tracing
     try {
       if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
@@ -465,6 +499,34 @@ async function handle(req: NextRequest, context: any) {
     try { outHeaders.set("x-proxy-auth-source", authSource); } catch { }
     try { outHeaders.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
     try { outHeaders.set("x-proxy-org-id", (headers.get("x-org-id") || "").trim()); } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-company-id",
+        (headers.get("x-company-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-active-office-id",
+        (headers.get("x-active-office-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-impersonated-user-id",
+        (headers.get("x-impersonated-user-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-real-user-id",
+        (headers.get("x-real-user-id") || "").trim()
+      );
+    } catch { }
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");

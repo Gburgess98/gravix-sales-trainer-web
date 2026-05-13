@@ -16,7 +16,81 @@ const YAxis = dynamic(() => import('recharts').then(m => m.YAxis), { ssr: false 
 const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip), { ssr: false });
 const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 
+
+
+
+type DailyCoachingFeed = {
+  coaching_summary?: string;
+  weakest_area?: {
+    category?: string;
+    score?: number;
+  } | null;
+  momentum_insight?: string;
+  momentum_delta?: number;
+  regression_warnings?: string[];
+  recommended_replay?: {
+    call_id?: string;
+    score?: number;
+    created_at?: string;
+  } | null;
+  recommended_drill?: string;
+  coaching_urgency?: 'low' | 'medium' | 'high';
+  ai_motivation_message?: string;
+  todays_focus?: string;
+};
+
 type TrendPoint = { date: string; value: number };
+
+type WeaknessTrends = {
+  momentum_score?: number;
+  regression_warnings?: string[];
+  ai_summary?: string;
+  deltas?: {
+    intro?: number;
+    discovery?: number;
+    objection_handling?: number;
+    closing?: number;
+    overall?: number;
+  };
+  trends?: {
+    intro?: TrendPoint[];
+    discovery?: TrendPoint[];
+    objection_handling?: TrendPoint[];
+    closing?: TrendPoint[];
+    overall?: TrendPoint[];
+  };
+  replay_improvement_trend?: Array<{
+    call_id: string;
+    score: number;
+    created_at: string;
+  }>;
+  coaching_completion_trend?: {
+    completed_assignments_estimate?: number;
+    struggling_sessions?: number;
+  };
+};
+
+type CoachingProfile = {
+  weakest_category?: {
+    category: string;
+    average: number;
+  } | null;
+  weaknesses?: Array<{
+    category: string;
+    score: number;
+  }>;
+  recurring_failures?: Array<{
+    call_id: string;
+    score: number;
+    created_at: string;
+  }>;
+  suggested_drills?: string[];
+  replay_recommendations?: Array<{
+    call_id: string;
+    reason: string;
+  }>;
+  coaching_priority?: 'low' | 'medium' | 'high';
+};
 type RepOverview = {
   rep: { id: string; name: string; email?: string; avatar_url?: string | null };
   xp: number;
@@ -28,7 +102,7 @@ type RepOverview = {
     calls?: Array<{ id: string; created_at: string; score: number }>;
     activity?: Array<{ id: string; t: string; text: string }>;
     sparring?: Array<{ id: string; persona_id?: string; personaId?: string; total?: number; created_at: string }>;
-    actions?: Array<{ id: string; title: string; status?: 'open'|'done'|'completed'; due_at?: string | null; completed_at?: string | null; created_at?: string }>;
+    actions?: Array<{ id: string; title: string; status?: 'open' | 'done' | 'completed'; due_at?: string | null; completed_at?: string | null; created_at?: string }>;
   };
 };
 
@@ -47,9 +121,9 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
 function XPBadge({ xp, tier }: { xp: number; tier: string }) {
   const colour =
     tier === 'Gold' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' :
-    tier === 'Silver' ? 'bg-slate-400/20 text-slate-200 border-slate-400/30' :
-    tier === 'Platinum' ? 'bg-indigo-400/20 text-indigo-200 border-indigo-400/30' :
-    'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+      tier === 'Silver' ? 'bg-slate-400/20 text-slate-200 border-slate-400/30' :
+        tier === 'Platinum' ? 'bg-indigo-400/20 text-indigo-200 border-indigo-400/30' :
+          'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   return (
     <div className={clsx('inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border', colour)}>
       <span className="font-medium">{tier}</span><span className="opacity-80">•</span><span>{xp} XP</span>
@@ -59,7 +133,7 @@ function XPBadge({ xp, tier }: { xp: number; tier: string }) {
 function SectionHeader({ title, cta }: { title: string; cta?: React.ReactNode }) {
   return <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">{title}</h3>{cta}</div>;
 }
-function MiniList({ items, empty, renderItem }:{ items:any[]|undefined; empty:string; renderItem:(x:any)=>React.ReactNode }) {
+function MiniList({ items, empty, renderItem }: { items: any[] | undefined; empty: string; renderItem: (x: any) => React.ReactNode }) {
   if (!items || items.length === 0) return <div className="text-white/60 text-sm">{empty}</div>;
   return <ul className="space-y-2">{items.map(renderItem)}</ul>;
 }
@@ -78,7 +152,7 @@ function XpChip({ xp }: { xp: number | null | undefined }) {
   );
 }
 
-function LineSkeleton(){ return <div className="h-52 w-full animate-pulse rounded-xl bg-white/10" />; }
+function LineSkeleton() { return <div className="h-52 w-full animate-pulse rounded-xl bg-white/10" />; }
 
 const badges = [
   { id: 'top_closer', label: 'Top Closer', icon: '🥇' },
@@ -98,6 +172,60 @@ export default function RepProfilePage() {
   const [xpTotal, setXpTotal] = useState<number | null>(null);
   const [todayActions, setTodayActions] = useState<any[]>([]);
   const [loadingActions, setLoadingActions] = useState(false);
+  const [coachingProfile, setCoachingProfile] =
+    useState<CoachingProfile | null>(null);
+  const [weaknessTrends, setWeaknessTrends] =
+    useState<WeaknessTrends | null>(null);
+  const [dailyFeed, setDailyFeed] =
+    useState<DailyCoachingFeed | null>(null);
+  const [coachModalOpen, setCoachModalOpen] = useState(false);
+  const [coachType, setCoachType] = useState<'drill' | 'replay'>('drill');
+  const [coachTarget, setCoachTarget] = useState<string>('');
+  const [coachDueDate, setCoachDueDate] = useState('');
+  const [coachNotes, setCoachNotes] = useState('');
+  const [assigningCoach, setAssigningCoach] = useState(false);
+  async function createCoachingAssignment() {
+    try {
+      setAssigningCoach(true);
+
+      const payload = {
+        rep_id: id,
+        type: coachType,
+        target: coachTarget,
+        due_at: coachDueDate || null,
+        notes: coachNotes || null,
+      };
+
+      const r = await fetch('/api/proxy/v1/assignments/create', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+
+        throw new Error(
+          j?.error || `assignment_create_failed:${r.status}`
+        );
+      }
+
+      setCoachModalOpen(false);
+      setCoachNotes('');
+      setCoachDueDate('');
+      setCoachTarget('');
+
+      alert('Coaching assignment created.');
+    } catch (err: any) {
+      console.error('createCoachingAssignment failed', err);
+
+      alert(err?.message || 'Failed to create coaching assignment.');
+    } finally {
+      setAssigningCoach(false);
+    }
+  }
 
   async function refreshTodayActions() {
     setLoadingActions(true);
@@ -182,6 +310,80 @@ export default function RepProfilePage() {
         } catch (err) {
           console.warn('listCoachAssignments fallback failed (safe to ignore):', err);
         }
+        // Load AI daily coaching feed
+        try {
+          const r = await fetch(
+            `/api/proxy/v1/reps/${encodeURIComponent(id)}/daily-feed`,
+            {
+              cache: 'no-store',
+            }
+          );
+
+          if (!r.ok) {
+            throw new Error(`daily_feed_failed:${r.status}`);
+          }
+
+          const j = await r.json();
+
+          if (mounted) {
+            setDailyFeed(j);
+          }
+        } catch (err) {
+          console.warn(
+            'daily coaching feed fetch failed (safe fallback):',
+            err
+          );
+        }
+        // Load AI coaching profile
+        try {
+          const r = await fetch(
+            `/api/proxy/v1/reps/${encodeURIComponent(id)}/coaching-profile`,
+            {
+              cache: 'no-store',
+            }
+          );
+
+          if (!r.ok) {
+            throw new Error(`coaching_profile_failed:${r.status}`);
+          }
+
+          const j = await r.json();
+
+          if (mounted) {
+            setCoachingProfile(j);
+          }
+        } catch (err) {
+          console.warn(
+            'coaching profile fetch failed (safe fallback):',
+            err
+          );
+        }
+
+        // Load weakness trends
+        try {
+          const r = await fetch(
+            `/api/proxy/v1/reps/${encodeURIComponent(id)}/weakness-trends`,
+            {
+              cache: 'no-store',
+            }
+          );
+
+          if (!r.ok) {
+            throw new Error(`weakness_trends_failed:${r.status}`);
+          }
+
+          const j = await r.json();
+
+          if (mounted) {
+            setWeaknessTrends(j);
+          }
+        } catch (err) {
+          console.warn(
+            'weakness trends fetch failed (safe fallback):',
+            err
+          );
+        }
+
         // Load rewards (titles/bounties) for this rep
         try {
           const rw = await getRewards(id);
@@ -261,8 +463,8 @@ export default function RepProfilePage() {
   // Choose chart data: prefer provided xpTrend, then scoreTrend, then sparring-derived
   const xpChartData: TrendPoint[] =
     (Array.isArray(xpTrend) && xpTrend.length > 0) ? xpTrend
-    : (Array.isArray(scoreTrend) && scoreTrend.length > 0) ? scoreTrend
-    : sparringFallbackTrend;
+      : (Array.isArray(scoreTrend) && scoreTrend.length > 0) ? scoreTrend
+        : sparringFallbackTrend;
 
   function labelForTitle(title: any): string {
     if (!title) return '—';
@@ -427,6 +629,487 @@ export default function RepProfilePage() {
         )}
       </Card>
 
+      {/* AI Daily Coaching Feed */}
+      <Card>
+        <SectionHeader title="Today’s AI Coaching" />
+
+        <div className="mt-4 grid grid-cols-1 xl:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+              Coaching Urgency
+            </div>
+
+            <div
+              className={clsx(
+                'inline-flex rounded-full px-3 py-1 text-sm border font-medium',
+                dailyFeed?.coaching_urgency === 'high'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                  : dailyFeed?.coaching_urgency === 'medium'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              )}
+            >
+              {(dailyFeed?.coaching_urgency || 'low').toUpperCase()}
+            </div>
+
+            <div className="text-white/60 text-sm mt-4 leading-relaxed">
+              {dailyFeed?.coaching_summary ||
+                'AI daily coaching unavailable.'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+              Today’s Focus
+            </div>
+
+            <div className="text-white/90 font-medium leading-relaxed">
+              {dailyFeed?.todays_focus ||
+                'Continue reinforcing fundamentals.'}
+            </div>
+
+            <div className="mt-4 text-sm text-white/60">
+              {dailyFeed?.momentum_insight ||
+                'Momentum analysis unavailable.'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+              Recommended Drill
+            </div>
+
+            <div className="text-white/90 font-medium leading-relaxed">
+              {dailyFeed?.recommended_drill ||
+                'No drill recommendation yet.'}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCoachType('drill');
+                setCoachTarget(
+                  dailyFeed?.recommended_drill || ''
+                );
+                setCoachModalOpen(true);
+              }}
+              className="mt-4 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
+            >
+              Assign Daily Drill
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+              AI Motivation
+            </div>
+
+            <div className="text-white/90 leading-relaxed">
+              {dailyFeed?.ai_motivation_message ||
+                'Keep building consistency.'}
+            </div>
+
+            {dailyFeed?.recommended_replay?.call_id ? (
+              <Link
+                href={`/sparring?repId=${id}&replayCallId=${dailyFeed.recommended_replay.call_id}`}
+                className="mt-4 inline-flex rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300 hover:bg-amber-500/15"
+              >
+                Launch Recommended Replay
+              </Link>
+            ) : null}
+          </div>
+        </div>
+
+        {(dailyFeed?.regression_warnings || []).length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            {dailyFeed?.regression_warnings?.map((warning) => (
+              <div
+                key={warning}
+                className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+              >
+                {warning}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+
+      {/* AI Coaching Profile */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <Card>
+          <SectionHeader title="Coaching Priority" />
+
+          <div className="mt-4 flex flex-col gap-3">
+            <div
+              className={clsx(
+                'inline-flex w-fit rounded-full px-3 py-1 text-sm border font-medium',
+                coachingProfile?.coaching_priority === 'high'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                  : coachingProfile?.coaching_priority === 'medium'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              )}
+            >
+              {(coachingProfile?.coaching_priority || 'low').toUpperCase()} PRIORITY
+            </div>
+
+            <div>
+              <div className="text-xs uppercase tracking-wide text-white/50 mb-1">
+                Weakest Category
+              </div>
+
+              <div className="text-xl font-semibold text-white">
+                {coachingProfile?.weakest_category?.category
+                  ?.replace(/_/g, ' ') || 'No weaknesses detected'}
+              </div>
+
+              <div className="text-white/60 text-sm mt-1">
+                Avg Score:{' '}
+                {coachingProfile?.weakest_category?.average ?? '—'}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Weakness Breakdown" />
+
+          <div className="mt-4 space-y-3">
+            {(coachingProfile?.weaknesses || []).length === 0 ? (
+              <div className="text-white/60 text-sm">
+                No active weaknesses detected.
+              </div>
+            ) : (
+              coachingProfile?.weaknesses?.map((w) => (
+                <div
+                  key={w.category}
+                  className="rounded-xl border border-white/10 bg-white/5 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="capitalize text-white/90">
+                      {w.category.replace(/_/g, ' ')}
+                    </div>
+
+                    <div
+                      className={clsx(
+                        'rounded-lg px-2 py-1 text-sm border',
+                        w.score < 50
+                          ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                          : w.score < 70
+                            ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                            : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                      )}
+                    >
+                      {w.score}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Suggested AI Drills" />
+
+          <div className="mt-4 space-y-3">
+            {(coachingProfile?.suggested_drills || []).length === 0 ? (
+              <div className="text-white/60 text-sm">
+                No drills recommended yet.
+              </div>
+            ) : (
+              coachingProfile?.suggested_drills?.map((drill) => (
+                <div
+                  key={drill}
+                  className="rounded-xl border border-white/10 bg-white/5 p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-white/90 text-sm">
+                      {drill}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoachType('drill');
+                        setCoachTarget(drill);
+                        setCoachModalOpen(true);
+                      }}
+                      className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs hover:bg-white/15"
+                    >
+                      Assign Drill
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Replay Recommendations */}
+      <Card>
+        <SectionHeader title="Replay Recommendations" />
+
+        <div className="mt-4 space-y-3">
+          {(coachingProfile?.replay_recommendations || []).length === 0 ? (
+            <div className="text-white/60 text-sm">
+              No replay recommendations yet.
+            </div>
+          ) : (
+            coachingProfile?.replay_recommendations?.map((rec) => (
+              <div
+                key={rec.call_id}
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3"
+              >
+                <div>
+                  <div className="text-white/90 font-medium">
+                    Failed Call Replay
+                  </div>
+
+                  <div className="text-white/60 text-sm">
+                    {rec.reason}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoachType('replay');
+                      setCoachTarget(rec.call_id);
+                      setCoachModalOpen(true);
+                    }}
+                    className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/15"
+                  >
+                    Assign Replay
+                  </button>
+
+                  <Link
+                    href={`/sparring?repId=${id}&replayCallId=${rec.call_id}`}
+                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
+                  >
+                    Replay Failure
+                  </Link>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+
+      {/* Coaching Assignment Modal */}
+      {coachModalOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center">
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setCoachModalOpen(false)}
+          />
+
+          <div className="relative z-10 w-[92vw] max-w-xl rounded-2xl border border-white/10 bg-black/90 backdrop-blur p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-lg font-semibold text-white">
+                  Coaching Assignment
+                </div>
+
+                <div className="text-sm text-white/60 mt-1">
+                  Create a targeted AI coaching assignment.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCoachModalOpen(false)}
+                className="text-white/60 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+                  Assignment Type
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 capitalize">
+                  {coachType}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs uppercase tracking-wide text-white/50 mb-2">
+                  Target
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 break-words">
+                  {coachTarget}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50 block mb-2">
+                  Due Date
+                </label>
+
+                <input
+                  type="datetime-local"
+                  value={coachDueDate}
+                  onChange={(e) => setCoachDueDate(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50 block mb-2">
+                  Coaching Notes
+                </label>
+
+                <textarea
+                  value={coachNotes}
+                  onChange={(e) => setCoachNotes(e.target.value)}
+                  rows={5}
+                  placeholder="Focus on emotional objection handling after pricing pressure..."
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCoachModalOpen(false)}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={assigningCoach}
+                  onClick={createCoachingAssignment}
+                  className="rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-white/90 disabled:opacity-60"
+                >
+                  {assigningCoach
+                    ? 'Creating…'
+                    : 'Create Coaching Assignment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Trend Intelligence */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        <Card>
+          <SectionHeader title="Momentum Score" />
+
+          <div className="mt-4 flex flex-col gap-3">
+            <div
+              className={clsx(
+                'inline-flex w-fit rounded-full px-3 py-1 text-sm border font-medium',
+                (weaknessTrends?.momentum_score || 0) > 5
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                  : (weaknessTrends?.momentum_score || 0) < -5
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              )}
+            >
+              {(weaknessTrends?.momentum_score || 0) > 0 ? '+' : ''}
+              {weaknessTrends?.momentum_score || 0}
+            </div>
+
+            <div className="text-white/60 text-sm leading-relaxed">
+              {weaknessTrends?.ai_summary ||
+                'AI trend analysis unavailable.'}
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Improvement Deltas" />
+
+          <div className="mt-4 space-y-3">
+            {Object.entries(weaknessTrends?.deltas || {}).map(
+              ([key, value]) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                >
+                  <div className="capitalize text-white/80 text-sm">
+                    {key.replace(/_/g, ' ')}
+                  </div>
+
+                  <div
+                    className={clsx(
+                      'rounded-lg px-2 py-1 text-xs border',
+                      Number(value) > 0
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                        : Number(value) < 0
+                          ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                          : 'border-white/15 bg-white/5 text-white/60'
+                    )}
+                  >
+                    {Number(value) > 0 ? '+' : ''}
+                    {value}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Regression Warnings" />
+
+          <div className="mt-4 space-y-3">
+            {(weaknessTrends?.regression_warnings || []).length === 0 ? (
+              <div className="text-white/60 text-sm">
+                No regression warnings detected.
+              </div>
+            ) : (
+              weaknessTrends?.regression_warnings?.map((warning) => (
+                <div
+                  key={warning}
+                  className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+                >
+                  {warning}
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Coaching Progress" />
+
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="text-xs uppercase tracking-wide text-white/50 mb-1">
+                Completed Coaching
+              </div>
+
+              <div className="text-2xl font-semibold text-white">
+                {weaknessTrends?.coaching_completion_trend
+                  ?.completed_assignments_estimate ?? 0}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="text-xs uppercase tracking-wide text-white/50 mb-1">
+                Struggling Sessions
+              </div>
+
+              <div className="text-2xl font-semibold text-white">
+                {weaknessTrends?.coaching_completion_trend
+                  ?.struggling_sessions ?? 0}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Trends */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Card className="xl:col-span-2">
@@ -439,7 +1122,13 @@ export default function RepProfilePage() {
             ) : null}
             <Suspense fallback={<LineSkeleton />}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={xpChartData}>
+                <LineChart
+                  data={
+                    weaknessTrends?.trends?.overall?.length
+                      ? weaknessTrends.trends.overall
+                      : xpChartData
+                  }
+                >
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
                   <Tooltip />
@@ -483,8 +1172,8 @@ export default function RepProfilePage() {
                   <div className={clsx(
                     'text-sm px-2 py-1 rounded-lg border',
                     c.score >= 80 ? 'border-green-500/40 text-green-300 bg-green-500/10' :
-                    c.score >= 60 ? 'border-amber-500/40 text-amber-300 bg-amber-500/10' :
-                                    'border-red-500/40 text-red-300 bg-red-500/10'
+                      c.score >= 60 ? 'border-amber-500/40 text-amber-300 bg-amber-500/10' :
+                        'border-red-500/40 text-red-300 bg-red-500/10'
                   )}>
                     {c.score.toFixed(0)}
                   </div>
@@ -512,52 +1201,52 @@ export default function RepProfilePage() {
                     const status = a.status ?? (a.completed_at ? 'completed' : 'open');
                     const due = a.due_at ? new Date(a.due_at).toLocaleString() : null;
                     return (
-      <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2">
-        <div className="text-sm min-w-0">
-          <div className="text-white/90 truncate">{title}</div>
-          <div className="text-white/50 truncate">
-            {due ? `Due ${due}` : 'No due date'}
-            {a.contact_id ? (
-              <>
-                {' '}•{' '}
-                <Link
-                  href={`/crm/contacts/${encodeURIComponent(a.contact_id)}`}
-                  className="text-white/70 hover:underline"
-                >
-                  Open contact
-                </Link>
-              </>
-            ) : null}
-          </div>
-        </div>
+                      <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2">
+                        <div className="text-sm min-w-0">
+                          <div className="text-white/90 truncate">{title}</div>
+                          <div className="text-white/50 truncate">
+                            {due ? `Due ${due}` : 'No due date'}
+                            {a.contact_id ? (
+                              <>
+                                {' '}•{' '}
+                                <Link
+                                  href={`/crm/contacts/${encodeURIComponent(a.contact_id)}`}
+                                  className="text-white/70 hover:underline"
+                                >
+                                  Open contact
+                                </Link>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <span
-            className={clsx(
-              'text-xs rounded-full px-2 py-0.5 border',
-              (status === 'done' || status === 'completed')
-                ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-                : 'border-white/15 text-white/70 bg-white/5'
-            )}
-          >
-            {status}
-          </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span
+                            className={clsx(
+                              'text-xs rounded-full px-2 py-0.5 border',
+                              (status === 'done' || status === 'completed')
+                                ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                                : 'border-white/15 text-white/70 bg-white/5'
+                            )}
+                          >
+                            {status}
+                          </span>
 
-          <button
-            type="button"
-            disabled={status === 'done' || status === 'completed'}
-            onClick={() => markActionDone(String(a.id))}
-            className={clsx(
-              'rounded-lg px-2.5 py-1 text-xs border',
-              (status === 'done' || status === 'completed')
-                ? 'border-white/10 text-white/40 bg-white/5 cursor-not-allowed'
-                : 'border-white/20 text-white/90 bg-white/10 hover:bg-white/15'
-            )}
-          >
-            Done
-          </button>
-        </div>
-      </li>
+                          <button
+                            type="button"
+                            disabled={status === 'done' || status === 'completed'}
+                            onClick={() => markActionDone(String(a.id))}
+                            className={clsx(
+                              'rounded-lg px-2.5 py-1 text-xs border',
+                              (status === 'done' || status === 'completed')
+                                ? 'border-white/10 text-white/40 bg-white/5 cursor-not-allowed'
+                                : 'border-white/20 text-white/90 bg-white/10 hover:bg-white/15'
+                            )}
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </li>
                     );
                   }}
                 />
@@ -592,10 +1281,10 @@ export default function RepProfilePage() {
                         'text-sm px-2 py-1 rounded-lg border',
                         scoreVal != null
                           ? (scoreVal >= 80
-                              ? 'border-green-500/40 text-green-300 bg-green-500/10'
-                              : scoreVal >= 60
-                                ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                                : 'border-red-500/40 text-red-300 bg-red-500/10')
+                            ? 'border-green-500/40 text-green-300 bg-green-500/10'
+                            : scoreVal >= 60
+                              ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
+                              : 'border-red-500/40 text-red-300 bg-red-500/10')
                           : 'border-white/15 text-white/70 bg-white/5'
                       )}>
                         {scoreText}
