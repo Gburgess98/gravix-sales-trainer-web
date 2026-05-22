@@ -27,6 +27,9 @@ type TimelineItem = {
   type: string;
   id: string;
   title?: string | null;
+  description?: string | null;
+  severity?: 'info' | 'warning' | 'critical' | string;
+  occurred_at?: string | null;
   created_at?: string | null;
   metadata?: Record<string, any>;
 };
@@ -63,6 +66,56 @@ type AccountHealth = {
   manager_escalation_recommendations: string[];
 };
 
+type PersistedAccountSummary = {
+  id?: string;
+  summary?: string | null;
+  health_status?: string | null;
+  churn_risk?: number | null;
+  next_best_action?: string | null;
+  manager_notes?: string | null;
+  generated_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type AccountTask = {
+  id: string;
+  account_id?: string;
+  title?: string | null;
+  description?: string | null;
+  category?: string | null;
+  urgency?: string | null;
+  status?: string | null;
+  assigned_to?: string | null;
+  escalation_source?: string | null;
+  due_at?: string | null;
+  completed_at?: string | null;
+  metadata?: Record<string, any> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type CoachingAction = {
+  id: string;
+  account_id?: string;
+  action_type?: string | null;
+  title?: string | null;
+  description?: string | null;
+  urgency?: string | null;
+  status?: string | null;
+  assigned_to?: string | null;
+  linked_escalation_id?: string | null;
+  linked_task_id?: string | null;
+  replay_call_id?: string | null;
+  sparring_scenario?: string | null;
+  manager_notes?: string | null;
+  due_at?: string | null;
+  completed_at?: string | null;
+  metadata?: Record<string, any> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 function ScorePill({ score }: { score: number | null | undefined }) {
   if (typeof score !== 'number' || !Number.isFinite(score)) {
     return <span className="text-xs opacity-60">—</span>;
@@ -83,10 +136,50 @@ export default function AccountPage() {
   const [recent, setRecent] = useState<any[]>([]);
   const [contacts, setContacts] = useState<LinkedContact[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [timelineLoading, setTimelineLoading] =
+    useState(false);
+  const [timelineSummary, setTimelineSummary] =
+    useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [health, setHealth] = useState<AccountHealth | null>(null);
   const [ownerUpdating, setOwnerUpdating] = useState(false);
   const [ownerInput, setOwnerInput] = useState('');
+  const [contactLinkLoading, setContactLinkLoading] =
+    useState(false);
+  const [contactIdInput, setContactIdInput] =
+    useState('');
+
+  const [summaryLoading, setSummaryLoading] =
+    useState(false);
+
+  const [summarySaving, setSummarySaving] =
+    useState(false);
+
+  const [persistedSummary, setPersistedSummary] =
+    useState<PersistedAccountSummary | null>(null);
+
+  const [summaryInput, setSummaryInput] =
+    useState('');
+
+  const [managerNotesInput, setManagerNotesInput] =
+    useState('');
+
+  const [tasksLoading, setTasksLoading] =
+    useState(false);
+
+  const [taskActionLoading, setTaskActionLoading] =
+    useState(false);
+
+  const [tasks, setTasks] = useState<AccountTask[]>([]);
+
+  const [coachingActionsLoading, setCoachingActionsLoading] =
+    useState(false);
+
+  const [coachingActionLoading, setCoachingActionLoading] =
+    useState(false);
+
+  const [coachingActions, setCoachingActions] =
+    useState<CoachingAction[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -123,12 +216,120 @@ export default function AccountPage() {
             : []
         );
 
-        setTimeline(
-          Array.isArray(j.timeline)
-            ? j.timeline
-            : []
-        );
+        // --- Intelligence Timeline ---
+        try {
+          setTimelineLoading(true);
 
+          const timelineRes = await fetch(
+            `/api/proxy/v1/accounts/${id}/intelligence-timeline`,
+            {
+              cache: 'no-store',
+              credentials: 'include',
+            }
+          );
+
+          const timelineJson = await timelineRes.json();
+
+          if (timelineJson?.ok) {
+            setTimeline(
+              Array.isArray(timelineJson.timeline)
+                ? timelineJson.timeline
+                : []
+            );
+
+            setTimelineSummary(
+              timelineJson.summary || null
+            );
+          }
+        } catch (e) {
+          console.error('timeline_load_failed', e);
+        } finally {
+          setTimelineLoading(false);
+        }
+
+        // --- AI Account Tasks ---
+        try {
+          setTasksLoading(true);
+
+          const taskRes = await fetch(
+            `/api/proxy/v1/accounts/${id}/tasks`,
+            {
+              cache: 'no-store',
+              credentials: 'include',
+            }
+          );
+
+          const taskJson = await taskRes.json();
+
+          if (taskJson?.ok) {
+            setTasks(
+              Array.isArray(taskJson.tasks)
+                ? taskJson.tasks
+                : []
+            );
+          }
+        } catch (e) {
+          console.error('task_load_failed', e);
+        } finally {
+          setTasksLoading(false);
+        }
+
+        // --- Coaching Actions ---
+        try {
+          setCoachingActionsLoading(true);
+
+          const coachingRes = await fetch(
+            `/api/proxy/v1/accounts/${id}/coaching-actions`,
+            {
+              cache: 'no-store',
+              credentials: 'include',
+            }
+          );
+
+          const coachingJson = await coachingRes.json();
+
+          if (coachingJson?.ok) {
+            setCoachingActions(
+              Array.isArray(coachingJson.coaching_actions)
+                ? coachingJson.coaching_actions
+                : []
+            );
+          }
+        } catch (e) {
+          console.error('coaching_actions_load_failed', e);
+        } finally {
+          setCoachingActionsLoading(false);
+        }
+        // --- Persistent AI Summary ---
+        try {
+          setSummaryLoading(true);
+
+          const summaryRes = await fetch(
+            `/api/proxy/v1/accounts/${id}/summary`,
+            {
+              cache: 'no-store',
+              credentials: 'include',
+            }
+          );
+
+          const summaryJson = await summaryRes.json();
+
+          if (summaryJson?.ok && summaryJson?.summary) {
+            setPersistedSummary(summaryJson.summary);
+
+            setSummaryInput(
+              summaryJson.summary.summary || ''
+            );
+
+            setManagerNotesInput(
+              summaryJson.summary.manager_notes || ''
+            );
+          }
+        } catch (e) {
+          console.error('summary_load_failed', e);
+        } finally {
+          setSummaryLoading(false);
+        }
         // --- Account Health Engine ---
         const calls = Array.isArray(j.linked_calls)
           ? j.linked_calls
@@ -443,6 +644,399 @@ export default function AccountPage() {
     }
   }
 
+  async function linkContact() {
+    if (!contactIdInput.trim()) {
+      alert('Enter a contact ID first.');
+      return;
+    }
+
+    try {
+      setContactLinkLoading(true);
+
+      const r = await fetch(
+        `/api/proxy/v1/crm/contacts/${contactIdInput.trim()}/link-account`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            account_id: id,
+          }),
+        }
+      );
+
+      const j = await r.json();
+
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error || 'link_contact_failed');
+      }
+
+      const linkedContact = j.contact || null;
+
+      if (linkedContact?.id) {
+        setContacts((prev) => {
+          const exists = prev.some(
+            (c) => c.id === linkedContact.id
+          );
+
+          if (exists) {
+            return prev;
+          }
+
+          return [linkedContact, ...prev];
+        });
+      }
+
+      setContactIdInput('');
+
+      alert('Contact linked to account.');
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Failed to link contact');
+    } finally {
+      setContactLinkLoading(false);
+    }
+  }
+
+  async function unlinkContact(contactId: string) {
+      try {
+        setSummarySaving(true);
+
+        const payload = {
+          summary: summaryInput,
+          manager_notes: managerNotesInput,
+          health_status:
+            health?.risk_level || 'stable',
+          churn_risk:
+            health?.health_score
+              ? Math.max(0, 100 - health.health_score)
+              : 0,
+          next_best_action:
+            health?.next_best_action || '',
+        };
+
+        const r = await fetch(
+          `/api/proxy/v1/accounts/${id}/summary`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) {
+          throw new Error(j?.error || 'summary_save_failed');
+        }
+
+        setPersistedSummary(j.summary || null);
+
+        alert('AI account summary saved.');
+      } catch (e: any) {
+        console.error(e);
+        alert(e?.message || 'Failed to save account summary');
+      } finally {
+        setSummarySaving(false);
+      }
+    }
+
+    async function generateAiTasks() {
+      try {
+        setTaskActionLoading(true);
+
+        const r = await fetch(
+          `/api/proxy/v1/accounts/${id}/tasks/generate`,
+          {
+            method: 'POST',
+            credentials: 'include',
+          }
+        );
+
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) {
+          throw new Error(
+            j?.error || 'task_generation_failed'
+          );
+        }
+
+        const generated = Array.isArray(j.generated_tasks)
+          ? j.generated_tasks
+          : [];
+
+        if (generated.length > 0) {
+          setTasks((prev) => [...generated, ...prev]);
+        }
+
+        alert(
+          generated.length > 0
+            ? `Generated ${generated.length} AI tasks.`
+            : 'No new AI tasks required.'
+        );
+      } catch (e: any) {
+        console.error(e);
+        alert(e?.message || 'Failed to generate AI tasks');
+      } finally {
+        setTaskActionLoading(false);
+      }
+    }
+
+    async function completeTask(taskId: string) {
+      try {
+        setTaskActionLoading(true);
+
+        const r = await fetch(
+          `/api/proxy/v1/accounts/tasks/${taskId}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'content-type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              status: 'completed',
+            }),
+          }
+        );
+
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) {
+          throw new Error(
+            j?.error || 'task_complete_failed'
+          );
+        }
+
+        setTasks((prev) =>
+          prev.map((task) =>
+            task.id === taskId
+              ? {
+                ...task,
+                ...(j.task || {}),
+              }
+              : task
+          )
+        );
+      } catch (e: any) {
+        console.error(e);
+        alert(e?.message || 'Failed to complete task');
+      } finally {
+        setTaskActionLoading(false);
+      }
+    }
+
+    async function createReplayAssignment() {
+      try {
+        setCoachingActionLoading(true);
+
+        const latestCall = recent?.[0];
+
+        const r = await fetch(
+          `/api/proxy/v1/accounts/${id}/coaching-action`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              action_type: 'replay_assignment',
+              title: 'Replay coaching assignment',
+              description:
+                'Review latest account conversations and identify objection handling weaknesses.',
+              urgency:
+                health?.risk_level === 'at_risk'
+                  ? 'high'
+                  : 'medium',
+              replay_call_id: latestCall?.id || null,
+              manager_notes:
+                'AI-generated replay coaching intervention.',
+            }),
+          }
+        );
+
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) {
+          throw new Error(
+            j?.error || 'replay_assignment_failed'
+          );
+        }
+
+        if (j.coaching_action) {
+          setCoachingActions((prev) => [
+            j.coaching_action,
+            ...prev,
+          ]);
+        }
+
+        alert('Replay coaching assignment created.');
+      } catch (e: any) {
+        console.error(e);
+        alert(e?.message || 'Failed to create replay assignment');
+      } finally {
+        setCoachingActionLoading(false);
+      }
+    }
+
+    async function createSparringAssignment() {
+      try {
+        setCoachingActionLoading(true);
+
+        const r = await fetch(
+          `/api/proxy/v1/accounts/${id}/coaching-action`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              action_type: 'sparring_drill',
+              title: 'AI sparring drill assignment',
+              description:
+                'Run targeted objection-handling sparring drills for this account.',
+              urgency:
+                health?.risk_level === 'at_risk'
+                  ? 'high'
+                  : 'medium',
+              sparring_scenario:
+                health?.objection_risk
+                  ? 'price_objection'
+                  : 'relationship_building',
+              manager_notes:
+                'AI-generated sparring intervention workflow.',
+            }),
+          }
+        );
+
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) {
+          throw new Error(
+            j?.error || 'sparring_assignment_failed'
+          );
+        }
+
+        if (j.coaching_action) {
+          setCoachingActions((prev) => [
+            j.coaching_action,
+            ...prev,
+          ]);
+        }
+
+        alert('Sparring drill assignment created.');
+      } catch (e: any) {
+        console.error(e);
+        alert(e?.message || 'Failed to create sparring assignment');
+      } finally {
+        setCoachingActionLoading(false);
+      }
+    }
+
+    async function completeCoachingAction(actionId: string) {
+      setCoachingActions((prev) =>
+        prev.map((action) =>
+          action.id === actionId
+            ? {
+                ...action,
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+              }
+            : action
+        )
+      );
+    }
+    try {
+      setContactLinkLoading(true);
+
+      const r = await fetch(
+        `/api/proxy/v1/crm/contacts/${contactId}/unlink-account`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            account_id: id,
+          }),
+        }
+      );
+
+      const j = await r.json();
+
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error || 'unlink_contact_failed');
+      }
+
+      setContacts((prev) =>
+        prev.filter((c) => c.id !== contactId)
+      );
+
+      alert('Contact unlinked from account.');
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Failed to unlink contact');
+    } finally {
+      setContactLinkLoading(false);
+    }
+  }
+
+  async function saveAccountSummary() {
+    try {
+      setSummarySaving(true);
+
+      const payload = {
+        summary: summaryInput,
+        manager_notes: managerNotesInput,
+        health_status:
+          health?.risk_level || 'stable',
+        churn_risk:
+          health?.health_score
+            ? Math.max(0, 100 - health.health_score)
+            : 0,
+        next_best_action:
+          health?.next_best_action || '',
+      };
+
+      const r = await fetch(
+        `/api/proxy/v1/accounts/${id}/summary`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const j = await r.json();
+
+      if (!r.ok || !j?.ok) {
+        throw new Error(
+          j?.error || 'summary_save_failed'
+        );
+      }
+
+      setPersistedSummary(j.summary || null);
+
+      alert('AI account summary saved.');
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Failed to save account summary');
+    } finally {
+      setSummarySaving(false);
+    }
+  }
+
   const accountName = account?.name || account?.domain || 'Account';
   const firstContact =
     contacts && contacts.length > 0
@@ -474,6 +1068,339 @@ export default function AccountPage() {
           )}
           {loading && <span className="text-xs opacity-60">Loading…</span>}
           {error && <span className="text-xs text-red-400">{error}</span>}
+        </div>
+      </div>
+
+      {/* Persistent AI CRM Memory */}
+      <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-5 mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-fuchsia-300">
+              AI CRM Memory
+            </div>
+
+            <div className="mt-2 text-2xl font-semibold text-white">
+              Persistent Account Intelligence
+            </div>
+
+            <div className="mt-2 text-sm text-neutral-300 max-w-2xl">
+              Save evolving account summaries, coaching intelligence,
+              manager notes, and long-term relationship context.
+            </div>
+          </div>
+
+          <div className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
+            {summaryLoading
+              ? 'Loading memory…'
+              : persistedSummary?.updated_at
+                ? 'Memory active'
+                : 'No saved memory'}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div className="rounded-xl border border-neutral-800 bg-black/20 p-4">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500 mb-3">
+              AI account summary
+            </div>
+
+            <textarea
+              value={summaryInput}
+              onChange={(e) =>
+                setSummaryInput(e.target.value)
+              }
+              rows={8}
+              placeholder="Persist long-term AI account intelligence here..."
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-sm text-white outline-none resize-none"
+            />
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-black/20 p-4">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500 mb-3">
+              Manager notes
+            </div>
+
+            <textarea
+              value={managerNotesInput}
+              onChange={(e) =>
+                setManagerNotesInput(e.target.value)
+              }
+              rows={8}
+              placeholder="Manager observations, escalation notes, recovery plans..."
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-sm text-white outline-none resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="text-xs text-neutral-500">
+            {persistedSummary?.updated_at
+              ? `Last updated ${new Date(
+                persistedSummary.updated_at
+              ).toLocaleString()}`
+              : 'No persisted AI memory yet.'}
+          </div>
+
+          <button
+            type="button"
+            disabled={summarySaving}
+            onClick={saveAccountSummary}
+            className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-4 py-2 text-sm text-fuchsia-200 hover:bg-fuchsia-500/20 disabled:opacity-60"
+          >
+            {summarySaving
+              ? 'Saving memory…'
+              : 'Save AI Memory'}
+          </button>
+        </div>
+      </div>
+
+      {/* AI Account Task Centre */}
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 mt-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300">
+              AI Account Task Centre
+            </div>
+
+            <div className="mt-2 text-2xl font-semibold text-white">
+              Operational Rescue Workflows
+            </div>
+
+            <div className="mt-2 text-sm text-neutral-300 max-w-2xl">
+              AI-generated account coaching, escalation, rescue,
+              ownership, and engagement workflows.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={taskActionLoading}
+            onClick={generateAiTasks}
+            className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-60"
+          >
+            {taskActionLoading
+              ? 'Generating…'
+              : 'Generate AI Tasks'}
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {tasksLoading ? (
+            <div className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4 text-sm text-neutral-400">
+              Loading AI task workflows…
+            </div>
+          ) : tasks.length > 0 ? (
+            tasks.map((task) => (
+              <div
+                key={task.id}
+                className="rounded-xl border border-neutral-800 bg-black/20 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-medium text-white">
+                        {task.title || 'Untitled task'}
+                      </div>
+
+                      <div
+                        className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${task.urgency === 'critical'
+                          ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                          : task.urgency === 'high'
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+                          }`}
+                      >
+                        {task.urgency || 'medium'}
+                      </div>
+
+                      <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                        {task.status || 'open'}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-sm text-neutral-300 max-w-2xl">
+                      {task.description || 'No description provided.'}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                      {task.category ? (
+                        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1">
+                          {task.category}
+                        </div>
+                      ) : null}
+
+                      {task.escalation_source ? (
+                        <div className="rounded-full border border-red-500/20 bg-red-500/5 px-2 py-1 text-red-300">
+                          {task.escalation_source}
+                        </div>
+                      ) : null}
+
+                      {task.due_at ? (
+                        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1">
+                          Due {new Date(task.due_at).toLocaleDateString()}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {task.status !== 'completed' ? (
+                    <button
+                      type="button"
+                      disabled={taskActionLoading}
+                      onClick={() => completeTask(task.id)}
+                      className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60"
+                    >
+                      Mark Complete
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                      Completed
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4 text-sm text-neutral-400">
+              No AI-generated workflows yet.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Coaching Actions Centre */}
+      <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 mt-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-emerald-300">
+              Coaching Actions Centre
+            </div>
+
+            <div className="mt-2 text-2xl font-semibold text-white">
+              AI Coaching Interventions
+            </div>
+
+            <div className="mt-2 text-sm text-neutral-300 max-w-2xl">
+              Launch replay drills, sparring interventions, and
+              account recovery coaching workflows.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={coachingActionLoading}
+              onClick={createReplayAssignment}
+              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-60"
+            >
+              Assign Replay
+            </button>
+
+            <button
+              type="button"
+              disabled={coachingActionLoading}
+              onClick={createSparringAssignment}
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60"
+            >
+              Assign Sparring Drill
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {coachingActionsLoading ? (
+            <div className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4 text-sm text-neutral-400">
+              Loading coaching interventions…
+            </div>
+          ) : coachingActions.length > 0 ? (
+            coachingActions.map((action) => {
+              const urgencyClass =
+                action.urgency === 'critical'
+                  ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                  : action.urgency === 'high'
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300';
+
+              return (
+                <div
+                  key={action.id}
+                  className="rounded-xl border border-neutral-800 bg-black/20 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-medium text-white">
+                          {action.title || 'Coaching action'}
+                        </div>
+
+                        <div
+                          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${urgencyClass}`}
+                        >
+                          {action.urgency || 'medium'}
+                        </div>
+
+                        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                          {action.action_type || 'coaching'}
+                        </div>
+
+                        {action.status === 'completed' ? (
+                          <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-emerald-300">
+                            completed
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 text-sm text-neutral-300 max-w-3xl leading-relaxed">
+                        {action.description || 'No description provided.'}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        {action.sparring_scenario ? (
+                          <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1">
+                            Scenario: {action.sparring_scenario}
+                          </div>
+                        ) : null}
+
+                        {action.replay_call_id ? (
+                          <div className="rounded-full border border-cyan-500/20 bg-cyan-500/5 px-2 py-1 text-cyan-300">
+                            Replay linked
+                          </div>
+                        ) : null}
+
+                        {action.due_at ? (
+                          <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1">
+                            Due {new Date(action.due_at).toLocaleDateString()}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {action.manager_notes ? (
+                        <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-neutral-300 leading-relaxed">
+                          {action.manager_notes}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {action.status !== 'completed' ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          completeCoachingAction(action.id)
+                        }
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
+                      >
+                        Complete Action
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4 text-sm text-neutral-400">
+              No coaching interventions created yet.
+            </div>
+          )}
         </div>
       </div>
 
@@ -949,8 +1876,22 @@ export default function AccountPage() {
                     </div>
                   </div>
 
-                  <div className="text-xs text-cyan-300">
-                    Open →
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        unlinkContact(contact.id);
+                      }}
+                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/20"
+                    >
+                      Unlink
+                    </button>
+
+                    <div className="text-xs text-cyan-300">
+                      Open →
+                    </div>
                   </div>
                 </Link>
               ))
@@ -962,39 +1903,91 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* Timeline */}
-        <div className="rounded-lg border border-neutral-800 overflow-hidden md:col-span-2">
-          <div className="px-4 py-3 border-b border-neutral-800 font-medium">
-            Account timeline
+        {/* Intelligence Timeline */}
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+            <div>
+              <div className="font-medium text-white">
+                AI Intelligence Timeline
+              </div>
+
+              <div className="mt-1 text-xs text-neutral-500">
+                Unified account memory, coaching, escalation,
+                and operational history.
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em]">
+              <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-300">
+                {timelineSummary?.total_events || 0} events
+              </div>
+
+              <div className="rounded-full border border-red-500/20 bg-red-500/5 px-2 py-1 text-red-300">
+                {timelineSummary?.critical_events || 0} critical
+              </div>
+
+              <div className="rounded-full border border-amber-500/20 bg-amber-500/5 px-2 py-1 text-amber-300">
+                {timelineSummary?.warning_events || 0} warnings
+              </div>
+            </div>
           </div>
 
           <div className="divide-y divide-neutral-800">
-            {timeline.length > 0 ? (
-              timeline.map((item) => (
-                <div
-                  key={`${item.type}-${item.id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-4"
-                >
-                  <div>
-                    <div className="text-sm text-white">
-                      {item.title || 'Timeline event'}
-                    </div>
+            {timelineLoading ? (
+              <div className="px-4 py-5 text-sm text-neutral-400">
+                Loading intelligence timeline…
+              </div>
+            ) : timeline.length > 0 ? (
+              timeline.map((item) => {
+                const severityClass =
+                  item.severity === 'critical'
+                    ? 'border-red-500/20 bg-red-500/5 text-red-300'
+                    : item.severity === 'warning'
+                      ? 'border-amber-500/20 bg-amber-500/5 text-amber-300'
+                      : 'border-cyan-500/20 bg-cyan-500/5 text-cyan-300';
 
-                    <div className="mt-1 text-xs text-neutral-500">
-                      {item.created_at
-                        ? new Date(item.created_at).toLocaleString()
-                        : 'Unknown'}
+                return (
+                  <div
+                    key={`${item.type}-${item.id}`}
+                    className="flex flex-wrap items-start justify-between gap-4 px-4 py-4"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-medium text-white">
+                          {item.title || 'Timeline event'}
+                        </div>
+
+                        <div
+                          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${severityClass}`}
+                        >
+                          {item.severity || 'info'}
+                        </div>
+
+                        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                          {item.type}
+                        </div>
+                      </div>
+
+                      {item.description ? (
+                        <div className="mt-2 text-sm text-neutral-300 max-w-3xl leading-relaxed">
+                          {item.description}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 text-xs text-neutral-500">
+                        {(item.occurred_at || item.created_at)
+                          ? new Date(
+                              item.occurred_at || item.created_at || ''
+                            ).toLocaleString()
+                          : 'Unknown timestamp'}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
-                    {item.type}
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
-              <div className="px-4 py-4 text-sm text-neutral-400">
-                No timeline activity.
+              <div className="px-4 py-5 text-sm text-neutral-400">
+                No intelligence timeline activity yet.
               </div>
             )}
           </div>
