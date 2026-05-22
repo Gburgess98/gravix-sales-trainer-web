@@ -654,14 +654,13 @@ export default function CallLibraryPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto py-10 px-6">
+    <div className="p-6 space-y-4">
       {/* Header + search */}
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold mb-1">Call Library</h1>
-          <p className="text-sm text-neutral-400">
-            Live recordings, AI sparring sessions, and uploaded conversations to
-            track performance.
+          <h1 className="text-xl font-semibold text-white">Call Library</h1>
+          <p className="mt-0.5 text-sm text-neutral-400">
+            Live recordings, AI sparring sessions, and uploaded conversations.
           </p>
         </div>
         <div className="w-full md:w-80">
@@ -676,7 +675,7 @@ export default function CallLibraryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-neutral-800 mb-4 flex gap-6 text-sm">
+      <div className="border-b border-neutral-800 flex gap-6 text-sm">
         <button
           type="button"
           onClick={() => setTab("live")}

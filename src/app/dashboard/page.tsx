@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid } from "recharts";
 import { proxyFetch } from "@/lib/api";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 
 type TrendPoint = {
   date: string;
@@ -62,57 +63,14 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="p-8 space-y-8">
-
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Rep Dashboard</h1>
-            <p className="text-neutral-500 text-sm">
-              Personal performance insights and coaching signals
-            </p>
-          </div>
-        </div>
-
-        {/* CRM Navigation */}
-        <div className="flex flex-wrap gap-2">
-
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 hover:bg-neutral-800"
-          >
-            Dashboard
-          </Link>
-
-          <Link
-            href="/crm/pipeline"
-            className="inline-flex items-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 hover:bg-neutral-800"
-          >
-            Pipeline
-          </Link>
-
-          <Link
-            href="/crm/tasks"
-            className="inline-flex items-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 hover:bg-neutral-800"
-          >
-            Tasks
-          </Link>
-
-          <Link
-            href="/crm/analytics"
-            className="inline-flex items-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 hover:bg-neutral-800"
-          >
-            Analytics
-          </Link>
-
-        </div>
-
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Rep Dashboard"
+        subtitle="Personal performance insights and coaching signals"
+      />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         <div className="bg-neutral-900 rounded-xl p-6 border border-neutral-800">
           <div className="text-xs uppercase tracking-wide text-neutral-400">Filler Word Trend</div>
@@ -220,6 +178,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-    </div>
+    </PageContainer>
   );
 }

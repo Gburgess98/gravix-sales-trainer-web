@@ -111,11 +111,16 @@ export default function AdminScoresAndForcePage() {
   }, [tab]);
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      {/* Header + tabs */}
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">Admin · Scores</h1>
-        <Link className="underline text-sm ml-auto" href="/recent-calls">Recent calls</Link>
+    <div className="p-6 space-y-5">
+      <div className="flex items-center gap-4">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Admin</p>
+          <h1 className="mt-0.5 text-xl font-semibold text-white">AI Scores</h1>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Link className="text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 rounded-lg px-3 py-1.5 transition-colors" href="/coaching">← Coaching</Link>
+          <Link className="text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 rounded-lg px-3 py-1.5 transition-colors" href="/call-library">Call Library</Link>
+        </div>
       </div>
 
       <div className="flex gap-2 border-b border-white/10">

@@ -796,10 +796,10 @@ export default function AssignmentsClient() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">My Assignments</h1>
+          <h1 className="text-xl font-semibold text-white">My Assignments</h1>
           <p className="text-sm text-neutral-400">Clear tasks, fast wins. Keep your streak alive.</p>
 
           <div className="mt-2 space-y-2">

@@ -268,13 +268,13 @@ export default function AnalyticsPage() {
   /* ---------------------------- Render ---------------------------- */
 
   return (
-    <div className="px-12 py-10 max-w-[1400px] mx-auto space-y-10">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold">Analytics</h1>
-          <p className="text-neutral-400 text-sm mt-1">
+          <h1 className="text-xl font-semibold text-white">Analytics</h1>
+          <p className="text-neutral-400 text-sm mt-0.5">
             Performance insights across your sales organisation
           </p>
         </div>

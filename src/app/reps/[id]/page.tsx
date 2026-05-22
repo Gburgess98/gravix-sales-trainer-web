@@ -5,6 +5,9 @@ import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import clsx from 'clsx';
+import { WorkspaceTabs } from '@/components/shell/workspace-tabs';
+
+type RepTab = 'overview' | 'coaching' | 'trends' | 'activity';
 import { getRepOverview, getRewards, selectTitle, listCoachAssignments, getSparringSessionsByRep, getRepXp } from '@/lib/api';
 import XpProgress from '@/components/XpProgress';
 
@@ -176,6 +179,7 @@ export default function RepProfilePage() {
     useState<CoachingProfile | null>(null);
   const [weaknessTrends, setWeaknessTrends] =
     useState<WeaknessTrends | null>(null);
+  const [tab, setTab] = useState<RepTab>('overview');
   const [dailyFeed, setDailyFeed] =
     useState<DailyCoachingFeed | null>(null);
   const [coachModalOpen, setCoachModalOpen] = useState(false);
@@ -476,8 +480,8 @@ export default function RepProfilePage() {
   const equippedTitleObj = ownedTitles.find((t: any) => t.id === equippedTitle);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
-      {/* Header */}
+    <div className="p-6 space-y-5">
+      {/* Header — always visible */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="h-12 w-12 rounded-full bg-white/10 overflow-hidden">
@@ -518,13 +522,26 @@ export default function RepProfilePage() {
         </div>
       </div>
 
-      {/* Top stats */}
+      {/* Top stats — always visible */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card><Stat label="Total Calls" value={loading ? '—' : (data?.totals?.calls ?? 0)} /></Card>
         <Card><Stat label="Avg Score" value={loading ? '—' : `${(data?.totals?.avgScore ?? 0).toFixed(0)}`} hint="/100" /></Card>
         <Card><Stat label="Win Rate" value={loading ? '—' : formatPct(data?.totals?.winRate ?? null)} /></Card>
       </div>
 
+      <WorkspaceTabs
+        tabs={[
+          { id: 'overview', label: 'Overview' },
+          { id: 'coaching', label: 'Coaching' },
+          { id: 'trends', label: 'Trends' },
+          { id: 'activity', label: 'Activity' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === 'overview' && (
+      <div className="space-y-5">
       {/* Badges & Titles card */}
       <Card>
         <SectionHeader
@@ -628,7 +645,10 @@ export default function RepProfilePage() {
           </div>
         )}
       </Card>
+      </div>)} {/* end overview tab */}
 
+      {tab === 'coaching' && (
+      <div className="space-y-5">
       {/* AI Daily Coaching Feed */}
       <Card>
         <SectionHeader title="Today’s AI Coaching" />
@@ -999,7 +1019,10 @@ export default function RepProfilePage() {
           </div>
         </div>
       )}
+      </div>)} {/* end coaching tab */}
 
+      {tab === 'trends' && (
+      <div className="space-y-5">
       {/* AI Trend Intelligence */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         <Card>
@@ -1154,7 +1177,10 @@ export default function RepProfilePage() {
           </div>
         </Card>
       </div>
+      </div>)} {/* end trends tab */}
 
+      {tab === 'activity' && (
+      <div className="space-y-5">
       {/* Recent items */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2">
@@ -1313,6 +1339,8 @@ export default function RepProfilePage() {
           </Card>
         </div>
       </div>
+      </div>)} {/* end activity tab */}
+
     </div>
   );
 }

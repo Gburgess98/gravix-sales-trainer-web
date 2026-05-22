@@ -110,8 +110,11 @@ export default function AdminRepsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 text-white">
-      <h1 className="text-2xl font-semibold">Admin • User Management</h1>
+    <div className="p-6 space-y-5 text-white">
+      <div>
+        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Admin</p>
+        <h1 className="mt-0.5 text-xl font-semibold text-white">User Management</h1>
+      </div>
 
       {usage && (
         <div className="p-4 border border-neutral-700 rounded bg-neutral-800 flex justify-between items-center">

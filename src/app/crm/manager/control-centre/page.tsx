@@ -552,12 +552,13 @@ export default async function ControlCentrePage({
   });
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-100">Manager Control Centre</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            Answer 3 questions fast: who needs help, what they are bad at, and what to assign next.
+          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
+          <h1 className="mt-0.5 text-xl font-semibold text-white">Control Centre</h1>
+          <p className="mt-0.5 text-sm text-neutral-400">
+            Answer 3 questions fast: who needs help, what they are bad at, what to assign next.
           </p>
         </div>
 

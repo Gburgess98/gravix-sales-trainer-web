@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
 import { useParams } from 'next/navigation';
+import { WorkspaceTabs } from '@/components/shell/workspace-tabs';
+
+type AccountTab = 'overview' | 'contacts' | 'calls' | 'rescue' | 'intelligence';
 
 type LinkedContact = {
   id: string;
@@ -180,6 +182,8 @@ export default function AccountPage() {
 
   const [coachingActions, setCoachingActions] =
     useState<CoachingAction[]>([]);
+
+  const [tab, setTab] = useState<AccountTab>('overview');
 
   useEffect(() => {
     let alive = true;
@@ -744,7 +748,6 @@ export default function AccountPage() {
       } finally {
         setSummarySaving(false);
       }
-    }
 
     async function generateAiTasks() {
       try {
@@ -1049,30 +1052,48 @@ export default function AccountPage() {
     'Contact';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="mb-4">
-        <Link href="/crm/overview" className="text-sm text-neutral-400 hover:text-neutral-200">← Back to Overview</Link>
-      </div>
-
-      <div className="flex items-baseline justify-between gap-4 mb-2">
-        <h1 className="text-xl font-semibold">{accountName}</h1>
-        <div className="flex items-center gap-2">
-          {contacts.length > 0 && (
-            <Link
-              href={`/crm/contacts/${firstContact?.id}`}
-              className="text-xs px-2 py-1 rounded border border-neutral-800 hover:bg-neutral-900"
-              title={firstContactName ? `Open ${firstContactName}` : 'Open a contact linked to this account'}
-            >
-              👤 Contacts ({contacts.length})
-            </Link>
+    <div className="p-6">
+      {/* Workspace header */}
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
+          <Link href="/crm/accounts" className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">← Accounts</Link>
+          <h1 className="mt-0.5 text-xl font-semibold text-white">{accountName}</h1>
+          {account?.domain && (
+            <p className="mt-0.5 text-xs text-neutral-500">{account.domain}</p>
           )}
-          {loading && <span className="text-xs opacity-60">Loading…</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {loading && <span className="text-xs text-neutral-500">Loading…</span>}
           {error && <span className="text-xs text-red-400">{error}</span>}
+          {health && (
+            <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
+              health.risk_level === 'healthy'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : health.risk_level === 'watch'
+                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                  : 'border-red-500/30 bg-red-500/10 text-red-300'
+            }`}>
+              {health.risk_level === 'healthy' ? 'Healthy' : health.risk_level === 'watch' ? 'Watch' : 'At Risk'} · {health.health_score}/100
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Persistent AI CRM Memory */}
-      <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-5 mb-6">
+      <WorkspaceTabs
+        tabs={[
+          { id: 'overview', label: 'Overview' },
+          { id: 'contacts', label: 'Contacts', badge: contacts.length || undefined },
+          { id: 'calls', label: 'Calls', badge: recent.length || undefined },
+          { id: 'rescue', label: 'Rescue' },
+          { id: 'intelligence', label: 'Intelligence' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === 'intelligence' && (
+      <div className="space-y-4">
+      <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.16em] text-fuchsia-300">
@@ -1153,9 +1174,11 @@ export default function AccountPage() {
           </button>
         </div>
       </div>
+      </div>)} {/* end intelligence: AI CRM Memory */}
 
-      {/* AI Account Task Centre */}
-      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 mt-6">
+      {tab === 'rescue' && (
+      <div className="space-y-4">
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300">
@@ -1403,7 +1426,10 @@ export default function AccountPage() {
           )}
         </div>
       </div>
+      </div>)} {/* end rescue */}
 
+      {tab === 'overview' && (
+      <div className="space-y-4">
       {health && (
         <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1833,8 +1859,9 @@ export default function AccountPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        {/* Recent Calls */}
+      </div>)} {/* end overview tab */}
+
+      {tab === 'calls' && (
         <div className="rounded-lg border border-neutral-800 overflow-hidden">
           <div className="px-4 py-3 border-b border-neutral-800 font-medium">Recent Calls</div>
           <div className="divide-y divide-neutral-800">
@@ -1851,8 +1878,9 @@ export default function AccountPage() {
             )}
           </div>
         </div>
+      )} {/* end calls tab */}
 
-        {/* Linked Contacts */}
+      {tab === 'contacts' && (
         <div className="rounded-lg border border-neutral-800 overflow-hidden">
           <div className="px-4 py-3 border-b border-neutral-800 font-medium">
             Linked contacts
@@ -1902,9 +1930,10 @@ export default function AccountPage() {
             )}
           </div>
         </div>
+      )} {/* end contacts tab */}
 
-        {/* Intelligence Timeline */}
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden md:col-span-2">
+      {tab === 'intelligence' && (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
             <div>
               <div className="font-medium text-white">
@@ -1992,7 +2021,8 @@ export default function AccountPage() {
             )}
           </div>
         </div>
-      </div>
+      )} {/* end intelligence: timeline */}
+
     </div>
   );
 }

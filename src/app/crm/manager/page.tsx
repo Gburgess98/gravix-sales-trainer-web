@@ -57,10 +57,10 @@ export default async function CrmManagerPage() {
     : { ok: true, items: [], mode: "fallback", error: overview?.error };
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-6">
+      <div className="flex items-start justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-100">CRM Manager</h1>
+          <h1 className="text-xl font-semibold text-white">Team</h1>
           <p className="mt-1 text-sm text-neutral-400">
             Overview + run auto-assign across recent contacts (dry-run first, then execute).
           </p>
