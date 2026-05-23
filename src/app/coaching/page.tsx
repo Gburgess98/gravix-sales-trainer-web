@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { proxyFetch } from '@/lib/api'
+import { StatCard } from '@/components/ui/stat-card'
+import { RiskBadge, ScorePill } from '@/components/ui/status-badge'
+import { EmptyRow } from '@/components/ui/empty-state'
+import { LoadingText } from '@/components/ui/loading-skeleton'
+import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
 
 type CoachingTab = 'overview' | 'assignments' | 'replay'
 
@@ -46,55 +51,57 @@ type CallItem = {
   flags?: string[] | null
 }
 
-function riskPill(band?: string) {
-  const b = String(band ?? '').toLowerCase()
-  if (b === 'at_risk')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-red-500/30 bg-red-500/10 text-red-300 uppercase tracking-wide font-semibold">At Risk</span>
-  if (b === 'watch')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 uppercase tracking-wide font-semibold">Watch</span>
-  if (b === 'healthy')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 uppercase tracking-wide font-semibold">Healthy</span>
-  return null
-}
+type AssignmentFilter = 'open' | 'overdue' | 'all'
+type ReplayThreshold = '70' | '60' | '50'
 
-function scoreClass(score: number | null | undefined) {
-  if (score == null) return 'text-neutral-500'
-  if (score < 60) return 'text-red-300'
-  if (score < 75) return 'text-amber-300'
-  return 'text-emerald-300'
+const ASSIGNMENT_FILTERS: FilterOption<AssignmentFilter>[] = [
+  { value: 'open', label: 'Open' },
+  { value: 'overdue', label: 'Overdue', variant: 'danger' },
+  { value: 'all', label: 'All' },
+]
+
+const REPLAY_THRESHOLDS: FilterOption<ReplayThreshold>[] = [
+  { value: '70', label: 'Below 70' },
+  { value: '60', label: 'Below 60', variant: 'warning' },
+  { value: '50', label: 'Below 50', variant: 'danger' },
+]
+
+function urgencyBadgeClass(urgency?: string) {
+  if (urgency === 'critical') return 'border-red-500/30 bg-red-500/10 text-red-300'
+  if (urgency === 'high') return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+  return 'border-neutral-700 bg-neutral-900 text-neutral-400'
 }
 
 export default function CoachingPage() {
   const [tab, setTab] = useState<CoachingTab>('overview')
 
-  // Overview
   const [reps, setReps] = useState<RepRisk[]>([])
   const [headline, setHeadline] = useState<Headline | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState<string | null>(null)
 
-  // Assignments
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
-  const [assignmentFilter, setAssignmentFilter] = useState<'open' | 'overdue' | 'all'>('open')
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('open')
 
-  // Replay
   const [calls, setCalls] = useState<CallItem[]>([])
   const [replayLoading, setReplayLoading] = useState(false)
-  const [replayThreshold, setReplayThreshold] = useState<70 | 60 | 50>(70)
+  const [replayThreshold, setReplayThreshold] = useState<ReplayThreshold>('70')
 
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true)
     setOverviewError(null)
     try {
-      const res = await proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', { cache: 'no-store' })
+      const res = await proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', {
+        cache: 'no-store',
+      })
       const data = await res.json()
       if (data?.ok) {
         setHeadline(data.headline ?? null)
         const allReps: RepRisk[] = data.reps_all ?? []
-        // Sort by urgency: overdue → open count
         allReps.sort((a, b) => {
-          const ao = Number(a.counts?.overdue ?? 0), bo = Number(b.counts?.overdue ?? 0)
+          const ao = Number(a.counts?.overdue ?? 0)
+          const bo = Number(b.counts?.overdue ?? 0)
           if (bo !== ao) return bo - ao
           return Number(b.counts?.open ?? 0) - Number(a.counts?.open ?? 0)
         })
@@ -114,8 +121,7 @@ export default function CoachingPage() {
     try {
       const res = await proxyFetch('/v1/assignments?limit=40', { cache: 'no-store' })
       const data = await res.json()
-      const items: Assignment[] = data.assignments ?? data.items ?? []
-      setAssignments(items)
+      setAssignments(data.assignments ?? data.items ?? [])
     } catch (e: any) {
       console.error('coaching assignments load failed', e)
       setAssignments([])
@@ -127,10 +133,11 @@ export default function CoachingPage() {
   const loadReplay = useCallback(async () => {
     setReplayLoading(true)
     try {
-      const res = await proxyFetch('/v1/calls/paged?limit=50&scope=company', { cache: 'no-store' })
+      const res = await proxyFetch('/v1/calls/paged?limit=50&scope=company', {
+        cache: 'no-store',
+      })
       const data = await res.json()
       const rawCalls: CallItem[] = data.calls ?? data.items ?? []
-      // Filter to scored calls only, sort lowest score first
       const scored = rawCalls
         .filter((c) => typeof c.score_overall === 'number')
         .sort((a, b) => (a.score_overall ?? 999) - (b.score_overall ?? 999))
@@ -143,16 +150,15 @@ export default function CoachingPage() {
     }
   }, [])
 
-  // Load overview on mount
-  useEffect(() => { loadOverview() }, [loadOverview])
+  useEffect(() => {
+    loadOverview()
+  }, [loadOverview])
 
-  // Load tab data on switch
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
   }, [tab, assignments.length, calls.length, loadAssignments, loadReplay])
 
-  // Filtered assignments
   const filteredAssignments = assignments.filter((a) => {
     if (assignmentFilter === 'open') return a.status === 'open' || a.status === 'assigned'
     if (assignmentFilter === 'overdue') {
@@ -162,11 +168,12 @@ export default function CoachingPage() {
     return true
   })
 
-  // Filtered replay calls
-  const filteredCalls = calls.filter((c) => (c.score_overall ?? 999) < replayThreshold)
+  const thresholdNum = Number(replayThreshold)
+  const filteredCalls = calls.filter((c) => (c.score_overall ?? 999) < thresholdNum)
 
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
@@ -195,32 +202,34 @@ export default function CoachingPage() {
         onChange={setTab}
       />
 
-      {/* ── OVERVIEW TAB ── */}
+      {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
         <div className="space-y-4">
-          {/* KPI cards */}
+          {/* KPI strip */}
           {headline && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-widest text-red-400/70">At Risk</div>
-                <div className="mt-1 text-2xl font-semibold text-red-300">{headline.reps_at_risk ?? 0}</div>
-                <div className="mt-0.5 text-xs text-neutral-500">reps</div>
-              </div>
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-widest text-amber-400/70">Watch</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-300">{headline.reps_watch ?? 0}</div>
-                <div className="mt-0.5 text-xs text-neutral-500">reps</div>
-              </div>
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Overdue</div>
-                <div className="mt-1 text-2xl font-semibold text-white">{headline.overdue_actions_total ?? 0}</div>
-                <div className="mt-0.5 text-xs text-neutral-500">tasks</div>
-              </div>
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Open</div>
-                <div className="mt-1 text-2xl font-semibold text-white">{headline.open_actions_total ?? 0}</div>
-                <div className="mt-0.5 text-xs text-neutral-500">actions</div>
-              </div>
+              <StatCard
+                label="At Risk"
+                value={headline.reps_at_risk ?? 0}
+                subtext="reps"
+                variant="danger"
+              />
+              <StatCard
+                label="Watch"
+                value={headline.reps_watch ?? 0}
+                subtext="reps"
+                variant="warning"
+              />
+              <StatCard
+                label="Overdue"
+                value={headline.overdue_actions_total ?? 0}
+                subtext="tasks"
+              />
+              <StatCard
+                label="Open"
+                value={headline.open_actions_total ?? 0}
+                subtext="actions"
+              />
             </div>
           )}
 
@@ -231,106 +240,105 @@ export default function CoachingPage() {
               <span className="text-xs text-neutral-500">{reps.length} reps</span>
             </div>
 
-            {overviewLoading && (
-              <div className="px-4 py-5 text-sm text-neutral-500">Loading rep data…</div>
-            )}
+            {overviewLoading && <LoadingText text="Loading rep data…" />}
             {overviewError && !overviewLoading && (
               <div className="px-4 py-5 text-sm text-red-400">{overviewError}</div>
             )}
             {!overviewLoading && !overviewError && reps.length === 0 && (
-              <div className="px-4 py-5 text-sm text-neutral-500">No rep risk data available.</div>
+              <EmptyRow message="No rep risk data available." />
             )}
-            {!overviewLoading && reps.map((rep) => (
-              <div key={rep.rep_id} className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 last:border-0 hover:bg-neutral-900/40 transition-colors">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Link href={`/reps/${rep.rep_id}`} className="text-sm font-medium text-white hover:underline">
-                      {rep.rep_name}
+
+            {!overviewLoading &&
+              reps.map((rep) => (
+                <div
+                  key={rep.rep_id}
+                  className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 last:border-0 hover:bg-neutral-900/40 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/reps/${rep.rep_id}`}
+                        className="text-sm font-medium text-white hover:underline"
+                      >
+                        {rep.rep_name}
+                      </Link>
+                      {rep.risk_band && <RiskBadge band={rep.risk_band} />}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+                      {(rep.counts?.overdue ?? 0) > 0 && (
+                        <span className="text-red-400">{rep.counts?.overdue} overdue</span>
+                      )}
+                      <span>{rep.counts?.open ?? 0} open</span>
+                      {rep.counts?.completed_today ? (
+                        <span className="text-emerald-400">
+                          {rep.counts.completed_today} done today
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/reps/${rep.rep_id}`}
+                      className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+                    >
+                      Profile
                     </Link>
-                    {riskPill(rep.risk_band)}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
-                    {(rep.counts?.overdue ?? 0) > 0 && (
-                      <span className="text-red-400">{rep.counts?.overdue} overdue</span>
-                    )}
-                    <span>{rep.counts?.open ?? 0} open</span>
-                    {rep.counts?.completed_today ? (
-                      <span className="text-emerald-400">{rep.counts.completed_today} done today</span>
-                    ) : null}
+                    <Link
+                      href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`}
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      Actions
+                    </Link>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`/reps/${rep.rep_id}`}
-                    className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
-                  >
-                    Profile
-                  </Link>
-                  <Link
-                    href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`}
-                    className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-                  >
-                    Actions
-                  </Link>
-                </div>
-              </div>
-            ))}
+              ))}
           </div>
 
-          {/* Quick nav links */}
+          {/* Quick nav */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Link
               href="/admin/assignments"
               className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
             >
               <div className="text-[10px] uppercase tracking-widest text-neutral-500">Manager</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">Assignment Manager →</div>
+              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
+                Assignment Manager →
+              </div>
             </Link>
             <Link
               href="/assignments"
               className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
             >
               <div className="text-[10px] uppercase tracking-widest text-neutral-500">Rep View</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">My Assignments →</div>
+              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
+                My Assignments →
+              </div>
             </Link>
             <Link
               href="/admin/score"
               className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
             >
               <div className="text-[10px] uppercase tracking-widest text-neutral-500">Scoring</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">AI Score Review →</div>
+              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
+                AI Score Review →
+              </div>
             </Link>
           </div>
         </div>
       )}
 
-      {/* ── ASSIGNMENTS TAB ── */}
+      {/* ── ASSIGNMENTS ── */}
       {tab === 'assignments' && (
         <div className="space-y-3">
-          {/* Filter chips */}
-          <div className="flex items-center gap-2 text-xs">
-            {(['open', 'overdue', 'all'] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setAssignmentFilter(f)}
-                className={`rounded-full border px-3 py-1 transition-colors ${
-                  assignmentFilter === f
-                    ? 'border-neutral-100 bg-neutral-100 text-neutral-900'
-                    : 'border-neutral-700 text-neutral-300 hover:bg-neutral-800'
-                }`}
-              >
-                {f === 'open' ? 'Open' : f === 'overdue' ? 'Overdue' : 'All'}
-              </button>
-            ))}
-            {!assignmentsLoading && (
-              <span className="ml-auto text-neutral-500">{filteredAssignments.length} assignments</span>
-            )}
-          </div>
+          <FilterBar
+            options={ASSIGNMENT_FILTERS}
+            value={assignmentFilter}
+            onChange={setAssignmentFilter}
+            count={assignmentsLoading ? undefined : filteredAssignments.length}
+            countLabel="assignments"
+          />
 
-          {assignmentsLoading && (
-            <div className="text-sm text-neutral-500 py-4">Loading assignments…</div>
-          )}
+          {assignmentsLoading && <LoadingText text="Loading assignments…" />}
 
           {!assignmentsLoading && filteredAssignments.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
@@ -353,13 +361,9 @@ export default function CoachingPage() {
                             {a.title || 'Untitled assignment'}
                           </span>
                           {urgency && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${
-                              urgency === 'critical'
-                                ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                                : urgency === 'high'
-                                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                                  : 'border-neutral-700 bg-neutral-900 text-neutral-400'
-                            }`}>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${urgencyBadgeClass(urgency)}`}
+                            >
                               {urgency}
                             </span>
                           )}
@@ -407,34 +411,21 @@ export default function CoachingPage() {
         </div>
       )}
 
-      {/* ── REPLAY QUEUE TAB ── */}
+      {/* ── REPLAY QUEUE ── */}
       {tab === 'replay' && (
         <div className="space-y-3">
-          {/* Score threshold filter */}
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-neutral-500">Show calls scored below</span>
-            {([70, 60, 50] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setReplayThreshold(t)}
-                className={`rounded-full border px-3 py-1 transition-colors ${
-                  replayThreshold === t
-                    ? 'border-neutral-100 bg-neutral-100 text-neutral-900'
-                    : 'border-neutral-700 text-neutral-300 hover:bg-neutral-800'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-            {!replayLoading && (
-              <span className="ml-auto text-neutral-500">{filteredCalls.length} calls</span>
-            )}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-neutral-500">Show calls scored</span>
+            <FilterBar
+              options={REPLAY_THRESHOLDS}
+              value={replayThreshold}
+              onChange={setReplayThreshold}
+              count={replayLoading ? undefined : filteredCalls.length}
+              countLabel="calls"
+            />
           </div>
 
-          {replayLoading && (
-            <div className="text-sm text-neutral-500 py-4">Loading calls…</div>
-          )}
+          {replayLoading && <LoadingText text="Loading calls…" />}
 
           {!replayLoading && filteredCalls.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
@@ -450,11 +441,13 @@ export default function CoachingPage() {
               </div>
               <div className="divide-y divide-neutral-800/60">
                 {filteredCalls.slice(0, 30).map((call) => {
-                  const score = typeof call.score_overall === 'number' ? Math.round(call.score_overall) : null
                   const hasFlags = Array.isArray(call.flags) && call.flags.length > 0
 
                   return (
-                    <div key={call.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                    <div
+                      key={call.id}
+                      className="px-4 py-3 flex items-center justify-between gap-4"
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-white truncate">
@@ -467,12 +460,11 @@ export default function CoachingPage() {
                           )}
                         </div>
                         <div className="mt-0.5 text-xs text-neutral-500">
-                          {call.rep_name || 'Unknown rep'} · {new Date(call.created_at).toLocaleDateString()}
+                          {call.rep_name || 'Unknown rep'} ·{' '}
+                          {new Date(call.created_at).toLocaleDateString()}
                         </div>
                       </div>
-                      <div className={`text-sm font-semibold tabular-nums shrink-0 ${scoreClass(score)}`}>
-                        {score ?? '—'}
-                      </div>
+                      <ScorePill score={call.score_overall} className="shrink-0" />
                       <Link
                         href={`/calls/${call.id}`}
                         className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors"

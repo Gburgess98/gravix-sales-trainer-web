@@ -2,6 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { StatCard } from '@/components/ui/stat-card';
+import { StatusBadge, ScorePill } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingText } from '@/components/ui/loading-skeleton';
 
 type AccountRow = {
   id: string;
@@ -157,32 +161,9 @@ export default function CrmAccountsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-              Accounts
-            </div>
-            <div className="mt-1 text-lg font-semibold text-white">
-              {filteredAccounts.length}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-              Contacts
-            </div>
-            <div className="mt-1 text-lg font-semibold text-white">
-              {totals.contacts}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-              Calls
-            </div>
-            <div className="mt-1 text-lg font-semibold text-white">
-              {totals.calls}
-            </div>
-          </div>
+          <StatCard label="Accounts" value={filteredAccounts.length} size="sm" />
+          <StatCard label="Contacts" value={totals.contacts} size="sm" />
+          <StatCard label="Calls" value={totals.calls} size="sm" />
         </div>
       </div>
 
@@ -222,8 +203,8 @@ export default function CrmAccountsPage() {
       </div>
 
       {loading && (
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-5 py-4 text-sm text-neutral-300">
-          Loading customer accounts…
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-5 py-4">
+          <LoadingText text="Loading customer accounts…" />
         </div>
       )}
 
@@ -234,68 +215,32 @@ export default function CrmAccountsPage() {
       )}
 
       {!loading && !error && filteredAccounts.length === 0 && (
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-5 py-8 text-center text-sm text-neutral-400">
-          No accounts found.
-        </div>
+        <EmptyState message="No accounts found." />
       )}
 
       {!loading && !error && (
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-red-300">
-              Rescue Queue
-            </div>
-
-            <div className="mt-3 text-3xl font-semibold text-white">
-              {
-                filteredAccounts.filter(
-                  (a) =>
-                    a.ownership_status === 'unassigned' ||
-                    (a.avg_score || 0) < 60
-                ).length
-              }
-            </div>
-
-            <div className="mt-2 text-sm text-neutral-300">
-              Accounts currently requiring manager intervention.
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300">
-              Unassigned Accounts
-            </div>
-
-            <div className="mt-3 text-3xl font-semibold text-white">
-              {
-                filteredAccounts.filter(
-                  (a) => a.ownership_status !== 'assigned'
-                ).length
-              }
-            </div>
-
-            <div className="mt-2 text-sm text-neutral-300">
-              Accounts without assigned ownership.
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-cyan-300">
-              Managed Accounts
-            </div>
-
-            <div className="mt-3 text-3xl font-semibold text-white">
-              {
-                filteredAccounts.filter(
-                  (a) => a.ownership_status === 'assigned'
-                ).length
-              }
-            </div>
-
-            <div className="mt-2 text-sm text-neutral-300">
-              Accounts actively owned by reps/managers.
-            </div>
-          </div>
+          <StatCard
+            label="Rescue Queue"
+            value={filteredAccounts.filter((a) => a.ownership_status === 'unassigned' || (a.avg_score || 0) < 60).length}
+            subtext="requiring manager intervention"
+            variant="danger"
+            className="border-red-500/20 bg-red-500/5"
+          />
+          <StatCard
+            label="Unassigned Accounts"
+            value={filteredAccounts.filter((a) => a.ownership_status !== 'assigned').length}
+            subtext="without assigned ownership"
+            variant="warning"
+            className="border-amber-500/20 bg-amber-500/5"
+          />
+          <StatCard
+            label="Managed Accounts"
+            value={filteredAccounts.filter((a) => a.ownership_status === 'assigned').length}
+            subtext="actively owned by reps/managers"
+            variant="info"
+            className="border-cyan-500/20 bg-cyan-500/5"
+          />
         </div>
       )}
 
@@ -333,21 +278,12 @@ export default function CrmAccountsPage() {
                 </div>
 
                 <div className="flex flex-col items-end gap-2">
-                  <div
-                    className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${account.ownership_status === 'assigned'
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                      }`}
-                  >
-                    {account.ownership_status === 'assigned'
-                      ? 'Owned'
-                      : 'Unassigned'}
-                  </div>
-
+                  <StatusBadge
+                    status={account.ownership_status === 'assigned' ? 'assigned' : 'unassigned'}
+                    label={account.ownership_status === 'assigned' ? 'Owned' : 'Unassigned'}
+                  />
                   {(account.avg_score || 0) < 60 ? (
-                    <div className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-red-300">
-                      At Risk
-                    </div>
+                    <StatusBadge status="overdue" label="At Risk" />
                   ) : null}
                 </div>
               </div>
@@ -379,16 +315,8 @@ export default function CrmAccountsPage() {
                   <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
                     Account Health
                   </div>
-
-                  <div
-                    className={`mt-1 text-lg font-semibold ${(account.avg_score || 0) >= 75
-                      ? 'text-emerald-300'
-                      : (account.avg_score || 0) >= 60
-                        ? 'text-amber-300'
-                        : 'text-red-300'
-                      }`}
-                  >
-                    {Math.round(account.avg_score || 0)}
+                  <div className="mt-1">
+                    <ScorePill score={Math.round(account.avg_score || 0)} />
                   </div>
                 </div>
 
@@ -417,9 +345,7 @@ export default function CrmAccountsPage() {
 
                 <div className="flex flex-col items-end gap-2">
                   {(account.avg_score || 0) < 60 ? (
-                    <div className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[10px] font-medium text-red-200">
-                      Needs Intervention
-                    </div>
+                    <StatusBadge status="at_risk" label="Needs Intervention" />
                   ) : null}
 
                   <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-200">
