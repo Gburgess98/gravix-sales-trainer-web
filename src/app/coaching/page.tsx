@@ -72,6 +72,10 @@ function urgencyBadgeClass(urgency?: string) {
   return 'border-neutral-700 bg-neutral-900 text-neutral-400'
 }
 
+function normaliseReason(r: string): string {
+  return r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export default function CoachingPage() {
   const [tab, setTab] = useState<CoachingTab>('overview')
 
@@ -233,6 +237,29 @@ export default function CoachingPage() {
             </div>
           )}
 
+          {/* Needs Attention Now */}
+          {!overviewLoading && reps.filter(r => r.risk_band === 'at_risk' || (r.counts?.overdue ?? 0) > 0).length > 0 && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-red-400">Needs Attention Now</div>
+              <div className="flex flex-wrap gap-2">
+                {reps
+                  .filter(r => r.risk_band === 'at_risk' || (r.counts?.overdue ?? 0) > 0)
+                  .map((rep) => (
+                    <Link
+                      key={rep.rep_id}
+                      href={`/reps/${rep.rep_id}`}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 hover:bg-red-500/20 transition-colors"
+                    >
+                      <span className="font-medium">{rep.rep_name}</span>
+                      {(rep.counts?.overdue ?? 0) > 0 && (
+                        <span className="text-red-400">{rep.counts?.overdue} overdue</span>
+                      )}
+                    </Link>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* Rep coaching queue */}
           <div className="rounded-xl border border-neutral-800 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
@@ -275,6 +302,18 @@ export default function CoachingPage() {
                         </span>
                       ) : null}
                     </div>
+                    {Array.isArray(rep.reasons) && rep.reasons.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {rep.reasons.slice(0, 3).map((r) => (
+                          <span
+                            key={r}
+                            className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400"
+                          >
+                            {normaliseReason(r)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Link

@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { StatCard } from "@/components/ui/stat-card";
+import { RiskBadge, ScorePill } from "@/components/ui/status-badge";
 
 type RepTab = "overview" | "coaching" | "activity";
 
@@ -47,21 +49,6 @@ type RepOpenAction = {
   contact_id?: string | null;
 };
 
-function scoreColour(score?: number | null) {
-  if (score == null) return "text-zinc-400";
-  if (score >= 80) return "text-emerald-400";
-  if (score >= 60) return "text-amber-300";
-  return "text-red-300";
-}
-
-function riskBandClass(band?: string) {
-  const b = String(band ?? "").toLowerCase();
-  if (b === "at_risk")
-    return "border-red-500/30 bg-red-500/10 text-red-300";
-  if (b === "watch")
-    return "border-amber-500/30 bg-amber-500/10 text-amber-300";
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-}
 
 export default function RepProfilePage() {
   const { id: repId } = useParams() as { id: string };
@@ -270,11 +257,7 @@ export default function RepProfilePage() {
           <p className="mt-0.5 text-xs text-neutral-500">90-day performance snapshot</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {riskBand && (
-            <span className={`text-xs px-2.5 py-1 rounded-full border font-medium capitalize ${riskBandClass(riskBand)}`}>
-              {riskBand === "at_risk" ? "At Risk" : riskBand}
-            </span>
-          )}
+          {riskBand && <RiskBadge band={riskBand} size="md" />}
           <Link
             href={`/sparring?repId=${encodeURIComponent(String(repId ?? ""))}&persona=price_sensitive`}
             className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 transition-colors"
@@ -319,45 +302,19 @@ export default function RepProfilePage() {
         <div className="space-y-4">
           {/* KPI strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                Total Calls
-              </div>
-              <div className="mt-1.5 text-2xl font-semibold text-white tabular-nums">
-                {data.calls ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                Avg Score
-              </div>
-              <div
-                className={`mt-1.5 text-2xl font-semibold tabular-nums ${scoreColour(data.avg_score)}`}
-              >
-                {typeof data.avg_score === "number" ? Math.round(data.avg_score) : "—"}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">XP</div>
-              <div className="mt-1.5 text-2xl font-semibold text-white tabular-nums">
-                {data.xp ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                Ignored Nudges
-              </div>
-              <div
-                className={`mt-1.5 text-2xl font-semibold tabular-nums ${
-                  typeof ignoredNudges === "number" && ignoredNudges > 0
-                    ? "text-red-300"
-                    : "text-white"
-                }`}
-              >
-                {typeof ignoredNudges === "number" ? ignoredNudges : "—"}
-              </div>
-              <div className="mt-0.5 text-[10px] text-neutral-500">overdue / 7d+ stale</div>
-            </div>
+            <StatCard label="Total Calls" value={data.calls ?? 0} />
+            <StatCard
+              label="Avg Score"
+              value={typeof data.avg_score === "number" ? Math.round(data.avg_score) : "—"}
+              variant={data.avg_score == null ? "default" : data.avg_score >= 80 ? "success" : data.avg_score >= 60 ? "warning" : "danger"}
+            />
+            <StatCard label="XP" value={data.xp ?? 0} />
+            <StatCard
+              label="Ignored Nudges"
+              value={typeof ignoredNudges === "number" ? ignoredNudges : "—"}
+              subtext="overdue / 7d+ stale"
+              variant={typeof ignoredNudges === "number" && ignoredNudges > 0 ? "danger" : "default"}
+            />
           </div>
 
           {/* CRM risk status */}
@@ -388,9 +345,7 @@ export default function RepProfilePage() {
                     >
                       {Number(intelligence?.risk_summary?.risk_score ?? 0)}
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${riskBandClass(riskBand)}`}>
-                      {riskBand === "at_risk" ? "At Risk" : riskBand || "Healthy"}
-                    </span>
+                    <RiskBadge band={riskBand || "healthy"} />
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-4 text-center">
@@ -482,9 +437,7 @@ export default function RepProfilePage() {
                       Risk score: {Number(intelligence?.risk_summary?.risk_score ?? 0)}
                     </div>
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium capitalize ${riskBandClass(riskBand)}`}>
-                    {riskBand === "at_risk" ? "At Risk" : riskBand || "Healthy"}
-                  </span>
+                  <RiskBadge band={riskBand || "healthy"} size="md" />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -713,13 +666,7 @@ export default function RepProfilePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span
-                        className={`text-sm font-semibold tabular-nums ${scoreColour(c.score_overall)}`}
-                      >
-                        {typeof c.score_overall === "number"
-                          ? Math.round(c.score_overall)
-                          : "—"}
-                      </span>
+                      <ScorePill score={c.score_overall} />
                       <Link
                         href={`/calls/${c.id}`}
                         className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"

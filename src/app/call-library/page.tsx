@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
+import { ScorePill } from "@/components/ui/status-badge";
 
 // Shape returned by /api/proxy/v1/calls/paged
 type CallItem = {
@@ -126,12 +127,6 @@ function summarySnippet(summary?: string | null, max = 120): string {
   return summary.slice(0, max - 1) + "…";
 }
 
-function scoreColour(score: number | null) {
-  if (score == null) return "text-zinc-400";
-  if (score >= 80) return "text-green-400";
-  if (score >= 60) return "text-amber-300";
-  return "text-red-300";
-}
 
 function statusDotColour(status: string) {
   const s = status.toLowerCase();
@@ -1043,13 +1038,7 @@ export default function CallLibraryPage() {
                             {c.status}
                           </span>
                         </div>
-                        <div
-                          className={`text-sm tabular-nums px-2 py-1 rounded-full border ${scoreColour(
-                            score
-                          )}`}
-                        >
-                          {score != null ? score : "—"}
-                        </div>
+                        <ScorePill score={score} />
                         <Link
                           href={`/calls/${c.id}`}
                           className="text-xs text-neutral-200 underline hover:text-white whitespace-nowrap"
