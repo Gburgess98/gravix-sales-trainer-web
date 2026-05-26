@@ -225,21 +225,18 @@ export default function CrmAccountsPage() {
             value={filteredAccounts.filter((a) => a.ownership_status === 'unassigned' || (a.avg_score || 0) < 60).length}
             subtext="requiring manager intervention"
             variant="danger"
-            className="border-red-500/20 bg-red-500/5"
           />
           <StatCard
             label="Unassigned Accounts"
             value={filteredAccounts.filter((a) => a.ownership_status !== 'assigned').length}
             subtext="without assigned ownership"
             variant="warning"
-            className="border-amber-500/20 bg-amber-500/5"
           />
           <StatCard
             label="Managed Accounts"
             value={filteredAccounts.filter((a) => a.ownership_status === 'assigned').length}
             subtext="actively owned by reps/managers"
             variant="info"
-            className="border-cyan-500/20 bg-cyan-500/5"
           />
         </div>
       )}

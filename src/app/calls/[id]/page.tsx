@@ -237,6 +237,9 @@ export default function CallPage() {
   }, []);
 
 
+  // Active section for sticky nav
+  const [activeSection, setActiveSection] = useState('summary');
+
   // Score trend (sparkline)
   const [trend, setTrend] = useState<number[] | null>(null);
   useEffect(() => {
@@ -1042,6 +1045,22 @@ export default function CallPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openCrm, openCoach]);
 
+  // Track active section as user scrolls
+  useEffect(() => {
+    const ids = ['summary', 'review', 'transcript', 'player', 'crm', 'coach'];
+    const observers = ids.map((id) => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const obs = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setActiveSection(id); },
+        { rootMargin: '-20% 0px -70% 0px', threshold: 0 }
+      );
+      obs.observe(el);
+      return obs;
+    });
+    return () => observers.forEach((o) => o?.disconnect());
+  }, []);
+
   const overall: number | null =
     typeof callMeta?.score_overall === 'number'
       ? Math.round(Number(callMeta.score_overall))
@@ -1112,7 +1131,7 @@ export default function CallPage() {
 
   return (
     <AuthGate>
-      <main className="py-6 space-y-6">
+      <main className="px-6 py-6 space-y-6">
         <div className="flex items-start gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold break-all flex items-center gap-3">
             {loadingCall ? (
@@ -1130,16 +1149,19 @@ export default function CallPage() {
           </h1>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Copy share link to open CRM panel */}
+            {trend && trend.length > 1 && (
+              <div className="flex items-center gap-1 text-xs text-neutral-500">
+                <span>Trend</span>
+                <div className="text-emerald-400"><ScoreSparkline scores={trend} /></div>
+              </div>
+            )}
             <CopyLinkButton href={`/calls/${callId}?panel=crm`} size="md" />
-
-            {/* Existing action */}
-            <button onClick={openCrm} className="rounded-xl border px-3 py-1.5 text-sm">
-              Link / Review CRM
+            <button onClick={openCrm} className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+              Link CRM
             </button>
             {managerCheckDone && isManager && (
-              <button onClick={() => openCoach(true)} className="rounded-xl border px-3 py-1.5 text-sm">
-                Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-70">({assignmentCount})</span>}
+              <button onClick={() => openCoach(true)} className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+                Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-60">({assignmentCount})</span>}
               </button>
             )}
             {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
@@ -1147,7 +1169,7 @@ export default function CallPage() {
                 href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-xl border px-3 py-1.5 text-sm"
+                className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800"
                 title="Preview Slack payload"
               >
                 Preview Slack
@@ -1156,26 +1178,36 @@ export default function CallPage() {
           </div>
         </div>
 
-        {/* Section nav */}
-        <div className="flex gap-3 text-sm border-b pb-2 overflow-x-auto">
-          {[
-            { id: "summary", label: "Summary" },
-            { id: "review", label: "Review" },
-            { id: "transcript", label: "Transcript" },
-            { id: "player", label: "Player" },
-            { id: "crm", label: "CRM" },
-            { id: "coach", label: "Coach" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" });
-              }}
-              className="opacity-70 hover:opacity-100 whitespace-nowrap"
-            >
-              {item.label}
-            </button>
-          ))}
+        {/* Section nav — sticky */}
+        <div className="sticky top-0 z-10 -mx-6 px-6 bg-neutral-950/95 backdrop-blur-sm border-b border-neutral-800">
+          <div className="flex items-center gap-1 overflow-x-auto py-2">
+            {[
+              { id: "summary", label: "Summary" },
+              { id: "review", label: "Review" },
+              { id: "transcript", label: "Transcript" },
+              { id: "player", label: "Player" },
+              { id: "crm", label: "CRM" },
+              { id: "coach", label: "Coach" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" })}
+                className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+                  activeSection === item.id
+                    ? "bg-neutral-100 text-neutral-900"
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-1 text-[11px] text-neutral-600 whitespace-nowrap shrink-0 pl-2">
+              <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">c</kbd>
+              <span className="mr-2">CRM</span>
+              <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">a</kbd>
+              <span>Coach</span>
+            </div>
+          </div>
         </div>
 
         {/* Processing status banner */}
@@ -1207,34 +1239,6 @@ export default function CallPage() {
           </div>
         )}
 
-        {/* Live status + AI badge */}
-        <div className="text-sm flex items-center gap-3">
-          <span className="inline-block rounded-full border px-2 py-0.5">
-            {callMeta?.status ?? 'queued'}
-          </span>
-          {overall != null && <ScorePill score={overall} className="text-xs px-1.5 py-0.5" />}
-          {callMeta?.status === 'scored' && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5"
-              title={callMeta?.ai_model ? `Scored by ${callMeta.ai_model}` : 'AI scored'}
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-                <path d="M5 12l2 2 4-5 4 6 4-8" />
-              </svg>
-              AI
-            </span>
-          )}
-
-          {trend && trend.length > 1 && (
-            <div className="ml-auto flex items-center gap-2 text-xs opacity-80">
-              <span>Trend</span>
-              <div className="text-emerald-400">
-                <ScoreSparkline scores={trend} />
-              </div>
-            </div>
-          )}
-          <p className="text-xs opacity-60">Hint: press <kbd className="px-1 border rounded">c</kbd> for CRM, <kbd className="px-1 border rounded">a</kbd> for Coach.</p>
-        </div>
 
         {/* Summary header band (score + duration + summary + flags) */}
         <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1433,7 +1437,7 @@ export default function CallPage() {
               if (!sec) return null;
               const s = typeof sec.score === 'number' ? Math.round(Number(sec.score)) : null;
               return (
-                <div key={k} className="rounded-xl border border-white/10 p-4">
+                <div key={k} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium capitalize">{k}</h3>
                     {s != null ? (

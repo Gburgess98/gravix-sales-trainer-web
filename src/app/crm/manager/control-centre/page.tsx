@@ -345,6 +345,9 @@ function recommendAssignment(r: RepRiskRow) {
   return "Assign: Review last 3 calls + feedback summary";
 }
 
+import { StatCard } from '@/components/ui/stat-card';
+import { RiskBadge } from '@/components/ui/status-badge';
+
 // Server action: best-effort create a rep follow-up task (fail-soft)
 async function createRepFollowUpAction(formData: FormData) {
   "use server";
@@ -585,39 +588,15 @@ export default async function ControlCentrePage({
       ) : (
         <>
           {/* Headline */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Reps tracked</div>
-              <div className="mt-1 text-2xl font-semibold text-neutral-100">{repsTotal}</div>
-            </div>
-            <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4">
-              <div className="text-xs text-red-200/70">At risk</div>
-              <div className="mt-1 text-2xl font-semibold text-red-100">{repsRisk}</div>
-            </div>
-            <div className="rounded-xl border border-amber-900/40 bg-amber-950/15 p-4">
-              <div className="text-xs text-amber-200/70">Watch</div>
-              <div className="mt-1 text-2xl font-semibold text-amber-100">{repsWatch}</div>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Open actions</div>
-              <div className="mt-1 text-2xl font-semibold text-neutral-100">{openTotal}</div>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Overdue actions</div>
-              <div className="mt-1 text-2xl font-semibold text-neutral-100">{overdueTotal}</div>
-            </div>
-            <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4">
-              <div className="text-xs text-red-200/70">Critical calls today</div>
-              <div className="mt-1 text-2xl font-semibold text-red-100">{reporting.critical_calls_today ?? 0}</div>
-            </div>
-            <div className="rounded-xl border border-amber-900/40 bg-amber-950/15 p-4">
-              <div className="text-xs text-amber-200/70">Flagged calls 7d</div>
-              <div className="mt-1 text-2xl font-semibold text-amber-100">{reporting.flagged_calls_this_week ?? 0}</div>
-            </div>
-            <div className="rounded-xl border border-sky-900/40 bg-sky-950/15 p-4">
-              <div className="text-xs text-sky-200/70">Auto assignments</div>
-              <div className="mt-1 text-2xl font-semibold text-sky-100">{reporting.auto_assignments_created ?? 0}</div>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+            <StatCard label="Reps tracked" value={repsTotal} />
+            <StatCard label="At risk" value={repsRisk} variant="danger" />
+            <StatCard label="Watch" value={repsWatch} variant="warning" />
+            <StatCard label="Overdue actions" value={overdueTotal} variant={overdueTotal > 0 ? "danger" : "default"} />
+            <StatCard label="Open actions" value={openTotal} />
+            <StatCard label="Critical calls today" value={reporting.critical_calls_today ?? 0} variant={reporting.critical_calls_today ? "danger" : "default"} />
+            <StatCard label="Flagged calls 7d" value={reporting.flagged_calls_this_week ?? 0} variant={reporting.flagged_calls_this_week ? "warning" : "default"} />
+            <StatCard label="Auto assignments" value={reporting.auto_assignments_created ?? 0} variant="info" />
           </div>
 
           {/* Daily control centre insights */}
@@ -837,7 +816,7 @@ export default async function ControlCentrePage({
                       const repId = String(r?.rep_id ?? "");
                       const repName = String(r?.rep_name ?? "Rep");
 
-                      const pill = bandPill(r?.risk_band ?? r._band);
+                      const riskBand = String(r?.risk_band ?? r._band ?? "unknown");
 
                       const open = Number(r?.counts?.open ?? 0);
                       const overdue = Number(r?.counts?.overdue ?? 0);
@@ -917,7 +896,7 @@ export default async function ControlCentrePage({
                               </Link>
                               <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
                                 <span>Activity: {activityLabel}</span>
-                                <span className={pill.cls}>{pill.label}</span>
+                                <RiskBadge band={riskBand} />
                                 {activityScore > 0 ? (
                                   <span className="rounded-full border border-neutral-700 bg-neutral-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-200">
                                     Score {Math.round(activityScore)}
