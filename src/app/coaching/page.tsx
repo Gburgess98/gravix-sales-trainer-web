@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { proxyFetch } from '@/lib/api'
@@ -11,6 +11,10 @@ import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
 
 type CoachingTab = 'overview' | 'assignments' | 'replay'
+type RepFilter = 'all' | 'at_risk' | 'watch' | 'healthy'
+type ConfidenceLevel = 'high' | 'medium' | 'low'
+type UrgencyState = 'critical' | 'high' | 'watch' | 'healthy'
+type TrendDirection = 'rising' | 'stable' | 'improving'
 
 type RepRisk = {
   rep_id: string
@@ -19,6 +23,16 @@ type RepRisk = {
   risk_score?: number
   counts?: { open?: number; overdue?: number; completed_today?: number }
   reasons?: string[]
+  meta?: {
+    weakest_skill?: string | null
+    last_call_at?: string | null
+    last_login_at?: string | null
+    flagged_calls?: number | null
+    critical_calls?: number | null
+    avg_score?: number | null
+    reasons?: string[]
+    [key: string]: any
+  }
 }
 
 type Headline = {
@@ -28,6 +42,21 @@ type Headline = {
   overdue_actions_total?: number
   open_actions_total?: number
   window_days?: number
+}
+
+type Reporting = {
+  critical_calls_today?: number
+  flagged_calls_this_week?: number
+  auto_assignments_created?: number
+  assignment_completion_rate?: number
+  reps_needing_help?: Array<{
+    rep_id: string
+    flagged_calls?: number
+    critical_calls?: number
+    open_assignments?: number
+    avg_score?: number | null
+    weakest_skill?: string | null
+  }>
 }
 
 type Assignment = {
@@ -66,21 +95,256 @@ const REPLAY_THRESHOLDS: FilterOption<ReplayThreshold>[] = [
   { value: '50', label: 'Below 50', variant: 'danger' },
 ]
 
+// ── Design system maps ────────────────────────────────────────────────────────
+
+const CONFIDENCE_STYLES: Record<ConfidenceLevel, string> = {
+  high: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  medium: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  low: 'border-neutral-700 bg-neutral-900/60 text-neutral-400',
+}
+
+const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
+  high: 'High Confidence',
+  medium: 'Medium Confidence',
+  low: 'Low Confidence',
+}
+
+const URGENCY_LEFT: Record<UrgencyState, string> = {
+  critical: 'border-l-[3px] border-l-red-500',
+  high:     'border-l-[3px] border-l-amber-500',
+  watch:    'border-l-[3px] border-l-cyan-500/50',
+  healthy:  'border-l-[3px] border-l-emerald-500/30',
+}
+
+const URGENCY_BG: Record<UrgencyState, string> = {
+  critical: 'bg-red-500/[0.04]',
+  high:     'bg-amber-500/[0.04]',
+  watch:    'bg-neutral-950',
+  healthy:  'bg-neutral-950',
+}
+
+const URGENCY_LABEL: Record<UrgencyState, string> = {
+  critical: 'Critical',
+  high:     'High Priority',
+  watch:    'Watch',
+  healthy:  'Healthy',
+}
+
+const URGENCY_LABEL_CLS: Record<UrgencyState, string> = {
+  critical: 'text-red-400',
+  high:     'text-amber-400',
+  watch:    'text-cyan-400',
+  healthy:  'text-emerald-400',
+}
+
+const TREND_CONFIG: Record<TrendDirection, { arrow: string; cls: string }> = {
+  rising:    { arrow: '↑', cls: 'text-red-400' },
+  stable:    { arrow: '→', cls: 'text-neutral-400' },
+  improving: { arrow: '↓', cls: 'text-emerald-400' },
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function urgencyBadgeClass(urgency?: string) {
   if (urgency === 'critical') return 'border-red-500/30 bg-red-500/10 text-red-300'
   if (urgency === 'high') return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
   return 'border-neutral-700 bg-neutral-900 text-neutral-400'
 }
 
-function normaliseReason(r: string): string {
-  return r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+function normaliseReasonLabel(value: string): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const cleaned = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+  const map: Array<[RegExp, string]> = [
+    [/objection/, 'Objection handling'],
+    [/weak close|closing|close/, 'Closing'],
+    [/discovery/, 'Discovery'],
+    [/intro|opening|opener/, 'Intro'],
+    [/follow.?up/, 'Follow-up'],
+    [/inactive|stale|no activity/, 'Inactivity'],
+    [/overdue/, 'Overdue actions'],
+    [/workload|too many open|open action/, 'Workload'],
+    [/pric/, 'Price objection'],
+    [/next.?step/, 'Next steps'],
+  ]
+  for (const [pattern, label] of map) {
+    if (pattern.test(cleaned)) return label
+  }
+  return cleaned.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ')
 }
+
+function collectRepReasons(rep: RepRisk): string[] {
+  const direct = Array.isArray(rep.reasons) ? rep.reasons : []
+  const metaReasons = Array.isArray(rep.meta?.reasons) ? rep.meta.reasons : []
+  const labels = [...direct, ...metaReasons]
+    .map(x => normaliseReasonLabel(String(x || '')))
+    .filter(Boolean)
+  return [...new Set(labels)]
+}
+
+function inferWeakestSkill(rep: RepRisk): string {
+  const direct = String(rep.meta?.weakest_skill ?? '').trim()
+  if (direct && direct.toLowerCase() !== 'unknown') return direct
+  const reasons = collectRepReasons(rep)
+  const joined = reasons.join(' | ').toLowerCase()
+  if (joined.includes('objection')) return 'Objection handling'
+  if (joined.includes('closing') || joined.includes('next steps')) return 'Closing'
+  if (joined.includes('discovery')) return 'Discovery'
+  if (joined.includes('intro')) return 'Intro'
+  if (joined.includes('price objection')) return 'Price handling'
+  if (joined.includes('follow-up')) return 'Follow-up'
+  if (joined.includes('inactivity')) return 'Consistency'
+  if (joined.includes('workload') || joined.includes('overdue actions')) return 'Execution'
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const open = Number(rep.counts?.open ?? 0)
+  if (overdue > 0) return 'Execution'
+  if (open > 6) return 'Prioritisation'
+  if (open > 0) return 'Follow-up'
+  return ''
+}
+
+function recommendManagerAction(rep: RepRisk): string {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const open = Number(rep.counts?.open ?? 0)
+  const weak = inferWeakestSkill(rep)
+  const joined = collectRepReasons(rep).join(' | ').toLowerCase()
+  if (overdue > 0) return 'Clear overdue actions first'
+  if (joined.includes('objection')) return 'Assign objection drill'
+  if (weak === 'Closing') return 'Review weak close calls'
+  if (weak === 'Discovery') return 'Coach discovery questions'
+  if (weak === 'Intro') return 'Tighten opener'
+  if (open > 6) return 'Reduce workload and re-prioritise'
+  if (weak === 'Follow-up') return 'Set follow-up target'
+  return 'Review recent calls'
+}
+
+function recommendAssignment(rep: RepRisk): string {
+  const weak = inferWeakestSkill(rep)
+  const joined = collectRepReasons(rep).join(' | ').toLowerCase()
+  if (joined.includes('price objection') || weak === 'Price handling') return 'Price objection rebuttal drill'
+  if (joined.includes('objection') || weak === 'Objection handling') return 'Objection handling drill'
+  if (weak === 'Closing' || joined.includes('next steps')) return 'Closing practice + next steps'
+  if (weak === 'Discovery') return 'Discovery question drill'
+  if (weak === 'Intro') return 'Opener improvement drill'
+  if (weak === 'Follow-up' || weak === 'Execution') return 'Follow-up task assignment'
+  return 'Review last 3 calls + feedback summary'
+}
+
+// ── Part 1: AI confidence ─────────────────────────────────────────────────────
+
+function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  if (overdue > 0 || critical > 0) return 'high'
+  if (Number(rep.counts?.open ?? 0) >= 2) return 'medium'
+  return 'low'
+}
+
+function getWhyMatters(rep: RepRisk, critical: number, flagged: number): string {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const weak = inferWeakestSkill(rep)
+  const reasons = collectRepReasons(rep)
+  const joined = reasons.join(' | ').toLowerCase()
+  if (critical > 0) return `${critical} critical call${critical !== 1 ? 's' : ''} need immediate review`
+  if (overdue > 0) return `Ignoring coaching queue — ${overdue} overdue action${overdue !== 1 ? 's' : ''}`
+  if (joined.includes('inactiv')) return 'No activity trend detected this period'
+  if (weak === 'Objection handling') return 'Repeated objection failures across recent calls'
+  if (weak === 'Closing') return 'Low close consistency, pattern worsening'
+  if (weak === 'Discovery') return 'Skipping discovery phase repeatedly'
+  if (weak === 'Price handling') return 'Losing deals at pricing stage'
+  if (flagged > 0) return `${flagged} flagged call${flagged !== 1 ? 's' : ''} in 7d — recurring issues`
+  return 'Below team performance baseline'
+}
+
+// ── Part 4: Urgency hierarchy ─────────────────────────────────────────────────
+
+function getUrgencyState(rep: RepRisk, critical: number): UrgencyState {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  if (overdue > 0 || critical > 0) return 'critical'
+  if (rep.risk_band === 'at_risk') return 'high'
+  if (rep.risk_band === 'watch') return 'watch'
+  return 'healthy'
+}
+
+// ── Part 2: Weakness trends ───────────────────────────────────────────────────
+
+function mockTrend(count: number): TrendDirection {
+  if (count >= 3) return 'rising'
+  if (count === 1) return 'improving'
+  return 'stable'
+}
+
+// ── Part 3: Assignment reasoning ─────────────────────────────────────────────
+
+function getAssignmentReasoning(rep: RepRisk, critical: number, flagged: number): string {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const weak = inferWeakestSkill(rep)
+  if (critical > 0) return `${critical} critical call${critical !== 1 ? 's' : ''} with failed handling. Pattern repeating.`
+  if (overdue > 0) return `${overdue} overdue action${overdue !== 1 ? 's' : ''} indicate coaching avoidance.`
+  if (flagged > 0) return `${flagged} flagged call${flagged !== 1 ? 's' : ''} with recurring ${weak?.toLowerCase() || 'issues'}.`
+  if (weak) return `Consistent ${weak.toLowerCase()} weakness detected across recent calls.`
+  return 'Below team baseline across multiple sessions.'
+}
+
+function getExpectedOutcome(weak: string): string {
+  if (weak === 'Objection handling') return 'Improve objection retention rate'
+  if (weak === 'Closing') return 'Increase close rate consistency'
+  if (weak === 'Discovery') return 'Strengthen pipeline qualification'
+  if (weak === 'Follow-up' || weak === 'Execution') return 'Reduce stale contact rate'
+  if (weak === 'Price handling') return 'Recover more price-objection deals'
+  if (weak === 'Intro') return 'Increase early engagement rate'
+  return 'Improve overall coaching compliance'
+}
+
+function getAssignmentUrgency(rep: RepRisk, critical: number): string {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  if (overdue > 0 || critical > 0) return 'Immediate'
+  if (collectRepReasons(rep).length >= 2) return 'This week'
+  return 'Next session'
+}
+
+// ── Part 5: Health timeline ───────────────────────────────────────────────────
+
+function getCoachingMomentum(rep: RepRisk): 'positive' | 'neutral' | 'negative' {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const doneToday = Number(rep.counts?.completed_today ?? 0)
+  if (doneToday > 0 && overdue === 0) return 'positive'
+  if (overdue > 0) return 'negative'
+  return 'neutral'
+}
+
+function getRepTrend(rep: RepRisk): TrendDirection {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const doneToday = Number(rep.counts?.completed_today ?? 0)
+  if (overdue > 0) return 'rising'
+  if (doneToday > 0) return 'improving'
+  return 'stable'
+}
+
+// ── Part 6: AI summary ────────────────────────────────────────────────────────
+
+function generateAiSummary(reps: RepRisk[], headline: Headline | null, weaknessData: [string, number][]): string {
+  const criticalCount = reps.filter(r => Number(r.counts?.overdue ?? 0) > 0).length
+  const atRisk = Number(headline?.reps_at_risk ?? 0)
+  const topWeakness = weaknessData[0]?.[0]
+  const overdue = Number(headline?.overdue_actions_total ?? 0)
+  const parts: string[] = []
+  if (criticalCount > 0) parts.push(`${criticalCount} rep${criticalCount !== 1 ? 's' : ''} require${criticalCount === 1 ? 's' : ''} immediate intervention`)
+  if (atRisk > 0) parts.push(`${atRisk} rep${atRisk !== 1 ? 's' : ''} trending toward risk`)
+  if (topWeakness) parts.push(`${topWeakness} is the leading team weakness`)
+  if (overdue > 0) parts.push(`${overdue} overdue action${overdue !== 1 ? 's' : ''} need escalation`)
+  if (parts.length === 0) return 'All reps on track. No immediate interventions required.'
+  return parts.join('. ') + '.'
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CoachingPage() {
   const [tab, setTab] = useState<CoachingTab>('overview')
+  const [repFilter, setRepFilter] = useState<RepFilter>('all')
 
   const [reps, setReps] = useState<RepRisk[]>([])
   const [headline, setHeadline] = useState<Headline | null>(null)
+  const [reporting, setReporting] = useState<Reporting | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState<string | null>(null)
 
@@ -96,13 +360,15 @@ export default function CoachingPage() {
     setOverviewLoading(true)
     setOverviewError(null)
     try {
-      const res = await proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', {
-        cache: 'no-store',
-      })
-      const data = await res.json()
-      if (data?.ok) {
-        setHeadline(data.headline ?? null)
-        const allReps: RepRisk[] = data.reps_all ?? []
+      const [ccRes, repRes] = await Promise.all([
+        proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', { cache: 'no-store' }),
+        proxyFetch('/v1/dashboard/reporting-summary?days=7', { cache: 'no-store' }),
+      ])
+      const ccData = await ccRes.json()
+      const repData = await repRes.json().catch(() => ({}))
+      if (ccData?.ok) {
+        setHeadline(ccData.headline ?? null)
+        const allReps: RepRisk[] = ccData.reps_all ?? []
         allReps.sort((a, b) => {
           const ao = Number(a.counts?.overdue ?? 0)
           const bo = Number(b.counts?.overdue ?? 0)
@@ -111,8 +377,9 @@ export default function CoachingPage() {
         })
         setReps(allReps)
       } else {
-        setOverviewError(data.error || 'Failed to load coaching data')
+        setOverviewError(ccData.error || 'Failed to load coaching data')
       }
+      if (repData?.ok) setReporting(repData)
     } catch (e: any) {
       setOverviewError(e?.message || 'Connection error')
     } finally {
@@ -126,38 +393,20 @@ export default function CoachingPage() {
       const res = await proxyFetch('/v1/assignments?limit=40', { cache: 'no-store' })
       const data = await res.json()
       setAssignments(data.assignments ?? data.items ?? [])
-    } catch (e: any) {
-      console.error('coaching assignments load failed', e)
-      setAssignments([])
-    } finally {
-      setAssignmentsLoading(false)
-    }
+    } catch { setAssignments([]) } finally { setAssignmentsLoading(false) }
   }, [])
 
   const loadReplay = useCallback(async () => {
     setReplayLoading(true)
     try {
-      const res = await proxyFetch('/v1/calls/paged?limit=50&scope=company', {
-        cache: 'no-store',
-      })
+      const res = await proxyFetch('/v1/calls/paged?limit=50&scope=company', { cache: 'no-store' })
       const data = await res.json()
       const rawCalls: CallItem[] = data.calls ?? data.items ?? []
-      const scored = rawCalls
-        .filter((c) => typeof c.score_overall === 'number')
-        .sort((a, b) => (a.score_overall ?? 999) - (b.score_overall ?? 999))
-      setCalls(scored)
-    } catch (e: any) {
-      console.error('coaching replay load failed', e)
-      setCalls([])
-    } finally {
-      setReplayLoading(false)
-    }
+      setCalls(rawCalls.filter(c => typeof c.score_overall === 'number').sort((a, b) => (a.score_overall ?? 999) - (b.score_overall ?? 999)))
+    } catch { setCalls([]) } finally { setReplayLoading(false) }
   }, [])
 
-  useEffect(() => {
-    loadOverview()
-  }, [loadOverview])
-
+  useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -174,25 +423,31 @@ export default function CoachingPage() {
 
   const thresholdNum = Number(replayThreshold)
   const filteredCalls = calls.filter((c) => (c.score_overall ?? 999) < thresholdNum)
+  const filteredReps = repFilter === 'all' ? reps : reps.filter(r => (r.risk_band ?? '') === repFilter)
+  const topReps = reps.slice(0, 5)
+
+  const weaknessData = useMemo(() => Array.from(
+    reps.reduce((acc, rep) => {
+      collectRepReasons(rep).forEach(r => { if (r) acc.set(r, (acc.get(r) ?? 0) + 1) })
+      return acc
+    }, new Map<string, number>())
+  ).sort((a, b) => b[1] - a[1]).slice(0, 6), [reps])
+
+  const totalWeaknessCount = useMemo(() => weaknessData.reduce((s, [, c]) => s + c, 0), [weaknessData])
+
+  const reportingByRep = useMemo(() => new Map(
+    (reporting?.reps_needing_help ?? []).map(r => [String(r.rep_id), r])
+  ), [reporting])
+
+  const aiSummary = useMemo(() => generateAiSummary(reps, headline, weaknessData), [reps, headline, weaknessData])
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
           <h1 className="mt-0.5 text-xl font-semibold text-white">Command Centre</h1>
-          <p className="mt-0.5 text-sm text-neutral-400">
-            Rep interventions · Assignment queue · Replay review
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/crm/manager/control-centre"
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
-          >
-            Full Control Centre →
-          </Link>
+          <p className="mt-0.5 text-sm text-neutral-400">Rep interventions · Assignment queue · Replay review</p>
         </div>
       </div>
 
@@ -208,161 +463,365 @@ export default function CoachingPage() {
 
       {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
-        <div className="space-y-4">
-          {/* KPI strip */}
-          {headline && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard
-                label="At Risk"
-                value={headline.reps_at_risk ?? 0}
-                subtext="reps"
-                variant="danger"
-              />
-              <StatCard
-                label="Watch"
-                value={headline.reps_watch ?? 0}
-                subtext="reps"
-                variant="warning"
-              />
-              <StatCard
-                label="Overdue"
-                value={headline.overdue_actions_total ?? 0}
-                subtext="tasks"
-              />
-              <StatCard
-                label="Open"
-                value={headline.open_actions_total ?? 0}
-                subtext="actions"
-              />
-            </div>
+        <div className="space-y-5">
+          {overviewLoading && <LoadingText text="Loading coaching intelligence…" />}
+          {overviewError && !overviewLoading && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 text-sm text-red-300">{overviewError}</div>
           )}
 
-          {/* Needs Attention Now */}
-          {!overviewLoading && reps.filter(r => r.risk_band === 'at_risk' || (r.counts?.overdue ?? 0) > 0).length > 0 && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-red-400">Needs Attention Now</div>
-              <div className="flex flex-wrap gap-2">
-                {reps
-                  .filter(r => r.risk_band === 'at_risk' || (r.counts?.overdue ?? 0) > 0)
-                  .map((rep) => (
-                    <Link
-                      key={rep.rep_id}
-                      href={`/reps/${rep.rep_id}`}
-                      className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 hover:bg-red-500/20 transition-colors"
-                    >
-                      <span className="font-medium">{rep.rep_name}</span>
-                      {(rep.counts?.overdue ?? 0) > 0 && (
-                        <span className="text-red-400">{rep.counts?.overdue} overdue</span>
-                      )}
-                    </Link>
-                  ))}
+          {!overviewLoading && !overviewError && (
+            <>
+              {/* Part 6 — AI Manager Summary */}
+              <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-400 font-medium">AI Manager Summary</span>
+                  <span className="text-[10px] text-neutral-600">· {reps.length} reps analysed</span>
+                </div>
+                <p className="text-sm text-neutral-200 leading-relaxed">{aiSummary}</p>
               </div>
-            </div>
-          )}
 
-          {/* Rep coaching queue */}
-          <div className="rounded-xl border border-neutral-800 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-              <div className="text-sm font-medium text-white">Rep Coaching Queue</div>
-              <span className="text-xs text-neutral-500">{reps.length} reps</span>
-            </div>
+              {/* 8 KPI cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard label="At Risk" value={headline?.reps_at_risk ?? 0} subtext="reps" variant="danger" />
+                <StatCard label="Watch" value={headline?.reps_watch ?? 0} subtext="reps" variant="warning" />
+                <StatCard label="Overdue Actions" value={headline?.overdue_actions_total ?? 0} variant={(headline?.overdue_actions_total ?? 0) > 0 ? 'danger' : 'default'} />
+                <StatCard label="Open Actions" value={headline?.open_actions_total ?? 0} />
+                <StatCard label="Critical Today" value={reporting?.critical_calls_today ?? 0} variant={(reporting?.critical_calls_today ?? 0) > 0 ? 'danger' : 'default'} />
+                <StatCard label="Flagged 7d" value={reporting?.flagged_calls_this_week ?? 0} variant={(reporting?.flagged_calls_this_week ?? 0) > 0 ? 'warning' : 'default'} />
+                <StatCard label="Auto Assignments" value={reporting?.auto_assignments_created ?? 0} variant="info" />
+                <StatCard label="Reps Tracked" value={headline?.reps_total ?? reps.length} />
+              </div>
 
-            {overviewLoading && <LoadingText text="Loading rep data…" />}
-            {overviewError && !overviewLoading && (
-              <div className="px-4 py-5 text-sm text-red-400">{overviewError}</div>
-            )}
-            {!overviewLoading && !overviewError && reps.length === 0 && (
-              <EmptyRow message="No rep risk data available." />
-            )}
+              {/* 3-column intelligence grid */}
+              <div className="grid gap-4 xl:grid-cols-3">
 
-            {!overviewLoading &&
-              reps.map((rep) => (
-                <div
-                  key={rep.rep_id}
-                  className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 last:border-0 hover:bg-neutral-900/40 transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link
-                        href={`/reps/${rep.rep_id}`}
-                        className="text-sm font-medium text-white hover:underline"
-                      >
-                        {rep.rep_name}
-                      </Link>
-                      {rep.risk_band && <RiskBadge band={rep.risk_band} />}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
-                      {(rep.counts?.overdue ?? 0) > 0 && (
-                        <span className="text-red-400">{rep.counts?.overdue} overdue</span>
-                      )}
-                      <span>{rep.counts?.open ?? 0} open</span>
-                      {rep.counts?.completed_today ? (
-                        <span className="text-emerald-400">
-                          {rep.counts.completed_today} done today
-                        </span>
-                      ) : null}
-                    </div>
-                    {Array.isArray(rep.reasons) && rep.reasons.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {rep.reasons.slice(0, 3).map((r) => (
-                          <span
-                            key={r}
-                            className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400"
-                          >
-                            {normaliseReason(r)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                {/* Part 1 + 4 — Who needs help? */}
+                <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                  <div className="border-b border-neutral-800 px-4 py-3">
+                    <div className="text-sm font-semibold text-neutral-100">1. Who needs help?</div>
+                    <div className="text-xs text-neutral-500">Top reps to coach right now, ranked by urgency.</div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Link
-                      href={`/reps/${rep.rep_id}`}
-                      className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
-                    >
-                      Profile
-                    </Link>
-                    <Link
-                      href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`}
-                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-                    >
-                      Actions
-                    </Link>
+                  <div className="flex-1 p-3 space-y-2">
+                    {topReps.length === 0 ? (
+                      <div className="px-2 py-4 text-sm text-neutral-400">No reps need intervention right now.</div>
+                    ) : topReps.map((rep) => {
+                      const overdue = Number(rep.counts?.overdue ?? 0)
+                      const open = Number(rep.counts?.open ?? 0)
+                      const repRow = reportingByRep.get(rep.rep_id)
+                      const flagged = Number(repRow?.flagged_calls ?? rep.meta?.flagged_calls ?? 0)
+                      const critical = Number(repRow?.critical_calls ?? rep.meta?.critical_calls ?? 0)
+                      const avgScore = repRow?.avg_score ?? (rep.meta?.avg_score as number | null | undefined) ?? null
+                      const weak = inferWeakestSkill(rep)
+                      const action = recommendManagerAction(rep)
+                      const confidence = getConfidence(rep, critical)
+                      const urgency = getUrgencyState(rep, critical)
+                      const why = getWhyMatters(rep, critical, flagged)
+
+                      return (
+                        <div
+                          key={rep.rep_id}
+                          className={`rounded-lg border border-neutral-800 px-3 py-3 space-y-2 ${URGENCY_LEFT[urgency]} ${URGENCY_BG[urgency]}`}
+                        >
+                          {/* Header row */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link href={`/reps/${rep.rep_id}`} className="text-sm font-medium text-white hover:underline">
+                                {rep.rep_name}
+                              </Link>
+                              {rep.risk_band && <RiskBadge band={rep.risk_band} />}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[10px] font-semibold uppercase tracking-wide ${URGENCY_LABEL_CLS[urgency]}`}>
+                                {URGENCY_LABEL[urgency]}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* AI confidence badge + why block */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[confidence]}`}>
+                              {CONFIDENCE_LABELS[confidence]}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-neutral-400 italic">"{why}"</p>
+
+                          {/* Stats */}
+                          {weak && (
+                            <div className="text-[11px] text-neutral-500">
+                              Weakest: <span className="text-neutral-300">{weak}</span>
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                            {flagged > 0 && <span>Flags: <span className="text-neutral-300">{flagged}</span></span>}
+                            {critical > 0 && <span>Critical: <span className="text-red-300">{critical}</span></span>}
+                            {typeof avgScore === 'number' && <span>Avg: <span className="text-neutral-300">{Math.round(avgScore)}</span></span>}
+                            <span>Overdue: <span className={overdue > 0 ? 'text-red-300' : 'text-neutral-200'}>{overdue}</span></span>
+                            <span>Open: <span className="text-neutral-200">{open}</span></span>
+                          </div>
+
+                          {/* Recommended action */}
+                          <div className="text-xs font-medium text-amber-300">{action}</div>
+
+                          {/* Buttons */}
+                          <div className="flex gap-2 pt-0.5">
+                            <Link href={`/reps/${rep.rep_id}`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                              View rep
+                            </Link>
+                            <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
+                              Open actions
+                            </Link>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              ))}
-          </div>
 
-          {/* Quick nav */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Link
-              href="/admin/assignments"
-              className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
-            >
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500">Manager</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
-                Assignment Manager →
+                {/* Part 2 — What are they bad at? */}
+                <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                  <div className="border-b border-neutral-800 px-4 py-3">
+                    <div className="text-sm font-semibold text-neutral-100">2. What are they bad at?</div>
+                    <div className="text-xs text-neutral-500">Team weakness patterns with trend direction.</div>
+                  </div>
+                  <div className="flex-1 p-4 space-y-3">
+                    {weaknessData.length === 0 ? (
+                      <div className="text-sm text-neutral-400">No recurring patterns detected yet.</div>
+                    ) : weaknessData.map(([label, count]) => {
+                      const trend = mockTrend(count)
+                      const trendCfg = TREND_CONFIG[trend]
+                      const pct = totalWeaknessCount > 0 ? Math.round((count / totalWeaknessCount) * 100) : 0
+
+                      return (
+                        <div key={label} className="space-y-1">
+                          <div className="flex items-center justify-between gap-2 text-sm">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`text-base leading-none ${trendCfg.cls}`}>{trendCfg.arrow}</span>
+                              <span className="text-neutral-200 truncate">{label}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] text-neutral-500">{pct}%</span>
+                              <span className="text-xs font-semibold tabular-nums text-neutral-400">{count}</span>
+                            </div>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${trend === 'rising' ? 'bg-red-400/60' : trend === 'improving' ? 'bg-emerald-400/60' : 'bg-amber-400/60'}`}
+                              style={{ width: `${Math.min(100, Math.max(8, pct * 1.4))}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Part 3 — AI Assignment Engine */}
+                <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                  <div className="border-b border-neutral-800 px-4 py-3">
+                    <div className="text-sm font-semibold text-neutral-100">3. What should I assign?</div>
+                    <div className="text-xs text-neutral-500">AI-reasoned drill recommendations per rep.</div>
+                  </div>
+                  <div className="flex-1 p-3 space-y-2">
+                    {topReps.length === 0 ? (
+                      <div className="px-2 py-4 text-sm text-neutral-400">No assignment recommendations yet.</div>
+                    ) : topReps.map((rep) => {
+                      const repRow = reportingByRep.get(rep.rep_id)
+                      const critical = Number(repRow?.critical_calls ?? rep.meta?.critical_calls ?? 0)
+                      const flagged = Number(repRow?.flagged_calls ?? rep.meta?.flagged_calls ?? 0)
+                      const weak = inferWeakestSkill(rep)
+                      const drill = recommendAssignment(rep)
+                      const reasoning = getAssignmentReasoning(rep, critical, flagged)
+                      const outcome = getExpectedOutcome(weak)
+                      const urgencyStr = getAssignmentUrgency(rep, critical)
+                      const confidence = getConfidence(rep, critical)
+
+                      return (
+                        <div key={rep.rep_id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-neutral-100">{rep.rep_name}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[confidence]}`}>
+                                {confidence === 'high' ? 'High' : confidence === 'medium' ? 'Med' : 'Low'}
+                              </span>
+                              <span className="text-[10px] text-neutral-500 uppercase tracking-wide">{urgencyStr}</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Assign</div>
+                            <div className="text-sm font-semibold text-indigo-300">{drill}</div>
+                          </div>
+
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Why</div>
+                            <div className="text-[11px] text-neutral-400 leading-relaxed">{reasoning}</div>
+                          </div>
+
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Expected Impact</div>
+                            <div className="text-[11px] text-emerald-400/80">{outcome}</div>
+                          </div>
+
+                          <Link
+                            href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`}
+                            className="inline-block rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                          >
+                            Assign drill →
+                          </Link>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
-            </Link>
-            <Link
-              href="/assignments"
-              className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
-            >
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500">Rep View</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
-                My Assignments →
+
+              {/* Part 5 — Coaching Health Timeline */}
+              {reps.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-neutral-200">Coaching Health</span>
+                    <span className="text-xs text-neutral-500">— momentum across all reps</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                    {reps.map((rep) => {
+                      const overdue = Number(rep.counts?.overdue ?? 0)
+                      const open = Number(rep.counts?.open ?? 0)
+                      const doneToday = Number(rep.counts?.completed_today ?? 0)
+                      const trend = getRepTrend(rep)
+                      const momentum = getCoachingMomentum(rep)
+                      const trendCfg = TREND_CONFIG[trend]
+                      const urgency = getUrgencyState(rep, 0)
+
+                      const momentumCls = momentum === 'positive' ? 'text-emerald-400' : momentum === 'negative' ? 'text-red-400' : 'text-neutral-400'
+                      const momentumLabel = momentum === 'positive' ? 'Active' : momentum === 'negative' ? 'Stalled' : 'Idle'
+
+                      return (
+                        <Link
+                          key={rep.rep_id}
+                          href={`/reps/${rep.rep_id}`}
+                          className={`group rounded-lg border border-neutral-800 px-3 py-2.5 hover:bg-neutral-900/50 transition-colors ${URGENCY_LEFT[urgency]}`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-xs font-medium text-white truncate group-hover:text-neutral-200">
+                              {rep.rep_name}
+                            </span>
+                            <span className={`text-sm font-semibold ${trendCfg.cls}`}>{trendCfg.arrow}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+                            <span className={momentumCls}>{momentumLabel}</span>
+                            {overdue > 0 && <span className="text-red-400">{overdue} overdue</span>}
+                            <span className="text-neutral-500">{open} open</span>
+                            {doneToday > 0 && <span className="text-emerald-400">{doneToday} done today</span>}
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Full rep table with band filter */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {(['all', 'at_risk', 'watch', 'healthy'] as RepFilter[]).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setRepFilter(f)}
+                      className={`rounded-xl border px-3 py-1.5 text-xs transition-all ${
+                        repFilter === f
+                          ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                          : 'border-neutral-800 bg-black/30 text-neutral-400 hover:border-neutral-700'
+                      }`}
+                    >
+                      {f === 'all' ? 'All' : f === 'at_risk' ? 'At Risk' : f === 'watch' ? 'Watch' : 'Healthy'}
+                    </button>
+                  ))}
+                  <span className="ml-auto text-xs text-neutral-500">{filteredReps.length} reps</span>
+                </div>
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                  {filteredReps.length === 0 ? (
+                    <EmptyRow message="No reps in this band." />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-800">
+                            <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Rep</th>
+                            <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Weakest Skill</th>
+                            <th className="px-4 py-3 text-right text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Overdue</th>
+                            <th className="px-4 py-3 text-right text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Open</th>
+                            <th className="px-4 py-3 text-right text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Done Today</th>
+                            <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Recommended Action</th>
+                            <th className="px-4 py-3" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-800/50">
+                          {filteredReps.map((rep) => {
+                            const overdue = Number(rep.counts?.overdue ?? 0)
+                            const open = Number(rep.counts?.open ?? 0)
+                            const doneToday = Number(rep.counts?.completed_today ?? 0)
+                            const weak = inferWeakestSkill(rep)
+                            const action = recommendManagerAction(rep)
+                            const reasons = collectRepReasons(rep)
+                            const repRow = reportingByRep.get(rep.rep_id)
+                            const critical = Number(repRow?.critical_calls ?? rep.meta?.critical_calls ?? 0)
+                            const urgency = getUrgencyState(rep, critical)
+
+                            return (
+                              <tr key={rep.rep_id} className={`transition-colors hover:bg-neutral-900/30 ${URGENCY_BG[urgency]}`}>
+                                <td className={`px-4 py-3 ${URGENCY_LEFT[urgency]}`}>
+                                  <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">
+                                    {rep.rep_name}
+                                  </Link>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {rep.risk_band && <RiskBadge band={rep.risk_band} />}
+                                    {reasons.slice(0, 2).map((r, i) => (
+                                      <span key={`${r}-${i}`} className="rounded-full border border-neutral-800 bg-neutral-900/40 px-2 py-0.5 text-[10px] text-neutral-400">{r}</span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-neutral-300">{weak || '—'}</td>
+                                <td className="px-4 py-3 text-right">
+                                  {overdue > 0
+                                    ? <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-300">{overdue}</span>
+                                    : <span className="text-sm text-neutral-400">0</span>}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm text-neutral-300">{open}</td>
+                                <td className="px-4 py-3 text-right">
+                                  {doneToday > 0
+                                    ? <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">{doneToday}</span>
+                                    : <span className="text-sm text-neutral-400">0</span>}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-amber-300/80">{action}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end gap-2">
+                                    <Link
+                                      href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`}
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      Actions
+                                    </Link>
+                                    <Link
+                                      href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`}
+                                      className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                    >
+                                      Assign
+                                    </Link>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
-            </Link>
-            <Link
-              href="/admin/score"
-              className="group rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-4 hover:bg-neutral-800 hover:border-neutral-700 transition-colors"
-            >
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500">Scoring</div>
-              <div className="mt-1 text-sm font-medium text-white group-hover:text-neutral-200">
-                AI Score Review →
-              </div>
-            </Link>
-          </div>
+            </>
+          )}
         </div>
       )}
 
@@ -376,33 +835,25 @@ export default function CoachingPage() {
             count={assignmentsLoading ? undefined : filteredAssignments.length}
             countLabel="assignments"
           />
-
           {assignmentsLoading && <LoadingText text="Loading assignments…" />}
-
           {!assignmentsLoading && filteredAssignments.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
               No {assignmentFilter !== 'all' ? assignmentFilter + ' ' : ''}assignments found.
             </div>
           )}
-
           {!assignmentsLoading && filteredAssignments.length > 0 && (
             <div className="rounded-xl border border-neutral-800 overflow-hidden">
               <div className="divide-y divide-neutral-800/60">
                 {filteredAssignments.map((a) => {
                   const isOverdue = a.due_at && new Date(a.due_at) < new Date()
                   const urgency = (a.meta as any)?.threshold_band || (a.meta as any)?.urgency
-
                   return (
                     <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-white truncate">
-                            {a.title || 'Untitled assignment'}
-                          </span>
+                          <span className="text-sm text-white truncate">{a.title || 'Untitled assignment'}</span>
                           {urgency && (
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${urgencyBadgeClass(urgency)}`}
-                            >
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${urgencyBadgeClass(urgency)}`}>
                               {urgency}
                             </span>
                           )}
@@ -411,17 +862,13 @@ export default function CoachingPage() {
                           <span>{a.type || 'assignment'}</span>
                           {a.due_at && (
                             <span className={isOverdue ? 'text-red-400' : ''}>
-                              {isOverdue ? 'Overdue · ' : 'Due '}
-                              {new Date(a.due_at).toLocaleDateString()}
+                              {isOverdue ? 'Overdue · ' : 'Due '}{new Date(a.due_at).toLocaleDateString()}
                             </span>
                           )}
                         </div>
                       </div>
                       {a.rep_id && (
-                        <Link
-                          href={`/reps/${a.rep_id}`}
-                          className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors"
-                        >
+                        <Link href={`/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors">
                           Rep →
                         </Link>
                       )}
@@ -431,19 +878,11 @@ export default function CoachingPage() {
               </div>
             </div>
           )}
-
           <div className="flex items-center gap-2 pt-1">
-            <Link
-              href="/admin/assignments"
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 transition-colors"
-            >
+            <Link href="/admin/assignments" className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 transition-colors">
               Full Assignment Manager →
             </Link>
-            <button
-              type="button"
-              onClick={loadAssignments}
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors"
-            >
+            <button type="button" onClick={loadAssignments} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
               Refresh
             </button>
           </div>
@@ -463,15 +902,12 @@ export default function CoachingPage() {
               countLabel="calls"
             />
           </div>
-
           {replayLoading && <LoadingText text="Loading calls…" />}
-
           {!replayLoading && filteredCalls.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
               No scored calls below {replayThreshold} found.
             </div>
           )}
-
           {!replayLoading && filteredCalls.length > 0 && (
             <div className="rounded-xl border border-neutral-800 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
@@ -481,17 +917,11 @@ export default function CoachingPage() {
               <div className="divide-y divide-neutral-800/60">
                 {filteredCalls.slice(0, 30).map((call) => {
                   const hasFlags = Array.isArray(call.flags) && call.flags.length > 0
-
                   return (
-                    <div
-                      key={call.id}
-                      className="px-4 py-3 flex items-center justify-between gap-4"
-                    >
+                    <div key={call.id} className="px-4 py-3 flex items-center justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-white truncate">
-                            {call.filename || `Call ${call.id.slice(0, 8)}…`}
-                          </span>
+                          <span className="text-sm text-white truncate">{call.filename || `Call ${call.id.slice(0, 8)}…`}</span>
                           {hasFlags && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 uppercase tracking-wide font-semibold shrink-0">
                               Flagged
@@ -499,15 +929,11 @@ export default function CoachingPage() {
                           )}
                         </div>
                         <div className="mt-0.5 text-xs text-neutral-500">
-                          {call.rep_name || 'Unknown rep'} ·{' '}
-                          {new Date(call.created_at).toLocaleDateString()}
+                          {call.rep_name || 'Unknown rep'} · {new Date(call.created_at).toLocaleDateString()}
                         </div>
                       </div>
                       <ScorePill score={call.score_overall} className="shrink-0" />
-                      <Link
-                        href={`/calls/${call.id}`}
-                        className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors"
-                      >
+                      <Link href={`/calls/${call.id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors">
                         Review →
                       </Link>
                     </div>
@@ -516,19 +942,11 @@ export default function CoachingPage() {
               </div>
             </div>
           )}
-
           <div className="flex items-center gap-2 pt-1">
-            <Link
-              href="/call-library"
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 transition-colors"
-            >
+            <Link href="/call-library" className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 transition-colors">
               Full Call Library →
             </Link>
-            <button
-              type="button"
-              onClick={loadReplay}
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors"
-            >
+            <button type="button" onClick={loadReplay} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
               Refresh
             </button>
           </div>
