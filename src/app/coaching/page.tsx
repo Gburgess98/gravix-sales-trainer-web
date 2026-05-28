@@ -10,11 +10,13 @@ import { EmptyRow } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
 
-type CoachingTab = 'overview' | 'assignments' | 'replay'
+type CoachingTab = 'overview' | 'interventions' | 'assignments' | 'replay'
 type RepFilter = 'all' | 'at_risk' | 'watch' | 'healthy'
 type ConfidenceLevel = 'high' | 'medium' | 'low'
-type UrgencyState = 'critical' | 'high' | 'watch' | 'healthy'
+type UrgencyState = 'escalated' | 'critical' | 'high' | 'watch' | 'healthy'
 type TrendDirection = 'rising' | 'stable' | 'improving'
+type OutcomePrediction = 'improving' | 'recovering' | 'stable' | 'at_risk' | 'escalating'
+type EffectivenessState = 'improving' | 'stable' | 'deteriorating'
 
 type RepRisk = {
   rep_id: string
@@ -98,49 +100,67 @@ const REPLAY_THRESHOLDS: FilterOption<ReplayThreshold>[] = [
 // ── Design system maps ────────────────────────────────────────────────────────
 
 const CONFIDENCE_STYLES: Record<ConfidenceLevel, string> = {
-  high: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  high:   'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
   medium: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  low: 'border-neutral-700 bg-neutral-900/60 text-neutral-400',
+  low:    'border-neutral-700 bg-neutral-900/60 text-neutral-400',
 }
 
 const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
-  high: 'High Confidence',
+  high:   'High Confidence',
   medium: 'Medium Confidence',
-  low: 'Low Confidence',
+  low:    'Low Confidence',
 }
 
 const URGENCY_LEFT: Record<UrgencyState, string> = {
-  critical: 'border-l-[3px] border-l-red-500',
-  high:     'border-l-[3px] border-l-amber-500',
-  watch:    'border-l-[3px] border-l-cyan-500/50',
-  healthy:  'border-l-[3px] border-l-emerald-500/30',
+  escalated: 'border-l-[3px] border-l-red-300',
+  critical:  'border-l-[3px] border-l-red-500',
+  high:      'border-l-[3px] border-l-amber-500',
+  watch:     'border-l-[3px] border-l-cyan-500/50',
+  healthy:   'border-l-[3px] border-l-emerald-500/30',
 }
 
 const URGENCY_BG: Record<UrgencyState, string> = {
-  critical: 'bg-red-500/[0.04]',
-  high:     'bg-amber-500/[0.04]',
-  watch:    'bg-neutral-950',
-  healthy:  'bg-neutral-950',
+  escalated: 'bg-red-500/[0.07]',
+  critical:  'bg-red-500/[0.04]',
+  high:      'bg-amber-500/[0.04]',
+  watch:     'bg-neutral-950',
+  healthy:   'bg-neutral-950',
 }
 
 const URGENCY_LABEL: Record<UrgencyState, string> = {
-  critical: 'Critical',
-  high:     'High Priority',
-  watch:    'Watch',
-  healthy:  'Healthy',
+  escalated: 'Escalated',
+  critical:  'Critical',
+  high:      'High Priority',
+  watch:     'Watch',
+  healthy:   'Healthy',
 }
 
 const URGENCY_LABEL_CLS: Record<UrgencyState, string> = {
-  critical: 'text-red-400',
-  high:     'text-amber-400',
-  watch:    'text-cyan-400',
-  healthy:  'text-emerald-400',
+  escalated: 'text-red-300',
+  critical:  'text-red-400',
+  high:      'text-amber-400',
+  watch:     'text-cyan-400',
+  healthy:   'text-emerald-400',
 }
 
 const TREND_CONFIG: Record<TrendDirection, { arrow: string; cls: string }> = {
   rising:    { arrow: '↑', cls: 'text-red-400' },
   stable:    { arrow: '→', cls: 'text-neutral-400' },
   improving: { arrow: '↓', cls: 'text-emerald-400' },
+}
+
+const OUTCOME_CONFIG: Record<OutcomePrediction, { label: string; cls: string }> = {
+  improving:  { label: 'Likely to improve',   cls: 'text-emerald-400' },
+  recovering: { label: 'Momentum recovering', cls: 'text-cyan-400' },
+  stable:     { label: 'Holding steady',      cls: 'text-neutral-400' },
+  at_risk:    { label: 'Needs escalation',    cls: 'text-amber-400' },
+  escalating: { label: 'High coaching risk',  cls: 'text-red-400' },
+}
+
+const EFFECTIVENESS_CONFIG: Record<EffectivenessState, { label: string; cls: string }> = {
+  improving:    { label: '↑ Improving',     cls: 'text-emerald-400' },
+  stable:       { label: '→ Stable',        cls: 'text-neutral-400' },
+  deteriorating:{ label: '↓ Deteriorating', cls: 'text-red-400' },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -230,8 +250,6 @@ function recommendAssignment(rep: RepRisk): string {
   return 'Review last 3 calls + feedback summary'
 }
 
-// ── Part 1: AI confidence ─────────────────────────────────────────────────────
-
 function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
   const overdue = Number(rep.counts?.overdue ?? 0)
   if (overdue > 0 || critical > 0) return 'high'
@@ -255,25 +273,20 @@ function getWhyMatters(rep: RepRisk, critical: number, flagged: number): string 
   return 'Below team performance baseline'
 }
 
-// ── Part 4: Urgency hierarchy ─────────────────────────────────────────────────
-
 function getUrgencyState(rep: RepRisk, critical: number): UrgencyState {
   const overdue = Number(rep.counts?.overdue ?? 0)
+  if (overdue > 2 && critical > 0) return 'escalated'
   if (overdue > 0 || critical > 0) return 'critical'
   if (rep.risk_band === 'at_risk') return 'high'
   if (rep.risk_band === 'watch') return 'watch'
   return 'healthy'
 }
 
-// ── Part 2: Weakness trends ───────────────────────────────────────────────────
-
 function mockTrend(count: number): TrendDirection {
   if (count >= 3) return 'rising'
   if (count === 1) return 'improving'
   return 'stable'
 }
-
-// ── Part 3: Assignment reasoning ─────────────────────────────────────────────
 
 function getAssignmentReasoning(rep: RepRisk, critical: number, flagged: number): string {
   const overdue = Number(rep.counts?.overdue ?? 0)
@@ -302,8 +315,6 @@ function getAssignmentUrgency(rep: RepRisk, critical: number): string {
   return 'Next session'
 }
 
-// ── Part 5: Health timeline ───────────────────────────────────────────────────
-
 function getCoachingMomentum(rep: RepRisk): 'positive' | 'neutral' | 'negative' {
   const overdue = Number(rep.counts?.overdue ?? 0)
   const doneToday = Number(rep.counts?.completed_today ?? 0)
@@ -320,20 +331,103 @@ function getRepTrend(rep: RepRisk): TrendDirection {
   return 'stable'
 }
 
-// ── Part 6: AI summary ────────────────────────────────────────────────────────
+// ── Day 78: Compliance + Outcome + Effectiveness ──────────────────────────────
 
-function generateAiSummary(reps: RepRisk[], headline: Headline | null, weaknessData: [string, number][]): string {
-  const criticalCount = reps.filter(r => Number(r.counts?.overdue ?? 0) > 0).length
+function getComplianceScore(rep: RepRisk): number {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const open = Number(rep.counts?.open ?? 0)
+  const doneToday = Number(rep.counts?.completed_today ?? 0)
+  let score = 70
+  score -= overdue * 15
+  score -= Math.max(0, open - 3) * 4
+  score += doneToday * 8
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function getOutcomePrediction(rep: RepRisk, critical: number): OutcomePrediction {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const doneToday = Number(rep.counts?.completed_today ?? 0)
+  const compliance = getComplianceScore(rep)
+  if (overdue > 2 || (critical > 1 && overdue > 0)) return 'escalating'
+  if (overdue > 0 || critical > 0) return 'at_risk'
+  if (doneToday > 0 && compliance >= 70) return 'improving'
+  if (compliance >= 60) return 'recovering'
+  return 'stable'
+}
+
+function inferReplayTarget(rep: RepRisk): string {
+  const weak = inferWeakestSkill(rep)
+  if (weak === 'Objection handling') return 'Review objection handling calls'
+  if (weak === 'Closing') return 'Replay last 2 weak close attempts'
+  if (weak === 'Discovery') return 'Review discovery phase calls'
+  if (weak === 'Price handling') return 'Replay price objection scenarios'
+  if (weak === 'Intro') return 'Review opening pitch calls'
+  return 'Review lowest scored call this week'
+}
+
+function inferSparringDrill(rep: RepRisk): string {
+  const weak = inferWeakestSkill(rep)
+  if (weak === 'Objection handling') return 'Live objection response sparring'
+  if (weak === 'Closing') return 'Closing sequence role-play'
+  if (weak === 'Discovery') return 'Discovery conversation drill'
+  if (weak === 'Price handling') return 'Price negotiation sparring'
+  if (weak === 'Intro') return 'Opening pitch sparring'
+  return 'Full call simulation'
+}
+
+function getAssignmentEffectiveness(rep: RepRisk): EffectivenessState {
+  const overdue = Number(rep.counts?.overdue ?? 0)
+  const doneToday = Number(rep.counts?.completed_today ?? 0)
+  if (doneToday > 0 && overdue === 0) return 'improving'
+  if (overdue > 1) return 'deteriorating'
+  return 'stable'
+}
+
+// ── Manager Briefing ──────────────────────────────────────────────────────────
+
+function generateManagerBriefing(
+  reps: RepRisk[],
+  headline: Headline | null,
+  weaknessData: [string, number][],
+  reporting: Reporting | null,
+): string[] {
+  const escalatedReps = reps.filter(r => Number(r.counts?.overdue ?? 0) > 2)
+  const criticalReps = reps.filter(r => Number(r.counts?.overdue ?? 0) > 0)
+  const nonEscalatedCritical = criticalReps.length - escalatedReps.length
   const atRisk = Number(headline?.reps_at_risk ?? 0)
   const topWeakness = weaknessData[0]?.[0]
+  const secondWeakness = weaknessData[1]?.[0]
   const overdue = Number(headline?.overdue_actions_total ?? 0)
-  const parts: string[] = []
-  if (criticalCount > 0) parts.push(`${criticalCount} rep${criticalCount !== 1 ? 's' : ''} require${criticalCount === 1 ? 's' : ''} immediate intervention`)
-  if (atRisk > 0) parts.push(`${atRisk} rep${atRisk !== 1 ? 's' : ''} trending toward risk`)
-  if (topWeakness) parts.push(`${topWeakness} is the leading team weakness`)
-  if (overdue > 0) parts.push(`${overdue} overdue action${overdue !== 1 ? 's' : ''} need escalation`)
-  if (parts.length === 0) return 'All reps on track. No immediate interventions required.'
-  return parts.join('. ') + '.'
+  const completionRate = reporting?.assignment_completion_rate ?? null
+  const bullets: string[] = []
+
+  if (escalatedReps.length > 0) {
+    bullets.push(`${escalatedReps.length} rep${escalatedReps.length !== 1 ? 's' : ''} escalating toward critical — immediate manager intervention required.`)
+  }
+  if (nonEscalatedCritical > 0) {
+    bullets.push(`${nonEscalatedCritical} rep${nonEscalatedCritical !== 1 ? 's' : ''} with overdue actions — coaching queue being ignored.`)
+  }
+  if (atRisk > 0) {
+    bullets.push(`${atRisk} rep${atRisk !== 1 ? 's' : ''} trending toward risk this week.`)
+  }
+  if (topWeakness) {
+    const count = weaknessData[0][1]
+    bullets.push(`${topWeakness} is the leading team weakness — ${count} rep${count !== 1 ? 's' : ''} affected.`)
+  }
+  if (secondWeakness && weaknessData[1][1] >= 2) {
+    bullets.push(`${secondWeakness} patterns emerging as secondary weakness.`)
+  }
+  if (overdue > 0) {
+    bullets.push(`${overdue} overdue action${overdue !== 1 ? 's' : ''} require escalation today.`)
+  }
+  if (completionRate !== null) {
+    const pct = Math.round(completionRate * 100)
+    bullets.push(`Assignment completion rate: ${pct}%${pct >= 70 ? ' — above target' : pct >= 50 ? ' — below target' : ' — critical'}.`)
+  }
+  if (bullets.length === 0) {
+    bullets.push('All reps on track. No immediate interventions required.')
+  }
+  return bullets
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -439,7 +533,34 @@ export default function CoachingPage() {
     (reporting?.reps_needing_help ?? []).map(r => [String(r.rep_id), r])
   ), [reporting])
 
-  const aiSummary = useMemo(() => generateAiSummary(reps, headline, weaknessData), [reps, headline, weaknessData])
+  const managerBriefing = useMemo(
+    () => generateManagerBriefing(reps, headline, weaknessData, reporting),
+    [reps, headline, weaknessData, reporting]
+  )
+
+  const URGENCY_ORDER: Record<UrgencyState, number> = { escalated: 0, critical: 1, high: 2, watch: 3, healthy: 4 }
+
+  const interventionQueue = useMemo(() => [...reps].map(rep => {
+    const repRow = reportingByRep.get(rep.rep_id)
+    const critical = Number(repRow?.critical_calls ?? rep.meta?.critical_calls ?? 0)
+    const flagged = Number(repRow?.flagged_calls ?? rep.meta?.flagged_calls ?? 0)
+    const urgency = getUrgencyState(rep, critical)
+    const compliance = getComplianceScore(rep)
+    const prediction = getOutcomePrediction(rep, critical)
+    const effectiveness = getAssignmentEffectiveness(rep)
+    const weak = inferWeakestSkill(rep)
+    const action = recommendManagerAction(rep)
+    return { rep, urgency, compliance, prediction, effectiveness, weak, action, critical, flagged }
+  }).sort((a, b) => {
+    const uo = URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency]
+    if (uo !== 0) return uo
+    return a.compliance - b.compliance
+  }), [reps, reportingByRep]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const interventionCount = useMemo(
+    () => interventionQueue.filter(({ urgency }) => urgency === 'escalated' || urgency === 'critical').length,
+    [interventionQueue]
+  )
 
   return (
     <div className="p-6">
@@ -454,6 +575,7 @@ export default function CoachingPage() {
       <WorkspaceTabs
         tabs={[
           { id: 'overview', label: 'Overview', badge: headline?.reps_at_risk || undefined },
+          { id: 'interventions', label: 'Interventions', badge: interventionCount || undefined },
           { id: 'assignments', label: 'Assignments' },
           { id: 'replay', label: 'Replay Queue' },
         ]}
@@ -471,13 +593,20 @@ export default function CoachingPage() {
 
           {!overviewLoading && !overviewError && (
             <>
-              {/* Part 6 — AI Manager Summary */}
+              {/* Manager Briefing */}
               <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-400 font-medium">AI Manager Summary</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-400 font-medium">AI Manager Briefing</span>
                   <span className="text-[10px] text-neutral-600">· {reps.length} reps analysed</span>
                 </div>
-                <p className="text-sm text-neutral-200 leading-relaxed">{aiSummary}</p>
+                <ul className="space-y-1">
+                  {managerBriefing.map((bullet, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-neutral-200 leading-relaxed">
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-fuchsia-400/60" />
+                      {bullet}
+                    </li>
+                  ))}
+                </ul>
               </div>
 
               {/* 8 KPI cards */}
@@ -495,11 +624,11 @@ export default function CoachingPage() {
               {/* 3-column intelligence grid */}
               <div className="grid gap-4 xl:grid-cols-3">
 
-                {/* Part 1 + 4 — Who needs help? */}
+                {/* Col 1 — Who needs help? */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
                     <div className="text-sm font-semibold text-neutral-100">1. Who needs help?</div>
-                    <div className="text-xs text-neutral-500">Top reps to coach right now, ranked by urgency.</div>
+                    <div className="text-xs text-neutral-500">Ranked by urgency with outcome prediction.</div>
                   </div>
                   <div className="flex-1 p-3 space-y-2">
                     {topReps.length === 0 ? (
@@ -516,13 +645,15 @@ export default function CoachingPage() {
                       const confidence = getConfidence(rep, critical)
                       const urgency = getUrgencyState(rep, critical)
                       const why = getWhyMatters(rep, critical, flagged)
+                      const compliance = getComplianceScore(rep)
+                      const prediction = getOutcomePrediction(rep, critical)
+                      const outcomeCfg = OUTCOME_CONFIG[prediction]
 
                       return (
                         <div
                           key={rep.rep_id}
                           className={`rounded-lg border border-neutral-800 px-3 py-3 space-y-2 ${URGENCY_LEFT[urgency]} ${URGENCY_BG[urgency]}`}
                         >
-                          {/* Header row */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">
                               <Link href={`/reps/${rep.rep_id}`} className="text-sm font-medium text-white hover:underline">
@@ -530,22 +661,23 @@ export default function CoachingPage() {
                               </Link>
                               {rep.risk_band && <RiskBadge band={rep.risk_band} />}
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`text-[10px] font-semibold uppercase tracking-wide ${URGENCY_LABEL_CLS[urgency]}`}>
-                                {URGENCY_LABEL[urgency]}
-                              </span>
-                            </div>
+                            <span className={`text-[10px] font-semibold uppercase tracking-wide shrink-0 ${URGENCY_LABEL_CLS[urgency]}`}>
+                              {URGENCY_LABEL[urgency]}
+                            </span>
                           </div>
 
-                          {/* AI confidence badge + why block */}
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[confidence]}`}>
                               {CONFIDENCE_LABELS[confidence]}
                             </span>
+                            <span className="text-[10px] text-neutral-500">
+                              Compliance: <span className={compliance >= 70 ? 'text-emerald-400' : compliance >= 50 ? 'text-amber-400' : 'text-red-400'}>{compliance}</span>
+                            </span>
                           </div>
-                          <p className="text-[11px] text-neutral-400 italic">"{why}"</p>
 
-                          {/* Stats */}
+                          <p className="text-[11px] text-neutral-400 italic">"{why}"</p>
+                          <div className={`text-[11px] font-medium ${outcomeCfg.cls}`}>{outcomeCfg.label}</div>
+
                           {weak && (
                             <div className="text-[11px] text-neutral-500">
                               Weakest: <span className="text-neutral-300">{weak}</span>
@@ -559,10 +691,8 @@ export default function CoachingPage() {
                             <span>Open: <span className="text-neutral-200">{open}</span></span>
                           </div>
 
-                          {/* Recommended action */}
                           <div className="text-xs font-medium text-amber-300">{action}</div>
 
-                          {/* Buttons */}
                           <div className="flex gap-2 pt-0.5">
                             <Link href={`/reps/${rep.rep_id}`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
                               View rep
@@ -577,7 +707,7 @@ export default function CoachingPage() {
                   </div>
                 </div>
 
-                {/* Part 2 — What are they bad at? */}
+                {/* Col 2 — What are they bad at? */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
                     <div className="text-sm font-semibold text-neutral-100">2. What are they bad at?</div>
@@ -615,21 +745,23 @@ export default function CoachingPage() {
                   </div>
                 </div>
 
-                {/* Part 3 — AI Assignment Engine */}
+                {/* Col 3 — Coaching Plans */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
-                    <div className="text-sm font-semibold text-neutral-100">3. What should I assign?</div>
-                    <div className="text-xs text-neutral-500">AI-reasoned drill recommendations per rep.</div>
+                    <div className="text-sm font-semibold text-neutral-100">3. Coaching Plans</div>
+                    <div className="text-xs text-neutral-500">AI-generated: drill · replay · sparring per rep.</div>
                   </div>
                   <div className="flex-1 p-3 space-y-2">
                     {topReps.length === 0 ? (
-                      <div className="px-2 py-4 text-sm text-neutral-400">No assignment recommendations yet.</div>
+                      <div className="px-2 py-4 text-sm text-neutral-400">No coaching plans generated yet.</div>
                     ) : topReps.map((rep) => {
                       const repRow = reportingByRep.get(rep.rep_id)
                       const critical = Number(repRow?.critical_calls ?? rep.meta?.critical_calls ?? 0)
                       const flagged = Number(repRow?.flagged_calls ?? rep.meta?.flagged_calls ?? 0)
                       const weak = inferWeakestSkill(rep)
                       const drill = recommendAssignment(rep)
+                      const replay = inferReplayTarget(rep)
+                      const sparring = inferSparringDrill(rep)
                       const reasoning = getAssignmentReasoning(rep, critical, flagged)
                       const outcome = getExpectedOutcome(weak)
                       const urgencyStr = getAssignmentUrgency(rep, critical)
@@ -639,7 +771,7 @@ export default function CoachingPage() {
                         <div key={rep.rep_id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-3 space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium text-neutral-100">{rep.rep_name}</span>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[confidence]}`}>
                                 {confidence === 'high' ? 'High' : confidence === 'medium' ? 'Med' : 'Low'}
                               </span>
@@ -647,19 +779,27 @@ export default function CoachingPage() {
                             </div>
                           </div>
 
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Assign</div>
-                            <div className="text-sm font-semibold text-indigo-300">{drill}</div>
-                          </div>
-
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Why</div>
-                            <div className="text-[11px] text-neutral-400 leading-relaxed">{reasoning}</div>
-                          </div>
-
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Expected Impact</div>
-                            <div className="text-[11px] text-emerald-400/80">{outcome}</div>
+                          <div className="space-y-1.5">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Drill</div>
+                              <div className="text-sm font-semibold text-indigo-300">{drill}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Replay</div>
+                              <div className="text-[11px] text-cyan-300/80">{replay}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Sparring</div>
+                              <div className="text-[11px] text-fuchsia-300/80">{sparring}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Why</div>
+                              <div className="text-[11px] text-neutral-400 leading-relaxed">{reasoning}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Expected Impact</div>
+                              <div className="text-[11px] text-emerald-400/80">{outcome}</div>
+                            </div>
                           </div>
 
                           <Link
@@ -675,7 +815,7 @@ export default function CoachingPage() {
                 </div>
               </div>
 
-              {/* Part 5 — Coaching Health Timeline */}
+              {/* Coaching Health Timeline */}
               {reps.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -691,7 +831,6 @@ export default function CoachingPage() {
                       const momentum = getCoachingMomentum(rep)
                       const trendCfg = TREND_CONFIG[trend]
                       const urgency = getUrgencyState(rep, 0)
-
                       const momentumCls = momentum === 'positive' ? 'text-emerald-400' : momentum === 'negative' ? 'text-red-400' : 'text-neutral-400'
                       const momentumLabel = momentum === 'positive' ? 'Active' : momentum === 'negative' ? 'Stalled' : 'Idle'
 
@@ -702,9 +841,7 @@ export default function CoachingPage() {
                           className={`group rounded-lg border border-neutral-800 px-3 py-2.5 hover:bg-neutral-900/50 transition-colors ${URGENCY_LEFT[urgency]}`}
                         >
                           <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <span className="text-xs font-medium text-white truncate group-hover:text-neutral-200">
-                              {rep.rep_name}
-                            </span>
+                            <span className="text-xs font-medium text-white truncate group-hover:text-neutral-200">{rep.rep_name}</span>
                             <span className={`text-sm font-semibold ${trendCfg.cls}`}>{trendCfg.arrow}</span>
                           </div>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
@@ -720,7 +857,7 @@ export default function CoachingPage() {
                 </div>
               )}
 
-              {/* Full rep table with band filter */}
+              {/* Full rep table */}
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   {(['all', 'at_risk', 'watch', 'healthy'] as RepFilter[]).map((f) => (
@@ -772,9 +909,7 @@ export default function CoachingPage() {
                             return (
                               <tr key={rep.rep_id} className={`transition-colors hover:bg-neutral-900/30 ${URGENCY_BG[urgency]}`}>
                                 <td className={`px-4 py-3 ${URGENCY_LEFT[urgency]}`}>
-                                  <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">
-                                    {rep.rep_name}
-                                  </Link>
+                                  <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
                                   <div className="mt-1 flex flex-wrap gap-1">
                                     {rep.risk_band && <RiskBadge band={rep.risk_band} />}
                                     {reasons.slice(0, 2).map((r, i) => (
@@ -797,16 +932,10 @@ export default function CoachingPage() {
                                 <td className="px-4 py-3 text-xs text-amber-300/80">{action}</td>
                                 <td className="px-4 py-3">
                                   <div className="flex justify-end gap-2">
-                                    <Link
-                                      href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`}
-                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
-                                    >
+                                    <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
                                       Actions
                                     </Link>
-                                    <Link
-                                      href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`}
-                                      className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
-                                    >
+                                    <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
                                       Assign
                                     </Link>
                                   </div>
@@ -820,6 +949,88 @@ export default function CoachingPage() {
                   )}
                 </div>
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── INTERVENTIONS ── */}
+      {tab === 'interventions' && (
+        <div className="space-y-4">
+          {overviewLoading && <LoadingText text="Loading intervention queue…" />}
+          {overviewError && !overviewLoading && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 text-sm text-red-300">{overviewError}</div>
+          )}
+          {!overviewLoading && !overviewError && (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-neutral-100">Intervention Priority Queue</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">Ranked by escalation severity · lowest compliance first.</div>
+                </div>
+                <span className="text-xs text-neutral-500">{interventionQueue.length} reps</span>
+              </div>
+
+              {interventionQueue.length === 0 ? (
+                <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">No reps in intervention queue.</div>
+              ) : (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-neutral-800">
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium w-8">#</th>
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Rep</th>
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Urgency</th>
+                          <th className="px-4 py-3 text-right text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Compliance</th>
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Outcome</th>
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Engagement</th>
+                          <th className="px-4 py-3 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500 font-medium">Next Action</th>
+                          <th className="px-4 py-3" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-800/50">
+                        {interventionQueue.map(({ rep, urgency, compliance, prediction, effectiveness, weak, action }, idx) => {
+                          const outcomeCfg = OUTCOME_CONFIG[prediction]
+                          const effectCfg = EFFECTIVENESS_CONFIG[effectiveness]
+                          return (
+                            <tr key={rep.rep_id} className={`transition-colors hover:bg-neutral-900/30 ${URGENCY_BG[urgency]}`}>
+                              <td className={`px-4 py-3 text-xs text-neutral-500 tabular-nums ${URGENCY_LEFT[urgency]}`}>{idx + 1}</td>
+                              <td className="px-4 py-3">
+                                <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
+                                {weak && <div className="text-[10px] text-neutral-500 mt-0.5">{weak}</div>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`text-xs font-semibold uppercase tracking-wide ${URGENCY_LABEL_CLS[urgency]}`}>
+                                  {URGENCY_LABEL[urgency]}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`text-sm font-semibold tabular-nums ${compliance >= 70 ? 'text-emerald-400' : compliance >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                                  {compliance}
+                                </span>
+                              </td>
+                              <td className={`px-4 py-3 text-xs font-medium ${outcomeCfg.cls}`}>{outcomeCfg.label}</td>
+                              <td className={`px-4 py-3 text-xs font-medium ${effectCfg.cls}`}>{effectCfg.label}</td>
+                              <td className="px-4 py-3 text-xs text-amber-300/80 max-w-[180px]">{action}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex justify-end gap-1.5">
+                                  <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
+                                    Actions
+                                  </Link>
+                                  <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=interventions`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                                    Assign
+                                  </Link>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
