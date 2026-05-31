@@ -13,7 +13,11 @@
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",
-    "test": "echo \"No tests yet\""
+    "test": "echo \"No unit tests yet — use test:e2e for E2E tests\"",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:smoke": "playwright test tests/e2e/smoke.spec.ts",
+    "test:e2e:debug": "playwright test --debug"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
@@ -39,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -54,3 +54,9 @@ dist/
 build/
 .vercel/
 backups/*.zip
+
+# playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/tests/e2e/.auth/
