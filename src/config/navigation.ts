@@ -7,10 +7,7 @@ import {
   ClipboardList,
   Swords,
   Brain,
-  Ear,
-  Radio,
   BarChart2,
-  Plug,
   Settings,
   type LucideIcon,
 } from 'lucide-react'
@@ -76,18 +73,10 @@ export const navigation: NavSection[] = [
     ],
   },
   {
-    title: 'Live',
-    items: [
-      { label: 'Whisperer', href: '/whisperer', icon: Ear },
-      { label: 'Live Calls', href: '/live-calls', icon: Radio },
-    ],
-  },
-  {
     title: 'Admin',
     roles: ['manager'],
     items: [
       { label: 'Analytics', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
-      { label: 'Integrations', href: '/admin/settings', icon: Plug, roles: ['manager'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'] },
     ],
   },

@@ -87,6 +87,8 @@ test.describe('Smoke: coaching workflow critical path', () => {
   test('interventions tab opens without crash', async ({ page }) => {
     await mockAllApiRoutes(page)
     await page.goto('/coaching', { waitUntil: 'domcontentloaded' })
+    // Wait for overview data to hydrate before switching tabs
+    await expect(page.getByText('AI Manager Briefing')).toBeVisible({ timeout: 8000 })
     await page.getByRole('button', { name: 'Interventions' }).click()
     await expectNoPageCrash(page)
     await expect(page.getByText('Intervention Priority Queue')).toBeVisible({ timeout: 8000 })

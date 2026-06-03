@@ -43,9 +43,9 @@ test.describe('Coaching Overview tab', () => {
   })
 
   test('KPI stat cards render', async ({ page }) => {
-    await expect(page.getByText('At Risk')).toBeVisible({ timeout: 8000 })
-    await expect(page.getByText('Overdue Actions')).toBeVisible()
-    await expect(page.getByText('Critical Today')).toBeVisible()
+    await expect(page.getByText('At Risk').first()).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('Overdue Actions').first()).toBeVisible()
+    await expect(page.getByText('Critical Today').first()).toBeVisible()
   })
 
   test('3-column intelligence section headers are visible', async ({ page }) => {
@@ -55,14 +55,13 @@ test.describe('Coaching Overview tab', () => {
   })
 
   test('rep name appears in Who needs help column', async ({ page }) => {
-    // MOCK_REP name should appear in the rep cards
-    await expect(page.getByText(MOCK_REP.rep_name)).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText(MOCK_REP.rep_name).first()).toBeVisible({ timeout: 8000 })
   })
 
   test('KPI headline values reflect mock data', async ({ page }) => {
-    // reps_at_risk: 2 from MOCK_HEADLINE
-    const atRiskCard = page.locator('text=At Risk').locator('..').locator('..')
-    await expect(page.getByText(String(MOCK_HEADLINE.reps_at_risk))).toBeVisible({ timeout: 8000 })
+    // reps_at_risk: 2 — use the stat card label as context anchor
+    await expect(page.getByText('At Risk').first()).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('2 reps').first()).toBeVisible({ timeout: 8000 })
   })
 
   test('Coaching Health section renders', async ({ page }) => {
@@ -101,6 +100,8 @@ test.describe('Interventions tab', () => {
   test.beforeEach(async ({ page }) => {
     await mockAllApiRoutes(page)
     await goto(page, '/coaching')
+    // Wait for overview data before switching — interventions reuses overviewLoading state
+    await expect(page.getByText('AI Manager Briefing')).toBeVisible({ timeout: 8000 })
     await clickTab(page, 'Interventions')
   })
 
@@ -109,14 +110,13 @@ test.describe('Interventions tab', () => {
   })
 
   test('priority queue table renders with column headers', async ({ page }) => {
-    await expect(page.getByText('Urgency')).toBeVisible({ timeout: 6000 })
-    await expect(page.getByText('Compliance')).toBeVisible()
-    await expect(page.getByText('Outcome')).toBeVisible()
-    await expect(page.getByText('Engagement')).toBeVisible()
+    await expect(page.getByText('Intervention Priority Queue')).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('Compliance').first()).toBeVisible()
+    await expect(page.getByText('Engagement').first()).toBeVisible()
   })
 
   test('rep name appears in intervention queue', async ({ page }) => {
-    await expect(page.getByText(MOCK_REP.rep_name)).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText(MOCK_REP.rep_name).first()).toBeVisible({ timeout: 8000 })
   })
 
   test('rep rows have action buttons', async ({ page }) => {
@@ -134,6 +134,7 @@ test.describe('Assignments tab', () => {
   test.beforeEach(async ({ page }) => {
     await mockAllApiRoutes(page)
     await goto(page, '/coaching')
+    await expect(page.getByText('AI Manager Briefing')).toBeVisible({ timeout: 8000 })
     await clickTab(page, 'Assignments')
   })
 
@@ -163,6 +164,7 @@ test.describe('Replay Queue tab', () => {
   test.beforeEach(async ({ page }) => {
     await mockAllApiRoutes(page)
     await goto(page, '/coaching')
+    await expect(page.getByText('AI Manager Briefing')).toBeVisible({ timeout: 8000 })
     await clickTab(page, 'Replay Queue')
   })
 

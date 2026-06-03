@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -15,6 +16,9 @@ interface SidebarProps {
   onMobileClose: () => void
 }
 
+// How long the pointer must rest over the sidebar before it expands (ms)
+const HOVER_DELAY_MS = 175
+
 export function Sidebar({
   collapsed,
   onCollapse,
@@ -22,6 +26,34 @@ export function Sidebar({
   mobileOpen,
   onMobileClose,
 }: SidebarProps) {
+  const [hoverExpanded, setHoverExpanded] = useState(false)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up any pending timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    }
+  }, [])
+
+  // The visual state used for layout/content decisions.
+  // True only when pinned-collapsed AND not temporarily hover-expanded.
+  const effectiveCollapsed = collapsed && !hoverExpanded
+
+  function handleMouseEnter() {
+    // Nothing to do when already pinned open
+    if (!collapsed) return
+    hoverTimer.current = setTimeout(() => setHoverExpanded(true), HOVER_DELAY_MS)
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+    setHoverExpanded(false)
+  }
+
   return (
     <>
       {/* Mobile overlay backdrop */}
@@ -34,10 +66,12 @@ export function Sidebar({
 
       {/* Sidebar panel */}
       <aside
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         className={clsx(
           'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-neutral-800/80 bg-neutral-950 transition-all duration-200 ease-in-out',
           'lg:relative lg:translate-x-0',
-          collapsed ? 'lg:w-[56px]' : 'lg:w-[220px]',
+          effectiveCollapsed ? 'lg:w-[56px]' : 'lg:w-[220px]',
           mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0',
         )}
       >
@@ -45,10 +79,10 @@ export function Sidebar({
         <div
           className={clsx(
             'flex h-12 shrink-0 items-center border-b border-neutral-800/80',
-            collapsed ? 'justify-center px-2' : 'px-4',
+            effectiveCollapsed ? 'justify-center px-2' : 'px-4',
           )}
         >
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <Zap size={16} className="text-emerald-400" />
           ) : (
             <Link
@@ -67,13 +101,13 @@ export function Sidebar({
             <NavSection
               key={section.title}
               section={section}
-              collapsed={collapsed}
+              collapsed={effectiveCollapsed}
               isManager={isManager}
             />
           ))}
         </nav>
 
-        {/* Collapse toggle (desktop only) */}
+        {/* Collapse toggle (desktop only) — reads/writes the real pinned state */}
         <div className="hidden lg:flex shrink-0 items-center border-t border-neutral-800/80 p-1.5">
           <button
             type="button"

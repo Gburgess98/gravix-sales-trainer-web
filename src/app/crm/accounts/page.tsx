@@ -6,6 +6,8 @@ import { StatCard } from '@/components/ui/stat-card';
 import { StatusBadge, ScorePill } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingText } from '@/components/ui/loading-skeleton';
+import { useToast } from '@/components/Toast';
+import { EntitySearch, type EntityHit } from '@/components/ui/entity-search';
 
 type AccountRow = {
   id: string;
@@ -48,14 +50,91 @@ function formatRelativeDate(input?: string | null) {
   }).format(date);
 }
 
+type CreateAccountForm = { name: string; domain: string; owner_id: string }
+const EMPTY_ACCOUNT_FORM: CreateAccountForm = { name: '', domain: '', owner_id: '' }
+
 export default function CrmAccountsPage() {
+  const toast = useToast();
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [sortMode, setSortMode] = useState<
-    'default' | 'needs_intervention'
-  >('default');
+  const [sortMode, setSortMode] = useState<'default' | 'needs_intervention'>('default');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateAccountForm>(EMPTY_ACCOUNT_FORM);
+  const [createSaving, setCreateSaving] = useState(false);
+  // Separate entity selections — not stored in form strings
+  const [accountOwnerSelection, setAccountOwnerSelection] = useState<EntityHit | null>(null);
+  const [contactAccountSelection, setContactAccountSelection] = useState<EntityHit | null>(null);
+  const [contactCreateOpen, setContactCreateOpen] = useState(false);
+  const [contactCreateForm, setContactCreateForm] = useState({ first_name: '', last_name: '', email: '', company: '', role: '' });
+  const [contactCreateSaving, setContactCreateSaving] = useState(false);
+
+  async function handleCreateContact(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contactCreateForm.first_name.trim() && !contactCreateForm.email.trim()) {
+      toast.error('Name or email is required.'); return;
+    }
+    setContactCreateSaving(true);
+    try {
+      const res = await fetch('/api/proxy/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          first_name: contactCreateForm.first_name.trim() || undefined,
+          last_name: contactCreateForm.last_name.trim() || undefined,
+          email: contactCreateForm.email.trim() || undefined,
+          role: contactCreateForm.role.trim() || undefined,
+          account_id: contactAccountSelection?.id || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || 'Failed to create contact');
+      toast.success('Contact created.');
+      setContactCreateOpen(false);
+      setContactCreateForm({ first_name: '', last_name: '', email: '', company: '', role: '' });
+      setContactAccountSelection(null);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create contact');
+    } finally {
+      setContactCreateSaving(false);
+    }
+  }
+
+  async function handleCreateAccount(e: React.FormEvent) {
+    e.preventDefault();
+    if (!createForm.name.trim()) { toast.error('Account name is required.'); return; }
+    setCreateSaving(true);
+    try {
+      const res = await fetch('/api/proxy/v1/accounts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: createForm.name.trim(),
+          domain: createForm.domain.trim() || undefined,
+          owner_id: accountOwnerSelection?.id || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || 'Failed to create account');
+      const created: AccountRow = data.account ?? { id: data.id ?? String(Date.now()), name: createForm.name.trim(), domain: createForm.domain.trim() || null };
+      setAccounts((prev) => [created, ...prev]);
+      toast.success(`Account "${created.name}" created.`);
+      setCreateOpen(false);
+      setCreateForm(EMPTY_ACCOUNT_FORM);
+      setAccountOwnerSelection(null);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create account');
+    } finally {
+      setCreateSaving(false);
+    }
+  }
+
+  function updateCreateForm(k: keyof CreateAccountForm, v: string) {
+    setCreateForm((prev) => ({ ...prev, [k]: v }));
+  }
 
   useEffect(() => {
     let active = true;
@@ -160,10 +239,29 @@ export default function CrmAccountsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <StatCard label="Accounts" value={filteredAccounts.length} size="sm" />
-          <StatCard label="Contacts" value={totals.contacts} size="sm" />
-          <StatCard label="Calls" value={totals.calls} size="sm" />
+        {/* KPI cards + vertical action stack — items-stretch keeps equal heights */}
+        <div className="flex items-stretch gap-3">
+          <StatCard label="Accounts" value={filteredAccounts.length} size="sm" className="w-28" />
+          <StatCard label="Contacts" value={totals.contacts} size="sm" className="w-28" />
+          <StatCard label="Calls" value={totals.calls} size="sm" className="w-28" />
+
+          {/* Action stack: two buttons fill the combined card height */}
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="flex flex-1 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 transition-colors whitespace-nowrap"
+            >
+              + New Account
+            </button>
+            <button
+              type="button"
+              onClick={() => setContactCreateOpen(true)}
+              className="flex flex-1 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors whitespace-nowrap"
+            >
+              + New Contact
+            </button>
+          </div>
         </div>
       </div>
 
@@ -238,6 +336,172 @@ export default function CrmAccountsPage() {
             subtext="actively owned by reps/managers"
             variant="info"
           />
+        </div>
+      )}
+
+      {/* ── Create Contact Modal ── */}
+      {contactCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => { setContactCreateOpen(false); setContactAccountSelection(null); }}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
+              <div>
+                <h2 className="text-sm font-semibold text-white">New Contact</h2>
+                <p className="text-xs text-neutral-500 mt-0.5">Create a standalone contact to link to accounts later.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setContactCreateOpen(false); setContactAccountSelection(null); }}
+                className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateContact} className="px-5 py-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">First Name</label>
+                  <input
+                    type="text"
+                    value={contactCreateForm.first_name}
+                    onChange={(e) => setContactCreateForm((p) => ({ ...p, first_name: e.target.value }))}
+                    placeholder="Jane"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={contactCreateForm.last_name}
+                    onChange={(e) => setContactCreateForm((p) => ({ ...p, last_name: e.target.value }))}
+                    placeholder="Smith"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={contactCreateForm.email}
+                  onChange={(e) => setContactCreateForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="jane@company.com"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Account <span className="text-neutral-600">(optional)</span></label>
+                <EntitySearch
+                  type="account"
+                  value={contactAccountSelection}
+                  onChange={setContactAccountSelection}
+                  placeholder="Link to an account…"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Role <span className="text-neutral-600">(optional)</span></label>
+                <input
+                  type="text"
+                  value={contactCreateForm.role}
+                  onChange={(e) => setContactCreateForm((p) => ({ ...p, role: e.target.value }))}
+                  placeholder="VP Sales"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setContactCreateOpen(false); setContactAccountSelection(null); }}
+                  className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={contactCreateSaving || (!contactCreateForm.first_name.trim() && !contactCreateForm.email.trim())}
+                  className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {contactCreateSaving ? 'Creating…' : 'Create Contact'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Account Modal ── */}
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => { setCreateOpen(false); setCreateForm(EMPTY_ACCOUNT_FORM); }}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
+              <div>
+                <h2 className="text-sm font-semibold text-white">New Account</h2>
+                <p className="text-xs text-neutral-500 mt-0.5">Create a new CRM account.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCreateOpen(false); setCreateForm(EMPTY_ACCOUNT_FORM); }}
+                className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateAccount} className="px-5 py-4 space-y-3">
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Account Name <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={createForm.name}
+                  onChange={(e) => updateCreateForm('name', e.target.value)}
+                  placeholder="Acme Corp"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Domain</label>
+                <input
+                  type="text"
+                  value={createForm.domain}
+                  onChange={(e) => updateCreateForm('domain', e.target.value)}
+                  placeholder="acme.com"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Owner <span className="text-neutral-600">(optional)</span></label>
+                <EntitySearch
+                  type="rep"
+                  value={accountOwnerSelection}
+                  onChange={setAccountOwnerSelection}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setCreateOpen(false); setCreateForm(EMPTY_ACCOUNT_FORM); }}
+                  className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createSaving || !createForm.name.trim()}
+                  className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {createSaving ? 'Creating…' : 'Create Account'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

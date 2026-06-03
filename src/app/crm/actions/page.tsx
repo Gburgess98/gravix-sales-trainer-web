@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useToast } from "@/components/Toast";
 
 type ActionRow = {
   id?: string;
@@ -42,6 +43,7 @@ function safeBool(v: any) {
 export default function ActionsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const toast = useToast();
 
   const repId = (searchParams?.get("repId") ?? "").trim();
   const activeStatus = (searchParams?.get("status") ?? "open").trim();
@@ -96,7 +98,7 @@ export default function ActionsPage() {
       if (!res.ok) throw new Error(`Failed to complete action: ${res.status}`);
       setActions((prev) => prev.map((a) => pickId(a) === id ? { ...a, completed_at: new Date().toISOString() } : a));
     } catch (err) {
-      alert(String(err));
+      toast.error(String(err));
     } finally {
       setCompletingIds((m) => { const n = { ...m }; delete n[id]; return n; });
     }
@@ -149,7 +151,7 @@ export default function ActionsPage() {
         <div className="flex items-center gap-2">
           {repId && (
             <Link
-              href={`/reps/${encodeURIComponent(repId)}`}
+              href={`/crm/reps/${encodeURIComponent(repId)}`}
               className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
             >
               ← Rep Profile

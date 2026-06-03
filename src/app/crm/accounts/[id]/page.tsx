@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs';
+import { useToast } from '@/components/Toast';
+import { EmptyState } from '@/components/ui/empty-state';
+import { EntitySearch, type EntityHit } from '@/components/ui/entity-search';
 
 type AccountTab = 'overview' | 'contacts' | 'calls' | 'rescue' | 'intelligence';
 
@@ -134,6 +137,7 @@ function UrgencyPill({ urgency }: { urgency?: string | null }) {
 
 export default function AccountPage() {
   const { id } = useParams() as { id: string };
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<any>(null);
@@ -145,10 +149,10 @@ export default function AccountPage() {
   const [stats, setStats] = useState<any>(null);
   const [health, setHealth] = useState<AccountHealth | null>(null);
   const [ownerUpdating, setOwnerUpdating] = useState(false);
-  const [ownerInput, setOwnerInput] = useState('');
+  const [ownerSelection, setOwnerSelection] = useState<EntityHit | null>(null);
   const [ownerExpanded, setOwnerExpanded] = useState(false);
   const [contactLinkLoading, setContactLinkLoading] = useState(false);
-  const [contactIdInput, setContactIdInput] = useState('');
+  const [contactLinkSelection, setContactLinkSelection] = useState<EntityHit | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summarySaving, setSummarySaving] = useState(false);
   const [persistedSummary, setPersistedSummary] = useState<PersistedAccountSummary | null>(null);
@@ -162,6 +166,58 @@ export default function AccountPage() {
   const [coachingActions, setCoachingActions] = useState<CoachingAction[]>([]);
   const [tab, setTab] = useState<AccountTab>('overview');
   const [rescueFilter, setRescueFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [addContactForm, setAddContactForm] = useState({ first_name: '', last_name: '', email: '', company: '', role: '' });
+  const [addContactSaving, setAddContactSaving] = useState(false);
+
+  async function handleAddContact(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addContactForm.email.trim() && !addContactForm.first_name.trim()) {
+      toast.error('Name or email is required.');
+      return;
+    }
+    setAddContactSaving(true);
+    try {
+      const res = await fetch('/api/proxy/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          first_name: addContactForm.first_name.trim() || undefined,
+          last_name: addContactForm.last_name.trim() || undefined,
+          email: addContactForm.email.trim() || undefined,
+          company: addContactForm.company.trim() || undefined,
+          role: addContactForm.role.trim() || undefined,
+          account_id: id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || 'Failed to create contact');
+      const newContact: LinkedContact = data.contact ?? { id: data.id ?? String(Date.now()), name: [addContactForm.first_name, addContactForm.last_name].filter(Boolean).join(' ') || addContactForm.email, email: addContactForm.email || null };
+      // Auto-link to this account if not already linked by backend
+      if (newContact.id) {
+        try {
+          await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(newContact.id)}/link-account`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ account_id: id }),
+          });
+        } catch { /* non-fatal — contact was created, link may have happened server-side */ }
+      }
+      setContacts((prev) => {
+        const exists = prev.some((c) => c.id === newContact.id);
+        return exists ? prev : [newContact, ...prev];
+      });
+      toast.success('Contact added.');
+      setAddContactOpen(false);
+      setAddContactForm({ first_name: '', last_name: '', email: '', company: '', role: '' });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add contact');
+    } finally {
+      setAddContactSaving(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -384,14 +440,14 @@ export default function AccountPage() {
   // ── Actions ──
 
   async function assignOwner() {
-    if (!ownerInput.trim()) { alert('Enter an owner ID first.'); return; }
+    if (!ownerSelection) { toast.error('Select an owner first.'); return; }
     try {
       setOwnerUpdating(true);
       const r = await fetch(`/api/proxy/v1/accounts/${id}/owner`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ owner_id: ownerInput.trim() }),
+        body: JSON.stringify({ owner_id: ownerSelection.id }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'assign_owner_failed');
@@ -402,9 +458,9 @@ export default function AccountPage() {
         ownership_status: j.account?.ownership_status,
         coaching_ownership: j.account?.coaching_ownership,
       }));
-      alert('Account owner assigned.');
+      toast.success('Account owner assigned.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to assign owner');
+      toast.error(e?.message || 'Failed to assign owner');
     } finally {
       setOwnerUpdating(false);
     }
@@ -426,20 +482,20 @@ export default function AccountPage() {
         ownership_status: 'unassigned',
         coaching_ownership: j.account?.coaching_ownership,
       }));
-      alert('Account owner removed.');
+      toast.success('Account owner removed.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to unassign owner');
+      toast.error(e?.message || 'Failed to unassign owner');
     } finally {
       setOwnerUpdating(false);
     }
   }
 
   async function linkContact() {
-    if (!contactIdInput.trim()) { alert('Enter a contact ID first.'); return; }
+    if (!contactLinkSelection) { toast.error('Select a contact first.'); return; }
     try {
       setContactLinkLoading(true);
       const r = await fetch(
-        `/api/proxy/v1/crm/contacts/${contactIdInput.trim()}/link-account`,
+        `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactLinkSelection.id)}/link-account`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -449,17 +505,15 @@ export default function AccountPage() {
       );
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'link_contact_failed');
-      const linked = j.contact || null;
-      if (linked?.id) {
-        setContacts((prev) => {
-          const exists = prev.some((c) => c.id === linked.id);
-          return exists ? prev : [linked, ...prev];
-        });
-      }
-      setContactIdInput('');
-      alert('Contact linked to account.');
+      const linked = j.contact || { id: contactLinkSelection.id, name: contactLinkSelection.label, email: contactLinkSelection.sublabel?.split(' · ')[0] ?? null };
+      setContacts((prev) => {
+        const exists = prev.some((c) => c.id === linked.id);
+        return exists ? prev : [linked, ...prev];
+      });
+      setContactLinkSelection(null);
+      toast.success('Contact linked to account.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to link contact');
+      toast.error(e?.message || 'Failed to link contact');
     } finally {
       setContactLinkLoading(false);
     }
@@ -480,9 +534,9 @@ export default function AccountPage() {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'unlink_contact_failed');
       setContacts((prev) => prev.filter((c) => c.id !== contactId));
-      alert('Contact unlinked from account.');
+      toast.success('Contact unlinked from account.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to unlink contact');
+      toast.error(e?.message || 'Failed to unlink contact');
     } finally {
       setContactLinkLoading(false);
     }
@@ -507,9 +561,9 @@ export default function AccountPage() {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'summary_save_failed');
       setPersistedSummary(j.summary || null);
-      alert('AI account summary saved.');
+      toast.success('AI account summary saved.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to save account summary');
+      toast.error(e?.message || 'Failed to save account summary');
     } finally {
       setSummarySaving(false);
     }
@@ -526,9 +580,9 @@ export default function AccountPage() {
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'task_generation_failed');
       const generated = Array.isArray(j.generated_tasks) ? j.generated_tasks : [];
       if (generated.length > 0) setTasks((prev) => [...generated, ...prev]);
-      alert(generated.length > 0 ? `Generated ${generated.length} AI tasks.` : 'No new AI tasks required.');
+      toast.success(generated.length > 0 ? `Generated ${generated.length} AI task${generated.length !== 1 ? 's' : ''}.` : 'No new AI tasks required.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to generate AI tasks');
+      toast.error(e?.message || 'Failed to generate AI tasks');
     } finally {
       setTaskActionLoading(false);
     }
@@ -549,7 +603,7 @@ export default function AccountPage() {
         prev.map((task) => (task.id === taskId ? { ...task, ...(j.task || {}) } : task))
       );
     } catch (e: any) {
-      alert(e?.message || 'Failed to complete task');
+      toast.error(e?.message || 'Failed to complete task');
     } finally {
       setTaskActionLoading(false);
     }
@@ -575,9 +629,9 @@ export default function AccountPage() {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'replay_assignment_failed');
       if (j.coaching_action) setCoachingActions((prev) => [j.coaching_action, ...prev]);
-      alert('Replay coaching assignment created.');
+      toast.success('Replay coaching assignment created.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to create replay assignment');
+      toast.error(e?.message || 'Failed to create replay assignment');
     } finally {
       setCoachingActionLoading(false);
     }
@@ -602,9 +656,9 @@ export default function AccountPage() {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'sparring_assignment_failed');
       if (j.coaching_action) setCoachingActions((prev) => [j.coaching_action, ...prev]);
-      alert('Sparring drill assignment created.');
+      toast.success('Sparring drill assignment created.');
     } catch (e: any) {
-      alert(e?.message || 'Failed to create sparring assignment');
+      toast.error(e?.message || 'Failed to create sparring assignment');
     } finally {
       setCoachingActionLoading(false);
     }
@@ -668,7 +722,7 @@ export default function AccountPage() {
       <WorkspaceTabs
         tabs={[
           { id: 'overview', label: 'Overview' },
-          { id: 'contacts', label: 'Contacts', badge: contacts.length || undefined },
+          { id: 'contacts', label: 'Contacts', badge: contacts.length },
           { id: 'calls', label: 'Calls', badge: recent.length || undefined },
           { id: 'rescue', label: 'Rescue', badge: activeTasks || undefined },
           { id: 'intelligence', label: 'Intelligence' },
@@ -950,7 +1004,7 @@ export default function AccountPage() {
                         <td className="px-4 py-2.5 text-white">
                           <div className="flex flex-wrap items-center gap-2">
                             <Link
-                              href={`/reps/${rep.rep_id}`}
+                              href={`/crm/reps/${rep.rep_id}`}
                               className="hover:underline text-cyan-300 text-xs"
                             >
                               {rep.rep_id.slice(0, 8)}…
@@ -1035,15 +1089,16 @@ export default function AccountPage() {
                   </p>
                 )}
                 <div className="flex flex-col md:flex-row gap-2">
-                  <input
-                    value={ownerInput}
-                    onChange={(e) => setOwnerInput(e.target.value)}
-                    placeholder="Enter rep/user ID"
-                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white outline-none"
+                  <EntitySearch
+                    type="rep"
+                    value={ownerSelection}
+                    onChange={setOwnerSelection}
+                    className="flex-1"
+                    disabled={ownerUpdating}
                   />
                   <button
                     type="button"
-                    disabled={ownerUpdating}
+                    disabled={ownerUpdating || !ownerSelection}
                     onClick={assignOwner}
                     className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-60"
                   >
@@ -1069,26 +1124,44 @@ export default function AccountPage() {
       {/* ── CONTACTS ── */}
       {tab === 'contacts' && (
         <div className="space-y-3">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 flex items-center gap-3">
-            <input
-              value={contactIdInput}
-              onChange={(e) => setContactIdInput(e.target.value)}
-              placeholder="Link contact by ID"
-              className="flex-1 rounded-lg border border-neutral-700 bg-black/40 px-3 py-2 text-sm text-white outline-none"
-            />
+          {/* Action bar */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={contactLinkLoading}
-              onClick={linkContact}
-              className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-60 shrink-0"
+              onClick={() => setAddContactOpen(true)}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 transition-colors"
             >
-              {contactLinkLoading ? 'Linking…' : 'Link Contact'}
+              + Add Contact
             </button>
+            <div className="flex flex-1 items-center gap-2">
+              <EntitySearch
+                type="contact"
+                value={contactLinkSelection}
+                onChange={setContactLinkSelection}
+                placeholder="Or link existing contact…"
+                className="flex-1"
+                disabled={contactLinkLoading}
+              />
+              <button
+                type="button"
+                disabled={contactLinkLoading || !contactLinkSelection}
+                onClick={linkContact}
+                className="rounded-md border border-neutral-700 px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-40 transition-colors shrink-0"
+              >
+                {contactLinkLoading ? 'Linking…' : 'Link'}
+              </button>
+            </div>
           </div>
 
+          {/* Contact list */}
           <div className="rounded-xl border border-neutral-800 overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-neutral-800 text-sm font-medium text-white">
-              Linked Contacts · {contacts.length}
+            <div className="px-4 py-2.5 border-b border-neutral-800 flex items-center justify-between">
+              <span className="text-sm font-medium text-white">
+                Contacts
+                {contacts.length > 0 && (
+                  <span className="ml-2 rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400 tabular-nums">{contacts.length}</span>
+                )}
+              </span>
             </div>
             <div className="divide-y divide-neutral-800">
               {contacts.length > 0 ? (
@@ -1096,37 +1169,124 @@ export default function AccountPage() {
                   <Link
                     key={contact.id}
                     href={`/crm/contacts/${contact.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-900/60"
+                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-900/60 transition-colors"
                   >
                     <div>
-                      <div className="text-sm text-white">
-                        {contact.name || contact.email || 'Contact'}
+                      <div className="text-sm text-white font-medium">
+                        {contact.name || [contact.email].filter(Boolean).join(' ') || 'Contact'}
                       </div>
                       <div className="mt-0.5 text-xs text-neutral-500">
-                        {contact.role || 'No role'}
+                        {[contact.role, contact.email].filter(Boolean).join(' · ') || 'No details'}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          unlinkContact(contact.id);
-                        }}
-                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/20"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); unlinkContact(contact.id); }}
+                        className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] text-neutral-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 transition-colors"
                       >
                         Unlink
                       </button>
-                      <div className="text-xs text-cyan-300">Open →</div>
+                      <span className="text-xs text-cyan-300">Open →</span>
                     </div>
                   </Link>
                 ))
               ) : (
-                <div className="px-4 py-4 text-sm text-neutral-400">No linked contacts.</div>
+                <div className="px-4 py-6">
+                  <EmptyState
+                    message="No contacts yet"
+                    sub="Add your first contact to start building account relationships."
+                    action={{ label: '+ Add Contact', onClick: () => setAddContactOpen(true) }}
+                  />
+                </div>
               )}
             </div>
           </div>
+
+          {/* Add Contact Modal */}
+          {addContactOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={() => setAddContactOpen(false)}
+              />
+              <div className="relative w-full max-w-sm rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-white">Add Contact</h2>
+                    <p className="text-xs text-neutral-500 mt-0.5">Creates and links a new contact to this account.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAddContactOpen(false)}
+                    className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleAddContact} className="px-5 py-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">First Name</label>
+                      <input
+                        type="text"
+                        value={addContactForm.first_name}
+                        onChange={(e) => setAddContactForm((p) => ({ ...p, first_name: e.target.value }))}
+                        placeholder="Jane"
+                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Last Name</label>
+                      <input
+                        type="text"
+                        value={addContactForm.last_name}
+                        onChange={(e) => setAddContactForm((p) => ({ ...p, last_name: e.target.value }))}
+                        placeholder="Smith"
+                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={addContactForm.email}
+                      onChange={(e) => setAddContactForm((p) => ({ ...p, email: e.target.value }))}
+                      placeholder="jane@company.com"
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Role <span className="text-neutral-600">(optional)</span></label>
+                    <input
+                      type="text"
+                      value={addContactForm.role}
+                      onChange={(e) => setAddContactForm((p) => ({ ...p, role: e.target.value }))}
+                      placeholder="VP Sales"
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setAddContactOpen(false)}
+                      className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={addContactSaving || (!addContactForm.first_name.trim() && !addContactForm.email.trim())}
+                      className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {addContactSaving ? 'Adding…' : 'Add Contact'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

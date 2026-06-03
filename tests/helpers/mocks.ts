@@ -100,7 +100,7 @@ export const MOCK_ACCOUNTS = [
  * Keeps tests independent of the backend server.
  */
 export async function mockAllApiRoutes(page: Page) {
-  await page.route('/api/proxy/**', async (route) => {
+  await page.route('**/api/proxy/**', async (route) => {
     const url = route.request().url()
 
     if (url.includes('/v1/crm/manager/control-centre')) {
@@ -135,7 +135,7 @@ export async function mockAllApiRoutes(page: Page) {
       })
     }
 
-    if (url.includes('/v1/crm/accounts')) {
+    if (url.includes('/v1/crm/accounts') || (url.includes('/v1/accounts') && !url.includes('/v1/crm/'))) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -10,6 +10,7 @@ import { WorkspaceTabs } from '@/components/shell/workspace-tabs';
 type RepTab = 'overview' | 'coaching' | 'trends' | 'activity';
 import { getRepOverview, getRewards, selectTitle, listCoachAssignments, getSparringSessionsByRep, getRepXp } from '@/lib/api';
 import XpProgress from '@/components/XpProgress';
+import { useToast } from '@/components/Toast';
 
 // Recharts (dynamic to avoid SSR issues)
 const LineChart = dynamic(() => import('recharts').then(m => m.LineChart), { ssr: false });
@@ -165,6 +166,7 @@ const badges = [
 
 export default function RepProfilePage() {
   const { id } = useParams() as { id: string };
+  const toast = useToast();
   const [data, setData] = useState<RepOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [rewards, setRewards] = useState<any>(null);
@@ -221,11 +223,10 @@ export default function RepProfilePage() {
       setCoachDueDate('');
       setCoachTarget('');
 
-      alert('Coaching assignment created.');
+      toast.success('Coaching assignment created.');
     } catch (err: any) {
       console.error('createCoachingAssignment failed', err);
-
-      alert(err?.message || 'Failed to create coaching assignment.');
+      toast.error(err?.message || 'Failed to create coaching assignment.');
     } finally {
       setAssigningCoach(false);
     }
@@ -516,7 +517,7 @@ export default function RepProfilePage() {
             <XpProgress xp={xpTotal ?? data?.xp ?? 0} />
           </div>
           <div className="flex items-center gap-3">
-            <Link href={`/assign?repId=${id}`} className="rounded-xl bg-white text-black px-3 py-2 text-sm font-medium hover:bg-white/90">Assign Drill</Link>
+            <Link href={`/admin/assignments?repId=${encodeURIComponent(id)}&repName=${encodeURIComponent(data?.rep?.name ?? '')}&source=rep_profile`} className="rounded-xl bg-white text-black px-3 py-2 text-sm font-medium hover:bg-white/90">Assign Drill</Link>
             <Link href={`/sparring?repId=${id}`} className="rounded-xl bg-black/60 border border-white/15 px-3 py-2 text-sm font-medium hover:bg-black/50">Open Sparring</Link>
           </div>
         </div>
@@ -623,7 +624,7 @@ export default function RepProfilePage() {
                             setTitlePickerOpen(false);
                           } catch (err: any) {
                             console.error('selectTitle failed', err);
-                            alert(`Failed to equip title: ${err?.message || err}`);
+                            toast.error(`Failed to equip title: ${err?.message || err}`);
                           } finally {
                             setSavingTitle(null);
                           }
@@ -1184,7 +1185,7 @@ export default function RepProfilePage() {
       {/* Recent items */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2">
-          <SectionHeader title="Recent Calls" cta={<Link href={`/calls?repId=${id}`} className="text-sm text-white/70 hover:underline">View all</Link>} />
+          <SectionHeader title="Recent Calls" cta={<Link href={`/call-library?repId=${id}`} className="text-sm text-white/70 hover:underline">View all</Link>} />
           <div className="mt-3">
             <MiniList
               items={data?.recent?.calls}

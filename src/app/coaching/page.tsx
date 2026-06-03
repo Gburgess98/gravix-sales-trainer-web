@@ -656,7 +656,7 @@ export default function CoachingPage() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Link href={`/reps/${rep.rep_id}`} className="text-sm font-medium text-white hover:underline">
+                              <Link href={`/crm/reps/${rep.rep_id}`} className="text-sm font-medium text-white hover:underline">
                                 {rep.rep_name}
                               </Link>
                               {rep.risk_band && <RiskBadge band={rep.risk_band} />}
@@ -694,7 +694,7 @@ export default function CoachingPage() {
                           <div className="text-xs font-medium text-amber-300">{action}</div>
 
                           <div className="flex gap-2 pt-0.5">
-                            <Link href={`/reps/${rep.rep_id}`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                            <Link href={`/crm/reps/${rep.rep_id}`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
                               View rep
                             </Link>
                             <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
@@ -837,7 +837,7 @@ export default function CoachingPage() {
                       return (
                         <Link
                           key={rep.rep_id}
-                          href={`/reps/${rep.rep_id}`}
+                          href={`/crm/reps/${rep.rep_id}`}
                           className={`group rounded-lg border border-neutral-800 px-3 py-2.5 hover:bg-neutral-900/50 transition-colors ${URGENCY_LEFT[urgency]}`}
                         >
                           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -909,7 +909,7 @@ export default function CoachingPage() {
                             return (
                               <tr key={rep.rep_id} className={`transition-colors hover:bg-neutral-900/30 ${URGENCY_BG[urgency]}`}>
                                 <td className={`px-4 py-3 ${URGENCY_LEFT[urgency]}`}>
-                                  <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
+                                  <Link href={`/crm/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
                                   <div className="mt-1 flex flex-wrap gap-1">
                                     {rep.risk_band && <RiskBadge band={rep.risk_band} />}
                                     {reasons.slice(0, 2).map((r, i) => (
@@ -997,7 +997,7 @@ export default function CoachingPage() {
                             <tr key={rep.rep_id} className={`transition-colors hover:bg-neutral-900/30 ${URGENCY_BG[urgency]}`}>
                               <td className={`px-4 py-3 text-xs text-neutral-500 tabular-nums ${URGENCY_LEFT[urgency]}`}>{idx + 1}</td>
                               <td className="px-4 py-3">
-                                <Link href={`/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
+                                <Link href={`/crm/reps/${rep.rep_id}`} className="font-medium text-white hover:underline">{rep.rep_name}</Link>
                                 {weak && <div className="text-[10px] text-neutral-500 mt-0.5">{weak}</div>}
                               </td>
                               <td className="px-4 py-3">
@@ -1079,7 +1079,7 @@ export default function CoachingPage() {
                         </div>
                       </div>
                       {a.rep_id && (
-                        <Link href={`/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors">
+                        <Link href={`/crm/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors">
                           Rep →
                         </Link>
                       )}

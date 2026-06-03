@@ -4,7 +4,7 @@ import { expectShellVisible, expectNoPageCrash } from '../helpers/shell'
 
 /**
  * Assignments workflow tests.
- * Covers: page load, status tabs, completion flow, empty state.
+ * Route mocks: register catch-all FIRST then specific LAST (Playwright LIFO — last wins).
  */
 
 const MOCK_ASSIGNMENT = {
@@ -27,22 +27,28 @@ const MOCK_COMPLETED = {
   completed_at: new Date().toISOString(),
 }
 
+async function setupAssignmentMocks(page: import('@playwright/test').Page, assignments = [MOCK_ASSIGNMENT, MOCK_COMPLETED]) {
+  // Catch-all FIRST (lower priority in Playwright LIFO)
+  await page.route('**/api/proxy/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+  })
+  // Specific LAST (higher priority — wins in LIFO)
+  await page.route('**/api/proxy/v1/assignments**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        assignments,
+        summary: { total: assignments.length, completed: assignments.filter(a => a.status === 'completed').length, open: assignments.filter(a => a.status !== 'completed').length, completed_count: 1 },
+      }),
+    })
+  })
+}
+
 test.describe('Assignments page structure', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('/api/proxy/v1/assignments*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ok: true,
-          assignments: [MOCK_ASSIGNMENT, MOCK_COMPLETED],
-          summary: { total: 2, completed: 1, open: 1, completed_count: 1 },
-        }),
-      })
-    })
-    await page.route('/api/proxy/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-    })
+    await setupAssignmentMocks(page)
     await goto(page, '/assignments')
   })
 
@@ -56,7 +62,7 @@ test.describe('Assignments page structure', () => {
   })
 
   test('open assignment title is visible', async ({ page }) => {
-    await expect(page.getByText('Objection handling drill')).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('Objection handling drill').first()).toBeVisible({ timeout: 8000 })
   })
 
   test('no page crash on load', async ({ page }) => {
@@ -66,27 +72,12 @@ test.describe('Assignments page structure', () => {
 
 test.describe('Assignments filtering', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('/api/proxy/v1/assignments*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ok: true,
-          assignments: [MOCK_ASSIGNMENT, MOCK_COMPLETED],
-          summary: { total: 2, completed: 1, open: 1, completed_count: 1 },
-        }),
-      })
-    })
-    await page.route('/api/proxy/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-    })
+    await setupAssignmentMocks(page)
     await goto(page, '/assignments')
-    // Wait for content to load
     await expect(page.getByRole('heading', { name: 'My Assignments' })).toBeVisible({ timeout: 8000 })
   })
 
   test('switching to completed shows completed assignments', async ({ page }) => {
-    // Find the completed tab — the assignments page uses its own tab UI
     const completedTab = page.getByRole('button', { name: /completed/i }).first()
     if (await completedTab.isVisible()) {
       await completedTab.click()
@@ -105,16 +96,7 @@ test.describe('Assignments filtering', () => {
 
 test.describe('Assignments empty state', () => {
   test('renders gracefully with no assignments', async ({ page }) => {
-    await page.route('/api/proxy/v1/assignments*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, assignments: [], summary: { total: 0, completed: 0, open: 0 } }),
-      })
-    })
-    await page.route('/api/proxy/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-    })
+    setupAssignmentMocks(page, [])
     await goto(page, '/assignments')
     await expectShellVisible(page)
     await expectNoPageCrash(page)

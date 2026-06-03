@@ -46,7 +46,7 @@ test.describe('CRM Actions page', () => {
 
   test('with repId loads actions for that rep', async ({ page }) => {
     // Mock actions response for a specific rep
-    await page.route('/api/proxy/v1/crm/actions*', async (route) => {
+    await page.route('**/api/proxy/v1/crm/actions**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -93,24 +93,21 @@ test.describe('CRM Actions page', () => {
 
 test.describe('CRM Account detail page', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock account detail endpoints
-    await page.route('/api/proxy/v1/crm/accounts/acct-1*', async (route) => {
+    // mockAllApiRoutes FIRST (lower LIFO priority)
+    await mockAllApiRoutes(page)
+    // Specific account detail mock LAST (higher LIFO priority — wins)
+    await page.route('**/api/proxy/v1/accounts/acct-1**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
-          account: {
-            id: 'acct-1',
-            name: 'Acme Corp',
-            domain: 'acme.com',
-            health_band: 'watch',
-            avg_score: 71,
-          },
+          account: { id: 'acct-1', name: 'Acme Corp', domain: 'acme.com', health_band: 'watch', avg_score: 71 },
+          linked_contacts: [],
+          linked_calls: [],
         }),
       })
     })
-    await mockAllApiRoutes(page)
     await goto(page, '/crm/accounts/acct-1')
   })
 
