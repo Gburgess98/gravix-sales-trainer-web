@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { proxyFetch } from '@/lib/api';
 import { StatCard } from '@/components/ui/stat-card';
 import { StatusBadge, ScorePill } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -77,10 +78,9 @@ export default function CrmAccountsPage() {
     }
     setContactCreateSaving(true);
     try {
-      const res = await fetch('/api/proxy/v1/crm/contacts', {
+      const res = await proxyFetch('/v1/crm/contacts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           first_name: contactCreateForm.first_name.trim() || undefined,
           last_name: contactCreateForm.last_name.trim() || undefined,
@@ -107,10 +107,9 @@ export default function CrmAccountsPage() {
     if (!createForm.name.trim()) { toast.error('Account name is required.'); return; }
     setCreateSaving(true);
     try {
-      const res = await fetch('/api/proxy/v1/accounts', {
+      const res = await proxyFetch('/v1/accounts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: createForm.name.trim(),
           domain: createForm.domain.trim() || undefined,
@@ -144,9 +143,7 @@ export default function CrmAccountsPage() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch('/api/proxy/v1/accounts', {
-          cache: 'no-store',
-        });
+        const res = await proxyFetch('/v1/accounts', { cache: 'no-store' });
 
         const data = await res.json();
 

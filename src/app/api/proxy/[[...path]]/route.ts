@@ -135,6 +135,45 @@ async function getUserIdFromSupabaseCookies(
   }
 }
 
+/**
+ * Look up the authenticated user's org_id from the reps table.
+ * Returns the org_id string, or "" if the user has no reps row or the
+ * lookup fails. Falls back cleanly so callers can still use the env default.
+ */
+async function getOrgIdForUser(
+  userId: string,
+  cookieList: Array<{ name: string; value: string }>
+): Promise<string> {
+  if (!userId) return "";
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createServerClient } = await import("@supabase/ssr");
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() { return cookieList; },
+        setAll() {},
+      },
+    });
+
+    const { data } = await supabase
+      .from("reps")
+      .select("org_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    return String(data?.org_id ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function getUserIdFromAuthorizationHeader(req: NextRequest): Promise<string> {
   try {
     const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
@@ -389,7 +428,10 @@ async function handle(req: NextRequest, context: any) {
     headers.set("x-gravix-user-id", resolvedUserId);
     headers.set("x-forwarded-user-id", resolvedUserId);
 
-    // Org id: prefer explicit header, then env fallbacks (dev-friendly)
+    // Org id priority:
+    //   1. Explicit x-org-id from the incoming request (rare — most pages don't set it)
+    //   2. User's actual org_id looked up from reps table (the correct per-user value)
+    //   3. Dev env fallback (backward compat for smoke tests / non-user requests)
     const devOrg = (
       process.env.DEV_ORG_ID ||
       process.env.PROXY_DEV_X_ORG_ID ||
@@ -400,7 +442,8 @@ async function handle(req: NextRequest, context: any) {
     ).trim();
 
     const existingOrgId = (headers.get("x-org-id") || "").trim();
-    const finalOrgId = existingOrgId || devOrg;
+    const repOrgId = await getOrgIdForUser(resolvedUserId, cookieList);
+    const finalOrgId = existingOrgId || repOrgId || devOrg;
 
     if (finalOrgId) {
       headers.set("x-org-id", finalOrgId);

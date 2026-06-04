@@ -1,5 +1,6 @@
 'use client'
 
+import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { proxyFetch } from '@/lib/api'
 
@@ -72,6 +73,8 @@ async function fetchHits(type: EntityType, query: string): Promise<EntityHit[]> 
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+type DropdownRect = { top: number; left: number; width: number }
+
 export function EntitySearch({
   type,
   value,
@@ -85,27 +88,55 @@ export function EntitySearch({
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [highlightIdx, setHighlightIdx] = useState(0)
+  const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null)
+  // Portal requires the DOM — avoid SSR mismatch
+  const [mounted, setMounted] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
 
-  // Close on outside click
+  useEffect(() => { setMounted(true) }, [])
+
+  // Compute the dropdown's fixed position from the input's viewport rect
+  function measureRect() {
+    if (!inputRef.current) return
+    const r = inputRef.current.getBoundingClientRect()
+    setDropdownRect({ top: r.bottom + 4, left: r.left, width: r.width })
+  }
+
+  // Close on outside click — must exclude both the anchor and the portal dropdown
   useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const target = e.target as Node
+      if (
+        containerRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
+  // Update dropdown position while open so it tracks the input on scroll/resize
+  useEffect(() => {
+    if (!open) return
+    measureRect()
+    // Capture phase catches scroll inside any ancestor container
+    window.addEventListener('scroll', measureRect, true)
+    window.addEventListener('resize', measureRect)
+    return () => {
+      window.removeEventListener('scroll', measureRect, true)
+      window.removeEventListener('resize', measureRect)
+    }
+  }, [open])
+
   // Search effect — debounced for contact/account, immediate load for rep
   useEffect(() => {
     if (!open) return
 
-    // For reps: load all immediately on open, filter client-side
     if (type === 'rep') {
       setLoading(true)
       fetchHits('rep', query)
@@ -115,7 +146,6 @@ export function EntitySearch({
       return
     }
 
-    // For contact/account: wait for user to type
     if (!query.trim()) {
       setResults([])
       setLoading(false)
@@ -170,6 +200,55 @@ export function EntitySearch({
     }
   }
 
+  // ── Portal dropdown ───────────────────────────────────────────────────────
+  const dropdownContent = open && dropdownRect ? (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        top: dropdownRect.top,
+        left: dropdownRect.left,
+        width: dropdownRect.width,
+        zIndex: 9999,
+        minWidth: 200,
+      }}
+      className="rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl overflow-hidden"
+    >
+      {loading && (
+        <div className="px-3 py-2.5 text-xs text-neutral-500">Searching…</div>
+      )}
+      {!loading && results.length === 0 && !query.trim() && type !== 'rep' && (
+        <div className="px-3 py-2.5 text-xs text-neutral-500">
+          Type to search {type === 'account' ? 'accounts' : 'contacts'}…
+        </div>
+      )}
+      {!loading && results.length === 0 && query.trim() && (
+        <div className="px-3 py-2.5 text-xs text-neutral-500">
+          No {type === 'rep' ? 'reps' : type === 'account' ? 'accounts' : 'contacts'} found for "{query}"
+        </div>
+      )}
+      {!loading && results.map((hit, i) => (
+        <button
+          key={hit.id}
+          type="button"
+          onMouseDown={e => { e.preventDefault(); select(hit) }}
+          className={`flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors ${
+            i === highlightIdx
+              ? 'bg-neutral-800 text-white'
+              : 'text-neutral-300 hover:bg-neutral-800/60'
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-sm truncate">{hit.label}</div>
+            {hit.sublabel && (
+              <div className="text-[10px] text-neutral-500 truncate mt-0.5">{hit.sublabel}</div>
+            )}
+          </div>
+        </button>
+      ))}
+    </div>
+  ) : null
+
   // ── Selected state ────────────────────────────────────────────────────────
   if (value) {
     return (
@@ -194,7 +273,7 @@ export function EntitySearch({
     )
   }
 
-  // ── Search input + dropdown ───────────────────────────────────────────────
+  // ── Search input ──────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <input
@@ -209,44 +288,7 @@ export function EntitySearch({
         autoComplete="off"
         className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600 disabled:opacity-50"
       />
-
-      {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[200px] rounded-xl border border-neutral-700 bg-neutral-900 shadow-xl overflow-hidden">
-          {loading && (
-            <div className="px-3 py-2.5 text-xs text-neutral-500">Searching…</div>
-          )}
-          {!loading && results.length === 0 && !query.trim() && type !== 'rep' && (
-            <div className="px-3 py-2.5 text-xs text-neutral-500">
-              Type to search {type === 'account' ? 'accounts' : 'contacts'}…
-            </div>
-          )}
-          {!loading && results.length === 0 && query.trim() && (
-            <div className="px-3 py-2.5 text-xs text-neutral-500">
-              No {type === 'rep' ? 'reps' : type === 'account' ? 'accounts' : 'contacts'} found for "{query}"
-            </div>
-          )}
-          {!loading && results.map((hit, i) => (
-            <button
-              key={hit.id}
-              type="button"
-              // mousedown fires before blur, so the selection registers before input loses focus
-              onMouseDown={e => { e.preventDefault(); select(hit) }}
-              className={`flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors ${
-                i === highlightIdx
-                  ? 'bg-neutral-800 text-white'
-                  : 'text-neutral-300 hover:bg-neutral-800/60'
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{hit.label}</div>
-                {hit.sublabel && (
-                  <div className="text-[10px] text-neutral-500 truncate mt-0.5">{hit.sublabel}</div>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      {mounted && dropdownContent && createPortal(dropdownContent, document.body)}
     </div>
   )
 }
