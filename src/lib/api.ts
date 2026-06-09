@@ -2,6 +2,7 @@
 
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { supabaseBrowser } from "@/lib/supabaseClient";
+import { getImpersonationTarget } from "@/lib/impersonation";
 
 // Always go through the Next proxy so we avoid CORS and can inject x-user-id server-side.
 const PROXY = "/api/proxy";
@@ -187,6 +188,14 @@ async function withUserIdHeaders(init?: RequestInit): Promise<RequestInit> {
         headers.set("x-gravix-user-id", effectiveUid);
         headers.set("x-forwarded-user-id", effectiveUid);
       }
+    }
+
+    // Impersonation — SuperAdmin only. When active, every API call carries
+    // x-impersonated-user-id; the API middleware validates the actor's tier
+    // and swaps the effective user context for that request.
+    const impersonationTarget = getImpersonationTarget();
+    if (impersonationTarget && !headers.get("x-impersonated-user-id")) {
+      headers.set("x-impersonated-user-id", impersonationTarget);
     }
   }
 

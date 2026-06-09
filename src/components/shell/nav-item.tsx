@@ -8,6 +8,7 @@ import type { NavItem as NavItemType } from '@/config/navigation'
 interface NavItemProps {
   item: NavItemType
   collapsed: boolean
+  userTier?: string
 }
 
 export function NavItem({ item, collapsed }: NavItemProps) {

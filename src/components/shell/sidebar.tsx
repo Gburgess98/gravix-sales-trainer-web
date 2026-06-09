@@ -11,6 +11,7 @@ interface SidebarProps {
   collapsed: boolean
   onCollapse: (v: boolean) => void
   isManager: boolean
+  userTier?: string
   // Mobile drawer state
   mobileOpen: boolean
   onMobileClose: () => void
@@ -23,6 +24,7 @@ export function Sidebar({
   collapsed,
   onCollapse,
   isManager,
+  userTier,
   mobileOpen,
   onMobileClose,
 }: SidebarProps) {
@@ -103,6 +105,7 @@ export function Sidebar({
               section={section}
               collapsed={effectiveCollapsed}
               isManager={isManager}
+              userTier={userTier}
             />
           ))}
         </nav>

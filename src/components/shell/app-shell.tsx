@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
-import { getAdminConfig } from '@/lib/api'
+import { getAdminConfig, proxyFetch } from '@/lib/api'
+import { getImpersonationState, clearImpersonationState } from '@/lib/impersonation'
+import type { ImpersonationState } from '@/lib/impersonation'
 
 interface AppShellProps {
   children: React.ReactNode
@@ -13,6 +15,27 @@ export function AppShell({ children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isManager, setIsManager] = useState(false)
+  const [userTier, setUserTier] = useState<string | undefined>(undefined)
+  const [impersonation, setImpersonation] = useState<ImpersonationState | null>(null)
+
+  // Sync impersonation state on mount
+  useEffect(() => {
+    setImpersonation(getImpersonationState())
+  }, [])
+
+  async function handleExitImpersonation() {
+    const state = getImpersonationState()
+    try {
+      await proxyFetch('/v1/admin/super/stop-impersonation', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUserId: state?.targetUserId ?? null }),
+      })
+    } catch { /* always clear */ }
+    clearImpersonationState()
+    setImpersonation(null)
+    window.location.href = '/admin/users'
+  }
 
   // Restore sidebar collapsed state from localStorage
   useEffect(() => {
@@ -36,12 +59,26 @@ export function AppShell({ children }: AppShellProps) {
       .catch(() => {})
   }, [])
 
+  // Fetch user tier for partner/super-admin nav visibility
+  useEffect(() => {
+    proxyFetch('/v1/reps/me', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        console.log('reps/me response', d)
+        const tier = d?.tier ?? d?.rep?.tier ?? d?.me?.tier
+        console.log('userTier state', tier)
+        if (d?.ok && tier) setUserTier(tier)
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-950 text-neutral-100">
       <Sidebar
         collapsed={collapsed}
         onCollapse={handleCollapse}
         isManager={isManager}
+        userTier={userTier}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
@@ -49,6 +86,33 @@ export function AppShell({ children }: AppShellProps) {
       {/* Main column */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <Topbar onMobileMenuOpen={() => setMobileOpen(true)} />
+
+        {/* Impersonation banner — shown globally when a SuperAdmin is acting as another user */}
+        {impersonation && (
+          <div className="flex items-center justify-between gap-3 border-b border-fuchsia-500/30 bg-fuchsia-950/60 px-4 py-2">
+            <div className="flex items-center gap-2 text-sm text-fuchsia-200">
+              <span className="h-2 w-2 rounded-full bg-fuchsia-400 animate-pulse" />
+              <span>
+                Impersonating{' '}
+                <span className="font-semibold text-fuchsia-100">
+                  {impersonation.targetName ?? impersonation.targetUserId.slice(0, 8)}
+                </span>
+                {impersonation.targetTier && (
+                  <span className="ml-1.5 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] text-fuchsia-300">
+                    {impersonation.targetTier}
+                  </span>
+                )}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleExitImpersonation}
+              className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200 hover:bg-fuchsia-500/20 transition-colors"
+            >
+              Exit Impersonation
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
           {children}

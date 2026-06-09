@@ -9,10 +9,13 @@ import {
   Brain,
   BarChart2,
   Settings,
+  Handshake,
+  ShieldCheck,
+  UserCircle,
   type LucideIcon,
 } from 'lucide-react'
 
-export type NavRole = 'all' | 'manager' | 'admin'
+export type NavRole = 'all' | 'manager' | 'admin' | 'partneradmin' | 'superadmin'
 
 export interface NavItem {
   label: string
@@ -43,6 +46,7 @@ export const SHELL_PATHS = [
   '/upload',
   '/whisperer',
   '/coaching',
+  '/settings',
 ]
 
 export function isShellPath(pathname: string): boolean {
@@ -78,6 +82,21 @@ export const navigation: NavSection[] = [
     items: [
       { label: 'Analytics', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Account',
+    items: [
+      { label: 'My Profile', href: '/settings/profile', icon: UserCircle },
+    ],
+  },
+  {
+    title: 'Control Plane',
+    roles: ['partneradmin'],
+    items: [
+      { label: 'Partners',  href: '/admin/partners',  icon: Handshake,   roles: ['superadmin'] },
+      { label: 'Companies', href: '/admin/companies', icon: Building2,    roles: ['partneradmin'] },
+      { label: 'Users',     href: '/admin/users',     icon: ShieldCheck,  roles: ['partneradmin'] },
     ],
   },
 ]
