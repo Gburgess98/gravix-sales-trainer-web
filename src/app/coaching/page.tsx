@@ -70,6 +70,9 @@ type Assignment = {
   rep_id?: string | null
   due_at?: string | null
   created_at: string
+  completed_at?: string | null
+  target_id?: string | null
+  source?: string | null
   meta?: Record<string, any> | null
 }
 
@@ -112,17 +115,33 @@ type CommandCentre = {
   }>
   openAssignments: Array<{
     assignmentId: string
+    repId?: string | null
     repName: string
     title: string
     status: 'open' | 'overdue' | 'completed' | 'reviewed'
     dueAt: string | null
     priority: 'low' | 'medium' | 'high'
+    type?: string
+    source?: string
+    sourceCallId?: string | null
+    originLabel?: string
+    notes?: string | null
   }>
   weakestSkills: Array<{
     skill: string
     count: number
     averageScore: number
+    previousAverageScore?: number | null
+    delta?: number | null
+    trend?: 'up' | 'down' | 'flat' | 'new'
+    trendLabel?: string
   }>
+  coachingImpact?: {
+    completedAssignments: number
+    skillsImproving: number
+    skillsDeclining: number
+    summary: string
+  }
   roi: {
     callsReviewed: number
     estimatedMinutesSaved: number
@@ -213,14 +232,69 @@ type AssignDraft = {
   priority: 'low' | 'medium' | 'high'
 }
 
-type AssignmentFilter = 'open' | 'overdue' | 'all'
+type AssignmentFilter = 'open' | 'overdue' | 'completed' | 'all'
 type ReplayThreshold = '70' | '60' | '50'
 
 const ASSIGNMENT_FILTERS: FilterOption<AssignmentFilter>[] = [
   { value: 'open', label: 'Open' },
   { value: 'overdue', label: 'Overdue', variant: 'danger' },
+  { value: 'completed', label: 'Completed' },
   { value: 'all', label: 'All' },
 ]
+
+const ASSIGNMENT_EMPTY_COPY: Record<AssignmentFilter, string> = {
+  open: 'No open coaching assignments.',
+  overdue: 'No overdue coaching assignments.',
+  completed: 'No completed coaching assignments yet.',
+  all: 'No assignments found.',
+}
+
+// ── Day 93 — assignment tracking helpers (mirror /v1/manager rules) ─────────
+
+function assignmentOriginLabel(a: Assignment): string {
+  const src = String(a.source || a.meta?.assignment_origin || '').toLowerCase()
+  if (src === 'manager_review') return 'Assigned via review'
+  if (src.includes('auto')) return 'Auto-created'
+  if (src) return 'Manual assignment'
+  return ''
+}
+
+function assignmentPriorityOf(a: Assignment): 'low' | 'medium' | 'high' {
+  const stored = String(a.meta?.priority || '').toLowerCase()
+  if (stored === 'low' || stored === 'medium' || stored === 'high') return stored
+  if (!a.due_at) return 'low'
+  const dueMs = new Date(a.due_at).getTime()
+  if (!Number.isFinite(dueMs)) return 'low'
+  const now = Date.now()
+  if (dueMs < now) return 'high'
+  if (dueMs < now + 24 * 3600 * 1000) return 'medium'
+  return 'low'
+}
+
+function assignmentSourceCallIdOf(a: Assignment): string | null {
+  const fromMeta = String(a.meta?.source_call_id || '').trim()
+  if (fromMeta) return fromMeta
+  if (String(a.type || '') === 'call_review' && a.target_id) return String(a.target_id)
+  return null
+}
+
+const PRIORITY_BADGE_CLS: Record<'low' | 'medium' | 'high', string> = {
+  high: 'border-red-500/30 bg-red-500/10 text-red-300',
+  medium: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  low: 'border-neutral-700 bg-neutral-900 text-neutral-400',
+}
+
+function dueLabelOf(a: Assignment): { text: string; cls: string } | null {
+  if (!a.due_at) return null
+  const due = new Date(a.due_at)
+  if (!Number.isFinite(due.getTime())) return null
+  const isCompleted = String(a.status || '') === 'completed'
+  if (isCompleted) return { text: `Due ${due.toLocaleDateString('en-GB')}`, cls: '' }
+  const now = new Date()
+  if (due.getTime() < now.getTime()) return { text: `Overdue · ${due.toLocaleDateString('en-GB')}`, cls: 'text-red-400' }
+  if (due.toDateString() === now.toDateString()) return { text: 'Due today', cls: 'text-amber-300' }
+  return { text: `Due ${due.toLocaleDateString('en-GB')}`, cls: '' }
+}
 
 const REPLAY_THRESHOLDS: FilterOption<ReplayThreshold>[] = [
   { value: '70', label: 'Below 70' },
@@ -640,9 +714,11 @@ export default function CoachingPage() {
   const loadAssignments = useCallback(async () => {
     setAssignmentsLoading(true)
     try {
-      const res = await proxyFetch('/v1/assignments?limit=40', { cache: 'no-store' })
+      // Day 93: manager-scoped list (hierarchy-filtered) instead of the
+      // requester's own assignments — this tab is a manager tracking view.
+      const res = await proxyFetch('/v1/assignments/manager?limit=100', { cache: 'no-store' })
       const data = await res.json()
-      setAssignments(data.assignments ?? data.items ?? [])
+      setAssignments(data.items ?? data.assignments ?? [])
     } catch { setAssignments([]) } finally { setAssignmentsLoading(false) }
   }, [])
 
@@ -794,8 +870,14 @@ export default function CoachingPage() {
       if (!a.due_at) return false
       return new Date(a.due_at) < new Date() && (a.status === 'open' || a.status === 'assigned')
     }
+    if (assignmentFilter === 'completed') return a.status === 'completed'
     return true
   })
+
+  const repNameById = useMemo(
+    () => new Map(reps.map((r) => [String(r.rep_id), r.rep_name])),
+    [reps]
+  )
 
   const thresholdNum = Number(replayThreshold)
   const filteredCalls = calls.filter((c) => (c.score_overall ?? 999) < thresholdNum)
@@ -1020,14 +1102,25 @@ export default function CoachingPage() {
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-[11px] text-neutral-500 truncate">
                                   {a.repName}
+                                  {a.originLabel === 'Assigned via review' ? ' · Assigned via review' : ''}
                                   {a.dueAt ? ` · due ${new Date(a.dueAt).toLocaleDateString('en-GB')}` : ''}
                                 </span>
-                                <Link
-                                  href="/admin/assignments"
-                                  className="shrink-0 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
-                                >
-                                  Open Assignment
-                                </Link>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {a.sourceCallId && (
+                                    <Link
+                                      href={`/calls/${a.sourceCallId}`}
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      From call
+                                    </Link>
+                                  )}
+                                  <Link
+                                    href="/admin/assignments"
+                                    className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                  >
+                                    Open Assignment
+                                  </Link>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1046,7 +1139,20 @@ export default function CoachingPage() {
                           {commandCentre.weakestSkills.map((s) => (
                             <div key={s.skill} className="space-y-1">
                               <div className="flex items-center justify-between gap-2 text-sm">
-                                <span className="text-neutral-200">{s.skill}</span>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-neutral-200">{s.skill}</span>
+                                  {s.trendLabel && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${
+                                      s.trend === 'up'
+                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                        : s.trend === 'down'
+                                          ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                                          : 'border-neutral-700 bg-neutral-900 text-neutral-400'
+                                    }`}>
+                                      {s.trendLabel}
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <span className="text-[10px] text-neutral-500">{s.count} weak {s.count === 1 ? 'call' : 'calls'}</span>
                                   <ScorePill score={s.averageScore} />
@@ -1064,13 +1170,38 @@ export default function CoachingPage() {
                       )}
                     </SectionCard>
 
-                    <SectionCard variant="coaching" title="Estimated Manager Time Saved" subtitle="20 minutes per reviewed call.">
-                      <div className="grid grid-cols-3 gap-3">
-                        <StatCard label="Calls Reviewed" value={commandCentre.roi.callsReviewed} size="sm" />
-                        <StatCard label="Minutes Saved" value={commandCentre.roi.estimatedMinutesSaved} size="sm" variant="success" />
-                        <StatCard label="Hours Saved" value={commandCentre.roi.estimatedHoursSaved} size="sm" variant="success" />
-                      </div>
-                    </SectionCard>
+                    <div className="space-y-4">
+                      <SectionCard variant="coaching" title="Estimated Manager Time Saved" subtitle="20 minutes per reviewed call.">
+                        <div className="grid grid-cols-3 gap-3">
+                          <StatCard label="Calls Reviewed" value={commandCentre.roi.callsReviewed} size="sm" />
+                          <StatCard label="Minutes Saved" value={commandCentre.roi.estimatedMinutesSaved} size="sm" variant="success" />
+                          <StatCard label="Hours Saved" value={commandCentre.roi.estimatedHoursSaved} size="sm" variant="success" />
+                        </div>
+                      </SectionCard>
+
+                      {commandCentre.coachingImpact && (
+                        <SectionCard variant="coaching" title="Coaching Impact" subtitle="This period vs the previous one.">
+                          <div className="grid grid-cols-3 gap-3">
+                            <StatCard label="Completed" value={commandCentre.coachingImpact.completedAssignments} subtext="assignments" size="sm" />
+                            <StatCard
+                              label="Improving"
+                              value={commandCentre.coachingImpact.skillsImproving}
+                              subtext="skills"
+                              size="sm"
+                              variant={commandCentre.coachingImpact.skillsImproving > 0 ? 'success' : 'default'}
+                            />
+                            <StatCard
+                              label="Declining"
+                              value={commandCentre.coachingImpact.skillsDeclining}
+                              subtext="skills"
+                              size="sm"
+                              variant={commandCentre.coachingImpact.skillsDeclining > 0 ? 'danger' : 'default'}
+                            />
+                          </div>
+                          <div className="mt-2 text-xs text-neutral-500">{commandCentre.coachingImpact.summary}</div>
+                        </SectionCard>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
@@ -1531,40 +1662,65 @@ export default function CoachingPage() {
           {assignmentsLoading && <LoadingText text="Loading assignments…" />}
           {!assignmentsLoading && filteredAssignments.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
-              No {assignmentFilter !== 'all' ? assignmentFilter + ' ' : ''}assignments found.
+              {ASSIGNMENT_EMPTY_COPY[assignmentFilter]}
             </div>
           )}
           {!assignmentsLoading && filteredAssignments.length > 0 && (
             <div className="rounded-xl border border-neutral-800 overflow-hidden">
               <div className="divide-y divide-neutral-800/60">
                 {filteredAssignments.map((a) => {
-                  const isOverdue = a.due_at && new Date(a.due_at) < new Date()
-                  const urgency = (a.meta as any)?.threshold_band || (a.meta as any)?.urgency
+                  const isCompleted = a.status === 'completed'
+                  const isOverdue = !isCompleted && a.due_at && new Date(a.due_at) < new Date()
+                  const priority = assignmentPriorityOf(a)
+                  const originLabel = assignmentOriginLabel(a)
+                  const sourceCallId = assignmentSourceCallIdOf(a)
+                  const due = dueLabelOf(a)
+                  const notes = String(a.meta?.coaching_notes || '').trim()
+                  const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
                   return (
-                    <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div key={a.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm text-white truncate">{a.title || 'Untitled assignment'}</span>
-                          {urgency && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${urgencyBadgeClass(urgency)}`}>
-                              {urgency}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${
+                            isCompleted
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                              : isOverdue
+                                ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                                : 'border-neutral-700 bg-neutral-900 text-neutral-300'
+                          }`}>
+                            {isCompleted ? 'Completed' : isOverdue ? 'Overdue' : 'Open'}
+                          </span>
+                          {!isCompleted && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${PRIORITY_BADGE_CLS[priority]}`}>
+                              {priority}
                             </span>
                           )}
                         </div>
-                        <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
-                          <span>{a.type || 'assignment'}</span>
-                          {a.due_at && (
-                            <span className={isOverdue ? 'text-red-400' : ''}>
-                              {isOverdue ? 'Overdue · ' : 'Due '}{new Date(a.due_at).toLocaleDateString()}
-                            </span>
-                          )}
+                        <div className="mt-0.5 flex items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 flex-wrap">
+                          {repName && <span className="text-neutral-300">{repName}</span>}
+                          <span>{String(a.type || 'assignment').replace('_', ' ')}</span>
+                          {originLabel && <span>{originLabel}</span>}
+                          {due && <span className={due.cls}>{due.text}</span>}
                         </div>
+                        {notes && (
+                          <div className="mt-1 text-xs text-neutral-500 truncate max-w-xl" title={notes}>
+                            {notes}
+                          </div>
+                        )}
                       </div>
-                      {a.rep_id && (
-                        <Link href={`/crm/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 shrink-0 transition-colors">
-                          Rep →
-                        </Link>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {sourceCallId && (
+                          <Link href={`/calls/${sourceCallId}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors">
+                            From call →
+                          </Link>
+                        )}
+                        {a.rep_id && (
+                          <Link href={`/crm/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors">
+                            Rep →
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   )
                 })}

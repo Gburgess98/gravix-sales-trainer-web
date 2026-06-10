@@ -14,6 +14,8 @@
     "validate-sprint-4-day-90": "bash scripts/validate-sprint-4-day-90.sh",
     "validate-sprint-4-day-91": "bash scripts/validate-sprint-4-day-91.sh",
     "validate-sprint-4-day-92": "bash scripts/validate-sprint-4-day-92.sh",
+    "validate-sprint-4-day-93": "bash scripts/validate-sprint-4-day-93.sh",
+    "validate-sprint-4-day-94": "bash scripts/validate-sprint-4-day-94.sh",
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",
