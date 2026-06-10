@@ -190,6 +190,10 @@ export default function CallPage() {
     }
   }, [callId, markingReviewed, managerReviewed, toast]);
 
+  // Assign coaching from this call (Sprint 4 Day 92)
+  const [assigningCoaching, setAssigningCoaching] = useState(false);
+  const [coachingAssigned, setCoachingAssigned] = useState(false);
+
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [drills, setDrills] = useState<{ id: string; label: string }[]>([]);
@@ -327,6 +331,99 @@ export default function CallPage() {
     setAssignments(r.items || []);
   }, [callId]);
   useEffect(() => { if (coachOpen) loadAssignments().catch(() => { }); }, [coachOpen, loadAssignments]);
+
+  // Assign coaching from this call (Sprint 4 Day 92) — rule-based pre-fill,
+  // creates via the existing POST /v1/assignments engine. The assignment
+  // appears in /coaching Open Coaching, not the legacy coach panel above.
+  const assignCoachingFromCall = useCallback(async () => {
+    if (!callId || assigningCoaching) return;
+
+    const repId = String(callMeta?.user_id || "");
+    if (!repId) {
+      toast("Could not assign coaching because this call is not linked to a rep.");
+      return;
+    }
+
+    const overallScore =
+      typeof callMeta?.score_overall === "number" ? Math.round(Number(callMeta.score_overall)) : null;
+
+    // Weakest stage from analysis_json (intro/discovery/pitch/objection/close)
+    const stages = callMeta?.analysis_json?.stages ?? null;
+    const SKILLS: Array<{ key: string; label: string; title: string }> = [
+      { key: "intro", label: "Intro", title: "Opening Script Practice" },
+      { key: "discovery", label: "Discovery", title: "Discovery Drill" },
+      { key: "pitch", label: "Pitch", title: "Pitch Clarity Drill" },
+      { key: "objection", label: "Objection", title: "Objection Handling Drill" },
+      { key: "close", label: "Close", title: "Closing Drill" },
+    ];
+    let weakest: { key: string; label: string; title: string } | null = null;
+    let weakestScore = Number.POSITIVE_INFINITY;
+    let anyStageBelow40 = false;
+    let anyStageBelow50 = false;
+    for (const skill of SKILLS) {
+      const s = Number((stages as any)?.[skill.key]?.score);
+      if (!Number.isFinite(s)) continue;
+      if (s < 40) anyStageBelow40 = true;
+      if (s < 50) anyStageBelow50 = true;
+      if (s < weakestScore) {
+        weakestScore = s;
+        weakest = skill;
+      }
+    }
+
+    const title = weakest ? weakest.title : "Call Review Coaching";
+    const noteParts: string[] = [];
+    if (overallScore != null && overallScore < 70) {
+      noteParts.push("This call was flagged because the overall score was below target.");
+    }
+    if (weakest) noteParts.push(`Focus on the weakest skill: ${weakest.label}.`);
+    if (!noteParts.length) noteParts.push("Review this call and complete coaching notes.");
+    noteParts.push("Review the call and complete the recommended practice.");
+
+    const priority =
+      (overallScore != null && overallScore < 50) || anyStageBelow40
+        ? "high"
+        : (overallScore != null && overallScore < 70) || anyStageBelow50
+          ? "medium"
+          : "low";
+
+    setAssigningCoaching(true);
+    try {
+      const res = await proxyFetch("/v1/assignments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          rep_id: repId,
+          type: "call_review",
+          target_id: callId,
+          title,
+          due_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+          source: "manager_review",
+          notes: noteParts.join(" "),
+          meta: {
+            assignment_origin: "manager_review",
+            flag_section: weakest?.key ?? "general",
+            score_before: overallScore,
+            priority,
+            source_call_id: callId,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok && data?.skipped) {
+        toast("Not assigned — this rep already has an active drill for this skill.");
+      } else if (data?.ok) {
+        setCoachingAssigned(true);
+        toast("Coaching assigned.");
+      } else {
+        toast("Could not assign coaching.");
+      }
+    } catch {
+      toast("Could not assign coaching.");
+    } finally {
+      setAssigningCoaching(false);
+    }
+  }, [callId, assigningCoaching, callMeta, toast]);
 
   useEffect(() => {
     if (!coachOpen) return;
@@ -1297,7 +1394,7 @@ export default function CallPage() {
                 </div>
               )}
               {managerCheckDone && isManager && callMeta?.status === "scored" && (
-                <div className="pt-1">
+                <div className="pt-1 flex items-center gap-2">
                   {managerReviewed ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
                       Reviewed ✓
@@ -1310,6 +1407,20 @@ export default function CallPage() {
                       className="rounded-md bg-indigo-600/20 px-2.5 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
                     >
                       {markingReviewed ? "Marking…" : "Mark Reviewed"}
+                    </button>
+                  )}
+                  {coachingAssigned ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                      Coaching assigned ✓
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={assignCoachingFromCall}
+                      disabled={assigningCoaching}
+                      className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                    >
+                      {assigningCoaching ? "Assigning…" : "Assign Coaching"}
                     </button>
                   )}
                 </div>

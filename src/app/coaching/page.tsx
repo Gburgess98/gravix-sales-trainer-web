@@ -103,6 +103,7 @@ type CommandCentre = {
   }>
   callsNeedingReview: Array<{
     callId: string
+    repId?: string | null
     repName: string
     title: string
     overallScore: number
@@ -154,6 +155,63 @@ type ReviewQueueItem = {
 }
 
 type ReviewNotice = { type: 'success' | 'error'; text: string }
+
+// ── Sprint 4 Day 92 — Assign Coaching from a call (rule-based pre-fill) ──────
+
+const SKILL_TO_TITLE: Record<string, string> = {
+  Intro: 'Opening Script Practice',
+  Discovery: 'Discovery Drill',
+  Pitch: 'Pitch Clarity Drill',
+  Objection: 'Objection Handling Drill',
+  Close: 'Closing Drill',
+}
+
+const SKILL_TO_SECTION: Record<string, string> = {
+  Intro: 'intro',
+  Discovery: 'discovery',
+  Pitch: 'pitch',
+  Objection: 'objection',
+  Close: 'close',
+}
+
+function coachingTitleFor(weakestSkill: string): string {
+  return SKILL_TO_TITLE[weakestSkill] ?? 'Call Review Coaching'
+}
+
+function coachingNoteFor(weakestSkill: string, reasons: string[]): string {
+  const parts: string[] = []
+  if (reasons.some((r) => r.startsWith('Score below'))) {
+    parts.push('This call was flagged because the overall score was below target.')
+  }
+  if (weakestSkill && weakestSkill !== 'Unknown') {
+    parts.push(`Focus on the weakest skill: ${weakestSkill}.`)
+  }
+  parts.push('Review the call and complete the recommended practice.')
+  return parts.join(' ')
+}
+
+function coachingPriorityFor(overallScore: number, reasons: string[]): 'low' | 'medium' | 'high' {
+  if (overallScore < 50) return 'high'
+  if (overallScore < 70 || reasons.some((r) => / below 50$/.test(r))) return 'medium'
+  return 'low'
+}
+
+function defaultDueYmd(): string {
+  return new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
+}
+
+type AssignDraft = {
+  callId: string
+  repId: string
+  repName: string
+  weakestSkill: string
+  overallScore: number
+  reasons: string[]
+  title: string
+  note: string
+  dueYmd: string
+  priority: 'low' | 'medium' | 'high'
+}
 
 type AssignmentFilter = 'open' | 'overdue' | 'all'
 type ReplayThreshold = '70' | '60' | '50'
@@ -533,6 +591,10 @@ export default function CoachingPage() {
   const [markingReviewedId, setMarkingReviewedId] = useState<string | null>(null)
   const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null)
 
+  // Assign Coaching modal (Sprint 4 Day 92)
+  const [assignDraft, setAssignDraft] = useState<AssignDraft | null>(null)
+  const [assigning, setAssigning] = useState(false)
+
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true)
     setOverviewError(null)
@@ -641,6 +703,83 @@ export default function CoachingPage() {
       setMarkingReviewedId(null)
     }
   }, [loadOverview, loadReviewQueue])
+
+  const openAssignCoaching = useCallback((call: {
+    callId: string
+    repId?: string | null
+    repName: string
+    overallScore: number
+    weakestSkill: string
+    reasons?: string[]
+  }) => {
+    setReviewNotice(null)
+    if (!call.repId) {
+      setReviewNotice({ type: 'error', text: 'Could not assign coaching because this call is not linked to a rep.' })
+      return
+    }
+    const reasons = call.reasons ?? (call.overallScore < 70 ? ['Score below 70'] : [])
+    setAssignDraft({
+      callId: call.callId,
+      repId: call.repId,
+      repName: call.repName,
+      weakestSkill: call.weakestSkill,
+      overallScore: call.overallScore,
+      reasons,
+      title: coachingTitleFor(call.weakestSkill),
+      note: coachingNoteFor(call.weakestSkill, reasons),
+      dueYmd: defaultDueYmd(),
+      priority: coachingPriorityFor(call.overallScore, reasons),
+    })
+  }, [])
+
+  const submitAssignCoaching = useCallback(async () => {
+    if (!assignDraft || assigning) return
+    if (assignDraft.title.trim().length < 3) {
+      setReviewNotice({ type: 'error', text: 'Coaching title must be at least 3 characters.' })
+      return
+    }
+    setAssigning(true)
+    setReviewNotice(null)
+    try {
+      const res = await proxyFetch('/v1/assignments', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          rep_id: assignDraft.repId,
+          type: 'call_review',
+          target_id: assignDraft.callId,
+          title: assignDraft.title.trim(),
+          due_at: new Date(`${assignDraft.dueYmd}T12:00:00Z`).toISOString(),
+          source: 'manager_review',
+          notes: assignDraft.note.trim() || null,
+          meta: {
+            assignment_origin: 'manager_review',
+            flag_section: SKILL_TO_SECTION[assignDraft.weakestSkill] ?? 'general',
+            score_before: assignDraft.overallScore,
+            priority: assignDraft.priority,
+            source_call_id: assignDraft.callId,
+            review_reasons: assignDraft.reasons,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok && data?.skipped) {
+        setReviewNotice({ type: 'error', text: 'Not assigned — this rep already has an active drill for this skill.' })
+        setAssignDraft(null)
+      } else if (data?.ok) {
+        setReviewNotice({ type: 'success', text: 'Coaching assigned.' })
+        setAssignDraft(null)
+        loadOverview()
+        loadAssignments()
+      } else {
+        setReviewNotice({ type: 'error', text: data?.error ? `Could not assign coaching (${data.error}).` : 'Could not assign coaching.' })
+      }
+    } catch {
+      setReviewNotice({ type: 'error', text: 'Could not assign coaching.' })
+    } finally {
+      setAssigning(false)
+    }
+  }, [assignDraft, assigning, loadOverview, loadAssignments])
 
   useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => {
@@ -849,6 +988,13 @@ export default function CoachingPage() {
                                   className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors disabled:opacity-50"
                                 >
                                   {markingReviewedId === call.callId ? 'Marking…' : 'Mark Reviewed'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openAssignCoaching(call)}
+                                  className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                >
+                                  Assign Coaching
                                 </button>
                               </div>
                             </div>
@@ -1573,6 +1719,13 @@ export default function CoachingPage() {
                       >
                         {markingReviewedId === item.callId ? 'Marking…' : 'Mark Reviewed'}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => openAssignCoaching(item)}
+                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                      >
+                        Assign Coaching
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1584,6 +1737,94 @@ export default function CoachingPage() {
             <button type="button" onClick={loadReviewQueue} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
               Refresh
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── ASSIGN COACHING MODAL (Sprint 4 Day 92) ── */}
+      {assignDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-base font-semibold text-neutral-100">Assign Coaching</div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  {assignDraft.repName} · score {assignDraft.overallScore}
+                  {assignDraft.weakestSkill !== 'Unknown' ? ` · weakest: ${assignDraft.weakestSkill}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssignDraft(null)}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-900"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs text-neutral-500">Title</label>
+                <input
+                  value={assignDraft.title}
+                  onChange={(e) => setAssignDraft({ ...assignDraft, title: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-500">Note for the rep</label>
+                <textarea
+                  value={assignDraft.note}
+                  onChange={(e) => setAssignDraft({ ...assignDraft, note: e.target.value })}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-neutral-500">Due date</label>
+                  <input
+                    type="date"
+                    value={assignDraft.dueYmd}
+                    onChange={(e) => setAssignDraft({ ...assignDraft, dueYmd: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-neutral-500">Priority</label>
+                  <select
+                    value={assignDraft.priority}
+                    onChange={(e) => setAssignDraft({ ...assignDraft, priority: e.target.value as AssignDraft['priority'] })}
+                    className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                  >
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={assigning}
+                onClick={() => setAssignDraft(null)}
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={assigning}
+                onClick={() => void submitAssignCoaching()}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+              >
+                {assigning ? 'Assigning…' : 'Assign Coaching'}
+              </button>
+            </div>
           </div>
         </div>
       )}
