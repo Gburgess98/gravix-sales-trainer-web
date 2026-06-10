@@ -161,6 +161,35 @@ export default function CallPage() {
   const autoCompletedRef = useRef(false);
 
 
+  // Manager review (Sprint 4 Day 91)
+  const [managerReviewed, setManagerReviewed] = useState(false);
+  const [markingReviewed, setMarkingReviewed] = useState(false);
+
+  const markCallReviewed = useCallback(async () => {
+    if (!callId || markingReviewed || managerReviewed) return;
+    setMarkingReviewed(true);
+    try {
+      const res = await proxyFetch(`/v1/calls/${encodeURIComponent(callId)}/manager-review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok) {
+        setManagerReviewed(true);
+        toast("Call marked as reviewed.");
+      } else if (data?.error === "migration_required") {
+        toast(data?.hint || "Review history migration required.");
+      } else {
+        toast("Could not mark this call as reviewed.");
+      }
+    } catch {
+      toast("Could not mark this call as reviewed.");
+    } finally {
+      setMarkingReviewed(false);
+    }
+  }, [callId, markingReviewed, managerReviewed, toast]);
+
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [drills, setDrills] = useState<{ id: string; label: string }[]>([]);
@@ -1265,6 +1294,24 @@ export default function CallPage() {
               {callMeta?.ai_model && (
                 <div className="text-xs text-neutral-500">
                   Scored by {callMeta.ai_model}
+                </div>
+              )}
+              {managerCheckDone && isManager && callMeta?.status === "scored" && (
+                <div className="pt-1">
+                  {managerReviewed ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                      Reviewed ✓
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={markCallReviewed}
+                      disabled={markingReviewed}
+                      className="rounded-md bg-indigo-600/20 px-2.5 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
+                    >
+                      {markingReviewed ? "Marking…" : "Mark Reviewed"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

@@ -11,7 +11,7 @@ import { EmptyRow } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
 
-type CoachingTab = 'overview' | 'interventions' | 'assignments' | 'replay'
+type CoachingTab = 'overview' | 'interventions' | 'assignments' | 'replay' | 'review'
 type RepFilter = 'all' | 'at_risk' | 'watch' | 'healthy'
 type ConfidenceLevel = 'high' | 'medium' | 'low'
 type UrgencyState = 'escalated' | 'critical' | 'high' | 'watch' | 'healthy'
@@ -140,6 +140,20 @@ const TEAM_HEALTH_LABELS: Record<string, string> = {
   amber: 'Needs attention',
   red: 'At risk',
 }
+
+// Sprint 4 Day 91 — GET /v1/manager/review-queue
+type ReviewQueueItem = {
+  callId: string
+  repId: string | null
+  repName: string
+  title: string
+  overallScore: number
+  weakestSkill: string
+  createdAt: string
+  reasons: string[]
+}
+
+type ReviewNotice = { type: 'success' | 'error'; text: string }
 
 type AssignmentFilter = 'open' | 'overdue' | 'all'
 type ReplayThreshold = '70' | '60' | '50'
@@ -511,6 +525,14 @@ export default function CoachingPage() {
   const [replayLoading, setReplayLoading] = useState(false)
   const [replayThreshold, setReplayThreshold] = useState<ReplayThreshold>('70')
 
+  // Manager review queue (Sprint 4 Day 91)
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
+  const [reviewQueueLoading, setReviewQueueLoading] = useState(false)
+  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null)
+  const [reviewQueueLoaded, setReviewQueueLoaded] = useState(false)
+  const [markingReviewedId, setMarkingReviewedId] = useState<string | null>(null)
+  const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null)
+
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true)
     setOverviewError(null)
@@ -572,11 +594,60 @@ export default function CoachingPage() {
     } catch { setCalls([]) } finally { setReplayLoading(false) }
   }, [])
 
+  const loadReviewQueue = useCallback(async () => {
+    setReviewQueueLoading(true)
+    setReviewQueueError(null)
+    try {
+      const res = await proxyFetch('/v1/manager/review-queue?days=30&limit=25', { cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok) {
+        setReviewQueue(data.items ?? [])
+      } else {
+        setReviewQueue([])
+        setReviewQueueError(data?.error || 'Failed to load the review queue')
+      }
+    } catch (e: any) {
+      setReviewQueue([])
+      setReviewQueueError(e?.message || 'Connection error')
+    } finally {
+      setReviewQueueLoading(false)
+      setReviewQueueLoaded(true)
+    }
+  }, [])
+
+  const markReviewed = useCallback(async (callId: string) => {
+    setMarkingReviewedId(callId)
+    setReviewNotice(null)
+    try {
+      const res = await proxyFetch(`/v1/calls/${encodeURIComponent(callId)}/manager-review`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setReviewNotice({ type: 'success', text: 'Call marked as reviewed.' })
+        // Refresh both the command-centre payload and the queue
+        loadOverview()
+        loadReviewQueue()
+      } else if (data?.error === 'migration_required') {
+        setReviewNotice({ type: 'error', text: data?.hint || 'Review history migration required.' })
+      } else {
+        setReviewNotice({ type: 'error', text: 'Could not mark this call as reviewed.' })
+      }
+    } catch {
+      setReviewNotice({ type: 'error', text: 'Could not mark this call as reviewed.' })
+    } finally {
+      setMarkingReviewedId(null)
+    }
+  }, [loadOverview, loadReviewQueue])
+
   useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
-  }, [tab, assignments.length, calls.length, loadAssignments, loadReplay])
+    if (tab === 'review' && !reviewQueueLoaded) loadReviewQueue()
+  }, [tab, assignments.length, calls.length, reviewQueueLoaded, loadAssignments, loadReplay, loadReviewQueue])
 
   const filteredAssignments = assignments.filter((a) => {
     if (assignmentFilter === 'open') return a.status === 'open' || a.status === 'assigned'
@@ -650,6 +721,7 @@ export default function CoachingPage() {
           { id: 'interventions', label: 'Interventions', badge: interventionCount || undefined },
           { id: 'assignments', label: 'Assignments' },
           { id: 'replay', label: 'Replay Queue' },
+          { id: 'review', label: 'Review Queue', badge: commandCentre?.teamHealth.callsNeedingReview || undefined },
         ]}
         active={tab}
         onChange={setTab}
@@ -669,6 +741,18 @@ export default function CoachingPage() {
               {commandCentreError && !commandCentre && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
                   Team health unavailable: {commandCentreError}
+                </div>
+              )}
+
+              {reviewNotice && (
+                <div
+                  className={`rounded-xl border px-4 py-3 text-sm ${
+                    reviewNotice.type === 'success'
+                      ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+                      : 'border-red-500/30 bg-red-500/5 text-red-300'
+                  }`}
+                >
+                  {reviewNotice.text}
                 </div>
               )}
 
@@ -751,12 +835,22 @@ export default function CoachingPage() {
                                 <span>Weakest: <span className="text-neutral-300">{call.weakestSkill}</span></span>
                                 {call.createdAt && <span>{new Date(call.createdAt).toLocaleDateString('en-GB')}</span>}
                               </div>
-                              <Link
-                                href={`/calls/${call.callId}`}
-                                className="inline-block rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
-                              >
-                                Review Call
-                              </Link>
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  href={`/calls/${call.callId}`}
+                                  className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                >
+                                  Review Call
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => markReviewed(call.callId)}
+                                  disabled={markingReviewedId === call.callId}
+                                  className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                                >
+                                  {markingReviewedId === call.callId ? 'Marking…' : 'Mark Reviewed'}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1400,6 +1494,94 @@ export default function CoachingPage() {
               Full Call Library →
             </Link>
             <button type="button" onClick={loadReplay} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
+              Refresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── REVIEW QUEUE (Sprint 4 Day 91) ── */}
+      {tab === 'review' && (
+        <div className="space-y-3">
+          {reviewNotice && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                reviewNotice.type === 'success'
+                  ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+                  : 'border-red-500/30 bg-red-500/5 text-red-300'
+              }`}
+            >
+              {reviewNotice.text}
+            </div>
+          )}
+
+          {reviewQueueLoading && <LoadingText text="Loading review queue…" />}
+          {reviewQueueError && !reviewQueueLoading && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 text-sm text-red-300">{reviewQueueError}</div>
+          )}
+
+          {!reviewQueueLoading && !reviewQueueError && reviewQueue.length === 0 && (
+            <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
+              No calls need manager review.
+            </div>
+          )}
+
+          {!reviewQueueLoading && !reviewQueueError && reviewQueue.length > 0 && (
+            <div className="rounded-xl border border-neutral-800 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+                <div className="text-sm font-medium text-white">Calls Awaiting Manager Review</div>
+                <span className="text-xs text-neutral-500">Lowest score first · last 30 days</span>
+              </div>
+              <div className="divide-y divide-neutral-800/60">
+                {reviewQueue.map((item) => (
+                  <div key={item.callId} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white truncate">{item.title}</span>
+                        <ScorePill score={item.overallScore} className="shrink-0" />
+                      </div>
+                      <div className="mt-0.5 text-xs text-neutral-500">
+                        {item.repName}
+                        {item.weakestSkill !== 'Unknown' ? ` · Weakest: ${item.weakestSkill}` : ''}
+                        {item.createdAt ? ` · ${new Date(item.createdAt).toLocaleDateString('en-GB')}` : ''}
+                      </div>
+                      {item.reasons.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {item.reasons.map((reason) => (
+                            <span
+                              key={reason}
+                              className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300"
+                            >
+                              {reason}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Link
+                        href={`/calls/${item.callId}`}
+                        className="rounded-md bg-indigo-600/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                      >
+                        Review Call
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => markReviewed(item.callId)}
+                        disabled={markingReviewedId === item.callId}
+                        className="rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                      >
+                        {markingReviewedId === item.callId ? 'Marking…' : 'Mark Reviewed'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button type="button" onClick={loadReviewQueue} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
               Refresh
             </button>
           </div>

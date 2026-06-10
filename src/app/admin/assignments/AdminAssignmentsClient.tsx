@@ -1507,6 +1507,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       </option>
                     ))}
                   </select>
+                </div>
 
                   <div className="md:col-span-2">
                     <label className="text-xs text-neutral-500">Type</label>
@@ -2141,6 +2142,19 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                             <div className="mt-4 overflow-x-auto">
                               <table className="w-full text-left text-sm">
                                 <thead className="text-xs text-neutral-500">
+                                  <tr>
+                                    <th className="py-2 pr-3 font-medium">Title</th>
+                                    <th className="py-2 pr-3 font-medium">Type</th>
+                                    <th className="py-2 pr-3 font-medium">Status</th>
+                                    <th className="py-2 pr-3 font-medium">Due</th>
+                                    <th className="py-2 pr-3 font-medium">Created</th>
+                                    <th className="py-2 pr-0" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {filtered.map((a) => {
+                                  const overdue = isOverdue(a);
+                                  return (
                                   <tr
                                     key={a.id}
                                     className={["border-t border-neutral-900", overdue ? "bg-red-500/5" : ""].join(" ")}
