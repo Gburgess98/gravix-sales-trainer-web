@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
     "smoke:proxy": "bash scripts/smoke-proxy-auth.sh",
+    "validate-sprint-4-manager-audit": "bash scripts/validate-sprint-4-manager-audit.sh",
+    "validate-sprint-4-day-90": "bash scripts/validate-sprint-4-day-90.sh",
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",

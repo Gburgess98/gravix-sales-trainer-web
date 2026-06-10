@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
-import { RiskBadge, ScorePill } from '@/components/ui/status-badge'
+import { RiskBadge, ScorePill, StatusBadge, UrgencyBadge } from '@/components/ui/status-badge'
+import { SectionCard } from '@/components/ui/section-card'
 import { EmptyRow } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
@@ -80,6 +81,64 @@ type CallItem = {
   rep_name?: string | null
   status?: string
   flags?: string[] | null
+}
+
+// Sprint 4 Day 90 — aggregate payload from GET /v1/manager/command-centre
+type CommandCentre = {
+  teamHealth: {
+    status: 'green' | 'amber' | 'red'
+    averageScore: number
+    reviewedCalls: number
+    callsNeedingReview: number
+    openAssignments: number
+    overdueAssignments: number
+  }
+  repsNeedingAttention: Array<{
+    repId: string
+    repName: string
+    averageScore: number
+    riskLevel: 'green' | 'amber' | 'red'
+    riskReason: string
+    recommendedAction: string
+  }>
+  callsNeedingReview: Array<{
+    callId: string
+    repName: string
+    title: string
+    overallScore: number
+    weakestSkill: string
+    createdAt: string
+  }>
+  openAssignments: Array<{
+    assignmentId: string
+    repName: string
+    title: string
+    status: 'open' | 'overdue' | 'completed' | 'reviewed'
+    dueAt: string | null
+    priority: 'low' | 'medium' | 'high'
+  }>
+  weakestSkills: Array<{
+    skill: string
+    count: number
+    averageScore: number
+  }>
+  roi: {
+    callsReviewed: number
+    estimatedMinutesSaved: number
+    estimatedHoursSaved: number
+  }
+}
+
+const RISK_LEVEL_TO_BAND: Record<string, string> = {
+  red: 'at_risk',
+  amber: 'watch',
+  green: 'healthy',
+}
+
+const TEAM_HEALTH_LABELS: Record<string, string> = {
+  green: 'Healthy',
+  amber: 'Needs attention',
+  red: 'At risk',
 }
 
 type AssignmentFilter = 'open' | 'overdue' | 'all'
@@ -439,6 +498,8 @@ export default function CoachingPage() {
   const [reps, setReps] = useState<RepRisk[]>([])
   const [headline, setHeadline] = useState<Headline | null>(null)
   const [reporting, setReporting] = useState<Reporting | null>(null)
+  const [commandCentre, setCommandCentre] = useState<CommandCentre | null>(null)
+  const [commandCentreError, setCommandCentreError] = useState<string | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState<string | null>(null)
 
@@ -454,12 +515,23 @@ export default function CoachingPage() {
     setOverviewLoading(true)
     setOverviewError(null)
     try {
-      const [ccRes, repRes] = await Promise.all([
+      const [ccRes, repRes, mccData] = await Promise.all([
         proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', { cache: 'no-store' }),
         proxyFetch('/v1/dashboard/reporting-summary?days=7', { cache: 'no-store' }),
+        // Sprint 4 aggregate — fail-soft so the rest of the overview still renders
+        proxyFetch('/v1/manager/command-centre?days=30', { cache: 'no-store' })
+          .then((r) => r.json())
+          .catch(() => null),
       ])
       const ccData = await ccRes.json()
       const repData = await repRes.json().catch(() => ({}))
+      if (mccData?.ok && mccData.teamHealth) {
+        setCommandCentre(mccData as CommandCentre)
+        setCommandCentreError(null)
+      } else {
+        setCommandCentre(null)
+        setCommandCentreError(mccData?.error || 'Unable to load team health data')
+      }
       if (ccData?.ok) {
         setHeadline(ccData.headline ?? null)
         const allReps: RepRisk[] = ccData.reps_all ?? []
@@ -593,6 +665,176 @@ export default function CoachingPage() {
 
           {!overviewLoading && !overviewError && (
             <>
+              {/* ── Sprint 4: Manager Command Centre (GET /v1/manager/command-centre) ── */}
+              {commandCentreError && !commandCentre && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+                  Team health unavailable: {commandCentreError}
+                </div>
+              )}
+
+              {commandCentre && (
+                <>
+                  {/* Team Health */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <StatCard
+                      label="Team Health"
+                      value={TEAM_HEALTH_LABELS[commandCentre.teamHealth.status] ?? commandCentre.teamHealth.status}
+                      subtext="last 30 days"
+                      variant={commandCentre.teamHealth.status === 'red' ? 'danger' : commandCentre.teamHealth.status === 'amber' ? 'warning' : 'success'}
+                    />
+                    <StatCard
+                      label="Average Score"
+                      value={commandCentre.teamHealth.averageScore}
+                      subtext="team average"
+                      variant={commandCentre.teamHealth.averageScore < 55 ? 'danger' : commandCentre.teamHealth.averageScore < 70 ? 'warning' : 'success'}
+                    />
+                    <StatCard label="Reviewed Calls" value={commandCentre.teamHealth.reviewedCalls} subtext="scored this period" />
+                    <StatCard
+                      label="Calls Needing Review"
+                      value={commandCentre.teamHealth.callsNeedingReview}
+                      variant={commandCentre.teamHealth.callsNeedingReview > 0 ? 'warning' : 'default'}
+                    />
+                    <StatCard label="Open Coaching" value={commandCentre.teamHealth.openAssignments} subtext="assignments" />
+                    <StatCard
+                      label="Overdue"
+                      value={commandCentre.teamHealth.overdueAssignments}
+                      subtext="assignments"
+                      variant={commandCentre.teamHealth.overdueAssignments > 0 ? 'danger' : 'default'}
+                    />
+                  </div>
+
+                  {/* Reps / Calls / Assignments */}
+                  <div className="grid gap-4 xl:grid-cols-3">
+                    <SectionCard title="Reps Needing Attention" subtitle="Rule-based risk from the last 30 days.">
+                      {commandCentre.repsNeedingAttention.length === 0 ? (
+                        <EmptyRow message="No reps need attention right now." />
+                      ) : (
+                        <div className="space-y-2">
+                          {commandCentre.repsNeedingAttention.map((rep) => (
+                            <div key={rep.repId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-white truncate">{rep.repName}</span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <ScorePill score={rep.averageScore} />
+                                  <RiskBadge band={RISK_LEVEL_TO_BAND[rep.riskLevel] ?? rep.riskLevel} />
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-neutral-500">{rep.riskReason}</div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium text-amber-300 truncate">{rep.recommendedAction}</span>
+                                <Link
+                                  href={`/crm/reps/${rep.repId}`}
+                                  className="shrink-0 rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                >
+                                  Open Rep
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard title="Calls Needing Review" subtitle="Lowest scores first · score below 70 or a critical section.">
+                      {commandCentre.callsNeedingReview.length === 0 ? (
+                        <EmptyRow message="No calls need review right now." />
+                      ) : (
+                        <div className="space-y-2">
+                          {commandCentre.callsNeedingReview.map((call) => (
+                            <div key={call.callId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-white truncate">{call.title}</span>
+                                <ScorePill score={call.overallScore} className="shrink-0" />
+                              </div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                <span>{call.repName}</span>
+                                <span>Weakest: <span className="text-neutral-300">{call.weakestSkill}</span></span>
+                                {call.createdAt && <span>{new Date(call.createdAt).toLocaleDateString('en-GB')}</span>}
+                              </div>
+                              <Link
+                                href={`/calls/${call.callId}`}
+                                className="inline-block rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                              >
+                                Review Call
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard title="Open Coaching" subtitle="Overdue first, then nearest due date.">
+                      {commandCentre.openAssignments.length === 0 ? (
+                        <EmptyRow message="No open coaching assignments." />
+                      ) : (
+                        <div className="space-y-2">
+                          {commandCentre.openAssignments.map((a) => (
+                            <div key={a.assignmentId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-white truncate">{a.title}</span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <UrgencyBadge urgency={a.priority} />
+                                  <StatusBadge status={a.status} />
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] text-neutral-500 truncate">
+                                  {a.repName}
+                                  {a.dueAt ? ` · due ${new Date(a.dueAt).toLocaleDateString('en-GB')}` : ''}
+                                </span>
+                                <Link
+                                  href="/admin/assignments"
+                                  className="shrink-0 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                >
+                                  Open Assignment
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+                  </div>
+
+                  {/* Weakest Skills + ROI */}
+                  <div className="grid gap-4 xl:grid-cols-3">
+                    <SectionCard title="Weakest Skills" subtitle="Stage scores across reviewed calls." className="xl:col-span-2">
+                      {commandCentre.weakestSkills.length === 0 ? (
+                        <EmptyRow message="No skill data available yet." />
+                      ) : (
+                        <div className="space-y-3">
+                          {commandCentre.weakestSkills.map((s) => (
+                            <div key={s.skill} className="space-y-1">
+                              <div className="flex items-center justify-between gap-2 text-sm">
+                                <span className="text-neutral-200">{s.skill}</span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] text-neutral-500">{s.count} weak {s.count === 1 ? 'call' : 'calls'}</span>
+                                  <ScorePill score={s.averageScore} />
+                                </div>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${s.averageScore < 55 ? 'bg-red-400/60' : s.averageScore < 70 ? 'bg-amber-400/60' : 'bg-emerald-400/60'}`}
+                                  style={{ width: `${Math.min(100, Math.max(6, s.averageScore))}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard variant="coaching" title="Estimated Manager Time Saved" subtitle="20 minutes per reviewed call.">
+                      <div className="grid grid-cols-3 gap-3">
+                        <StatCard label="Calls Reviewed" value={commandCentre.roi.callsReviewed} size="sm" />
+                        <StatCard label="Minutes Saved" value={commandCentre.roi.estimatedMinutesSaved} size="sm" variant="success" />
+                        <StatCard label="Hours Saved" value={commandCentre.roi.estimatedHoursSaved} size="sm" variant="success" />
+                      </div>
+                    </SectionCard>
+                  </div>
+                </>
+              )}
+
               {/* Manager Briefing */}
               <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
