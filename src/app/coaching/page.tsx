@@ -1778,7 +1778,7 @@ export default function CoachingPage() {
                           )}
                         </div>
                         <div className="mt-0.5 text-xs text-neutral-500">
-                          {call.rep_name || 'Unknown rep'} · {new Date(call.created_at).toLocaleDateString()}
+                          {call.rep_name || 'Unknown rep'} · {new Date(call.created_at).toLocaleDateString('en-GB')}
                         </div>
                       </div>
                       <ScorePill score={call.score_overall} className="shrink-0" />

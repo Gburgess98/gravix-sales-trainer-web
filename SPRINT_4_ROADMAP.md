@@ -1,5 +1,19 @@
 # SPRINT 4 — ROADMAP (Manager Value Layer)
 
+> **As-built status (updated Day 98).** Days 89–98 shipped. Actuals vs plan below —
+> the order shifted slightly (review history landed Day 91 with its UI; ROI shipped
+> early inside the command-centre payload; hardening pulled forward to Day 95) but
+> everything stayed inside the planned architecture.
+>
+> **Shipped manager workflow:** Command Centre (`/coaching` + `GET /v1/manager/command-centre`)
+> · Review Queue (`GET /v1/manager/review-queue` + tab) · Manager Review History
+> (`call_manager_reviews` + GET/POST `/v1/calls/:id/manager-review`) · Assign Coaching
+> From Call (reused `POST /v1/assignments`, rule-based pre-fill) · Assignment Tracking
+> (manager-scoped tab, Open/Overdue/Completed/All, priority/origin/From-call) ·
+> Weakness Trends + Coaching Impact (previous-window comparison) · ROI snapshot ·
+> Audit Logging (`manager.call_reviewed`, `manager.coaching_assigned_from_call`) ·
+> E2E Regression Test (`tests/e2e/manager-workflow.spec.ts`).
+
 ## Objective
 
 Turn Gravix into a manager-facing coaching command platform. A manager opens the Command Centre and within seconds sees team health, reps needing attention and calls needing review; reviews a priority call; assigns coaching from it; tracks assignments; and sees weakness trends and a simple ROI snapshot.
@@ -17,19 +31,19 @@ Turn Gravix into a manager-facing coaching command platform. A manager opens the
 
 ## Day 89 → Day 99 plan
 
-| Day | Work |
-|---|---|
-| **89** | This audit. Deliverables + validation script. ✅ |
-| **90** | API: `src/routes/manager.ts` + `GET /v1/manager/command-centre` (requireManager + hierarchy scoping, agreed response shape). Web: wire `/coaching` overview tab to it. See DAY_90_IMPLEMENTATION_PLAN.md. |
-| **91** | DB migration `call_manager_reviews` + `POST /v1/calls/:id/manager-review` + `GET /v1/manager/review-queue`. |
-| **92** | Web: "Calls needing review" list on `/coaching` → opens `/calls/[id]`; "Mark reviewed" action on call detail. |
-| **93** | Web: "Assign coaching" from a reviewed call (pre-filled `POST /v1/assignments` with `type=call_review`, `target_id`, recommended title from weakest skill). |
-| **94** | Assignment tracking: open/overdue/completed views in the `/coaching` assignments tab driven by `command-centre` payload; overdue surfaced in team health. |
-| **95** | Weakness trends: server-side `weakestSkills` aggregation (hierarchy-scoped, derived from stage scores/flags) + trends card. |
-| **96** | `GET /v1/manager/roi` + ROI snapshot card (calls reviewed, minutes/hours saved at 20 min per reviewed call). |
-| **97** | Hardening: tenant-isolation checks on all new endpoints (office vs company manager, impersonation, cross-org attempts), audit-log entries for manager reviews. |
-| **98** | Testing: API route tests + Playwright e2e for the manager loop (open Command Centre → review call → assign → complete → see counts move). QA pass with UK spelling check on new copy. |
-| **99** | Buffer, polish, demo data, sprint close + tag. |
+| Day | Planned | Actual (as-built) |
+|---|---|---|
+| **89** | Audit + deliverables | ✅ As planned. |
+| **90** | Command-centre endpoint + `/coaching` overview | ✅ As planned (ROI block shipped inside the payload from Day 90). |
+| **91** | Review history migration + review endpoints | ✅ Plus the Review Queue tab, Mark Reviewed UI on `/coaching` and `/calls/[id]`, the pre-existing web build blocker fix, and the dev calls hierarchy backfill. |
+| **92** | Review UI on `/coaching` and call detail | ✅ Became **Assign Coaching From Call** (reused `POST /v1/assignments`; modal with rule-based title/note/priority pre-fill; command-centre gained `repId`). |
+| **93** | Assign coaching flow | ✅ Became **Assignment Tracking Polish** (manager-scoped tab data source, Open/Overdue/Completed/All filters, priority/origin/From-call/notes, extended `openAssignments` shape). |
+| **94** | Assignment tracking views | ✅ Became **Weakness Trends + Coaching Impact** (previous-window comparison, trend chips, coachingImpact block). |
+| **95** | Weakness trends | ✅ Became **Hardening** (audit events, tenant-isolation validation 22/22, cross-scope 403 verified). |
+| **96** | ROI endpoint + card | ✅ Became **Call Review UX + Demo Readiness** (GET review state, Reviewed ✓ survives refresh, manager note block, DEMO_CHECKLIST.md). ROI had already shipped Day 90/91. |
+| **97** | Hardening | ✅ Became **E2E Regression Test** (`manager-workflow.spec.ts`, stateful mocks, full loop). |
+| **98** | Testing + QA | ✅ Full suite 92/92 after fixing one stale Sprint-3 login assertion; UK spelling sweep clean; as-built docs. |
+| **99** | Buffer, demo, sprint close + tag | Planned: demo rehearsal vs DEMO_CHECKLIST.md, tag `sprint-day-99-complete` in both repos. |
 
 ## What should be built now
 

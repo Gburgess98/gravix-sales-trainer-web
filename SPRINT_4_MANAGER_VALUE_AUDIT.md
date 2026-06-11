@@ -1,5 +1,27 @@
 # SPRINT 4 — MANAGER VALUE LAYER AUDIT (Day 89)
 
+> ## As-built outcome (added Day 98)
+>
+> The recommended architecture in §11 shipped essentially as written:
+>
+> - `/coaching` became the Manager Command Centre (no new top-level web routes).
+> - New `src/routes/manager.ts` at `/v1/manager`: `GET /command-centre` (aggregate
+>   payload incl. trends + coachingImpact + ROI) and `GET /review-queue`.
+> - Manager review history: `call_manager_reviews` table (the sprint's only
+>   migration, live in dev) + `GET`/`POST /v1/calls/:id/manager-review` in `calls.ts`.
+> - Assign Coaching From Call **reused `POST /v1/assignments`** — no duplicate
+>   endpoint; rule-based pre-fill lives client-side, linkage via `target_id` +
+>   `meta.source_call_id`, priority in `meta.priority`.
+> - Tenant hardening held the dual-system pattern throughout (requireManager gate +
+>   getUserContext/applyHierarchyFilters scoping); cross-scope review attempts
+>   return 403; audit events `manager.call_reviewed` and
+>   `manager.coaching_assigned_from_call` write to `audit_events` fail-soft.
+> - Risks called out below largely materialised and were handled: the two role
+>   systems (§7) were used together as planned; the legacy `/v1/coach` path was
+>   left untouched; the large-file risk (§10.6) was avoided via the new router —
+>   and the §10 web build risk turned out to be real (pre-existing JSX breakage in
+>   AdminAssignmentsClient.tsx, fixed Day 91).
+
 Audit of existing manager-facing systems across both repos before Sprint 4 implementation.
 
 **Checkpoint audited:**

@@ -18,14 +18,25 @@ show "New this period". To show real ↑/↓ movement:
    (threshold: ±3 points).
 3. Quick check: `GET /v1/manager/command-centre?days=30` → `weakestSkills[].trend`.
 
-## Pre-demo smoke (2 minutes)
-- `/coaching` overview: Team Health populated, no error banners.
-- Review Queue tab: items present; "Mark Reviewed" removes the call.
-- Open a queue call → call detail shows score, Mark Reviewed, Assign Coaching.
-- Mark Reviewed → "Reviewed ✓" with date; refresh the page — state persists.
-- Assign Coaching → "Coaching assigned ✓"; assignment appears in the
-  Assignments tab with "Assigned via review" and a "From call" link.
-- ROI card: Calls Reviewed counts the reviews you just made (20 min each).
+## Demo script / pre-demo smoke (5 minutes)
+1. **Open /coaching** — overview loads, no error banners.
+2. **Team Health** strip populated (status, average score, reviewed calls,
+   calls needing review, open + overdue coaching).
+3. **Review Queue** tab — items present with reasons chips, lowest score first.
+4. **Assign Coaching** from a queue row — modal pre-fills title from the
+   weakest skill (e.g. "Objection Handling Drill"), note, due date (+3 days)
+   and priority; submit → "Coaching assigned."
+5. **Mark Reviewed** on the same row → "Call marked as reviewed." and the
+   call leaves the queue.
+6. **Assignments tab filters** — Open / Overdue / Completed / All; the new
+   assignment shows priority, "Assigned via review" and a "From call" link.
+7. **Weakness Trends** — Weakest Skills card shows trend chips
+   ("↑ from N" / "↓ from N" / "New this period").
+8. **Coaching Impact** card — completed assignments, skills improving/declining.
+9. **ROI** card — Calls Reviewed counts the reviews you just made (20 min each).
+10. **Call detail** (`/calls/[id]`) — "Reviewed ✓" with date survives refresh;
+    the Manager Review Note block appears when a note exists; Assign Coaching
+    remains available.
 
 ## Useful commands
 - `npm run validate-sprint-4-day-96` (web) — workflow regression checks.

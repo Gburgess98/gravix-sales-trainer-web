@@ -1,5 +1,19 @@
 # DAY 90 — IMPLEMENTATION PLAN
 
+> ## Implemented across Days 90–97 (added Day 98)
+>
+> Day 90 shipped exactly as planned below (router skeleton → calls aggregates →
+> assignments merge → ROI → `/coaching` overview wiring). The plan then evolved
+> across the sprint while staying inside the same architecture:
+> Day 91 added the `call_manager_reviews` migration + review endpoints/queue;
+> Day 92 added Assign Coaching From Call (reusing `POST /v1/assignments`);
+> Day 93 extended `openAssignments` and the assignments tab; Day 94 added
+> weakness trends + coachingImpact to the same payload; Day 95 added audit
+> events and isolation validation; Day 96 added the review-state read and demo
+> polish; Day 97 added the e2e regression spec. The Day-90 simplification
+> ("reviewedCalls = scored calls") was replaced by real manager-review counts
+> on Day 91 as planned. No rollbacks were needed.
+
 **Goal:** ship `GET /v1/manager/command-centre` and wire the `/coaching` overview tab to it. One endpoint, one page section, no migration.
 
 ## Exact endpoint to build first

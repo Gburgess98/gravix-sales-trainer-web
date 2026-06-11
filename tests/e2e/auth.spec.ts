@@ -14,7 +14,8 @@ import { goto } from '../helpers/navigation'
 test.describe('Login page', () => {
   test('renders the login page', async ({ page }) => {
     await goto(page, '/login')
-    await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible()
+    // Heading copy changed to "Sign in to your workspace" in Sprint 3 (Day 81)
+    await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
     await expect(page.getByRole('button', { name: /google/i })).toBeVisible()
   })
 
