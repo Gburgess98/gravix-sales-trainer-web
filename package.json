@@ -20,6 +20,7 @@
     "validate-sprint-4-day-96": "bash scripts/validate-sprint-4-day-96.sh",
     "validate-sprint-4-day-97": "bash scripts/validate-sprint-4-day-97.sh",
     "validate-sprint-4-day-98": "bash scripts/validate-sprint-4-day-98.sh",
+    "validate-sprint-4-day-99": "bash scripts/validate-sprint-4-day-99.sh",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
