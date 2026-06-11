@@ -161,9 +161,11 @@ export default function CallPage() {
   const autoCompletedRef = useRef(false);
 
 
-  // Manager review (Sprint 4 Day 91)
+  // Manager review (Sprint 4 Day 91; read state Day 96)
   const [managerReviewed, setManagerReviewed] = useState(false);
   const [markingReviewed, setMarkingReviewed] = useState(false);
+  const [reviewedAt, setReviewedAt] = useState<string | null>(null);
+  const [reviewNote, setReviewNote] = useState<string | null>(null);
 
   const markCallReviewed = useCallback(async () => {
     if (!callId || markingReviewed || managerReviewed) return;
@@ -177,6 +179,8 @@ export default function CallPage() {
       const data = await res.json().catch(() => ({}));
       if (data?.ok) {
         setManagerReviewed(true);
+        setReviewedAt(data?.review?.createdAt || new Date().toISOString());
+        setReviewNote(data?.review?.note ?? null);
         toast("Call marked as reviewed.");
       } else if (data?.error === "migration_required") {
         toast(data?.hint || "Review history migration required.");
@@ -269,6 +273,26 @@ export default function CallPage() {
     };
   }, []);
 
+  // Day 96: load manager review state so Reviewed ✓ survives refresh
+  useEffect(() => {
+    if (!callId || !managerCheckDone || !isManager) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await proxyFetch(`/v1/calls/${encodeURIComponent(callId)}/manager-review`, { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !data?.ok) return;
+        if (data.reviewed && data.review) {
+          setManagerReviewed(true);
+          setReviewedAt(data.review.createdAt || null);
+          setReviewNote(data.review.note ?? null);
+        }
+      } catch {
+        // best-effort — the Mark Reviewed action still works without it
+      }
+    })();
+    return () => { alive = false; };
+  }, [callId, managerCheckDone, isManager]);
 
   // Active section for sticky nav
   const [activeSection, setActiveSection] = useState('summary');
@@ -1394,10 +1418,15 @@ export default function CallPage() {
                 </div>
               )}
               {managerCheckDone && isManager && callMeta?.status === "scored" && (
-                <div className="pt-1 flex items-center gap-2">
+                <div className="pt-1 flex items-center gap-2 flex-wrap">
                   {managerReviewed ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
                       Reviewed ✓
+                      {reviewedAt && (
+                        <span className="text-emerald-400/70 font-normal">
+                          {new Date(reviewedAt).toLocaleDateString("en-GB")}
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <button
@@ -1439,6 +1468,15 @@ export default function CallPage() {
                   "No summary has been generated for this call yet."}
               </p>
             </div>
+
+            {managerReviewed && reviewNote && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-emerald-400/80 mb-1">
+                  Manager Review Note
+                </div>
+                <p className="text-neutral-200 text-xs leading-relaxed">{reviewNote}</p>
+              </div>
+            )}
 
             {flags.length > 0 && (
               <div>
