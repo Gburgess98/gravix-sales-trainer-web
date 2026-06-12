@@ -41,3 +41,33 @@ show "New this period". To show real ↑/↓ movement:
 ## Useful commands
 - `npm run validate-sprint-4-day-96` (web) — workflow regression checks.
 - `npm run db:backfill-calls` (api) — re-run if new dev calls lack office/company.
+
+---
+
+## Tier 2A addendum — Sparring Brain demo (added Day 109)
+
+### Rep loop (3 minutes)
+1. As manager, assign a sparring drill (`type=sparring`) from `/coaching` or
+   `POST /v1/assignments`; rep opens it via the assignment's sparring link.
+2. Send a weak/vague turn ("um maybe…") — buyer pushes back; turn is scored.
+3. Send a strong turn (acknowledge + ROI proof + next-step question) — buyer softens.
+4. Click **"End round & score me"** → "Sparring completed."
+5. **Sparring Summary** panel renders: overall, four dimension bars,
+   strongest/weakest area, recommended drill, weak moments, next best action.
+6. Refresh the page — the summary persists.
+
+### Manager loop (1 minute)
+1. Open `/coaching` as the demo manager — **Recent Sparring** card (under
+   Coaching Impact) shows the completed session: rep, score, difficulty,
+   weakest area, recommended drill, "Assigned drill" badge, summary preview.
+2. "Open sparring" link opens the session; **Coaching Impact** counts the
+   auto-completed assignment.
+
+### Tier 2A caveats
+- The **Claude provider is implemented but live Claude depends on Anthropic
+  credits** — until topped up, buyer replies use OpenAI (default) or the
+  deterministic stub; switch with `SPARRING_PROVIDER` env.
+- **Legacy sessions may lack tenant data** (backfill safely skipped them);
+  new sessions are written with full tenant/assignment/status columns.
+- Quick regression: `npm run test:sparring-summary` (web) and
+  `npm run validate-tier-2a-day-108` (web).
