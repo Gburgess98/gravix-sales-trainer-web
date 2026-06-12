@@ -558,7 +558,26 @@ export default function SparringSessionPage() {
     xpGained: number;
   }>(null);
 
+  // Tier 2A Day 107 — structured session summary (Day 104 payload)
+  const [sessionSummary, setSessionSummary] = useState<null | {
+    overall: number;
+    dimensionAverages: { clarity: number; confidence: number; objectionHandling: number; progression: number };
+    turnCount: number;
+    strongestDimension: string;
+    weakestDimension: string;
+    weakMoments: Array<{ message: string; weakMoment: string; overall: number; recommendedNextMove: string }>;
+    recommendedDrill: { type: string; title: string; reason: string } | null;
+    summaryText: string;
+    nextBestAction: string;
+  }>(null);
+
+  const [session, setSession] = useState<SparringSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   // Rep Momentum Chain v1
+  // (Day 107 fix: this memo referenced `session` before its declaration — a
+  // temporal-dead-zone crash on every render. Moved below the declaration.)
   const momentumNext = useMemo(() => {
     if (!postAction || !session) return null;
 
@@ -568,10 +587,6 @@ export default function SparringSessionPage() {
       focus: postAction.improve,
     };
   }, [postAction, session]);
-
-  const [session, setSession] = useState<SparringSession | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [turns, setTurns] = useState<SparTurn[]>([]);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -907,6 +922,12 @@ export default function SparringSessionPage() {
 
         setSession(res.session as SparringSession);
 
+        // Day 107 — hydrate the persisted coaching summary (survives refresh)
+        const persistedSummary = (res.session as any)?.meta?.session_summary;
+        if (persistedSummary && typeof persistedSummary === "object" && persistedSummary.dimensionAverages) {
+          setSessionSummary(persistedSummary);
+        }
+
         // IMPORTANT: don't wipe local turns if the session payload doesn't include them.
         // Turns should be driven by the POST /turns response (and/or a dedicated turns loader).
         if (Array.isArray(res.turns)) {
@@ -1109,6 +1130,22 @@ export default function SparringSessionPage() {
       }
       // Day 23: Rep Feedback Loop — post-action summary
       setPostAction(buildSparringPostAction(data));
+
+      // Tier 2A Day 107 — generate + persist the structured coaching summary
+      // (additive: runs after the legacy score flow; both are idempotent)
+      try {
+        const completeRes = await proxyFetch(
+          `/api/proxy/v1/sparring/sessions/${encodeURIComponent(session.id)}/complete`,
+          { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }
+        );
+        const completeData: any = await completeRes.json().catch(() => ({}));
+        if (completeData?.ok && completeData.summary?.dimensionAverages) {
+          setSessionSummary(completeData.summary);
+          toast("Sparring completed.");
+        }
+      } catch {
+        // best-effort — the legacy score flow already succeeded
+      }
 
       // If this sparring was launched from an Assignment, the API may auto-complete it.
       if (assignmentId) {
@@ -1610,6 +1647,109 @@ export default function SparringSessionPage() {
                         Choose different drill
                       </Link>
                     </div>
+                  </div>
+                ) : null}
+
+                {/* Tier 2A Day 107 — structured Sparring Summary (Day 104 payload) */}
+                {sessionSummary ? (
+                  <div className="rounded-lg border border-emerald-500/20 bg-neutral-950 px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                        Sparring Summary
+                      </div>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          sessionSummary.overall >= 70
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : sessionSummary.overall >= 50
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                              : "border-red-500/30 bg-red-500/10 text-red-300"
+                        }`}
+                      >
+                        Overall {sessionSummary.overall}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-sm text-neutral-200">{sessionSummary.summaryText}</p>
+
+                    {/* Dimension breakdown */}
+                    <div className="mt-3 space-y-2">
+                      {(
+                        [
+                          ["Clarity", sessionSummary.dimensionAverages.clarity],
+                          ["Confidence", sessionSummary.dimensionAverages.confidence],
+                          ["Objection handling", sessionSummary.dimensionAverages.objectionHandling],
+                          ["Progression", sessionSummary.dimensionAverages.progression],
+                        ] as Array<[string, number]>
+                      ).map(([label, value]) => (
+                        <div key={label}>
+                          <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                            <span>{label}</span>
+                            <span className="tabular-nums text-neutral-200">{value}</span>
+                          </div>
+                          <div className="mt-0.5 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                value < 50 ? "bg-red-400/60" : value < 70 ? "bg-amber-400/60" : "bg-emerald-400/60"
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(6, value))}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3 grid gap-1.5 text-xs text-neutral-400">
+                      <div>
+                        Strongest area:{" "}
+                        <span className="text-neutral-200 capitalize">
+                          {sessionSummary.strongestDimension.replace(/([A-Z])/g, " $1").toLowerCase()}
+                        </span>
+                      </div>
+                      <div>
+                        Weakest area:{" "}
+                        <span className="text-neutral-200 capitalize">
+                          {sessionSummary.weakestDimension.replace(/([A-Z])/g, " $1").toLowerCase()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {sessionSummary.recommendedDrill?.title && (
+                      <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-amber-300/80">Recommended drill</div>
+                        <div className="mt-0.5 text-sm font-semibold text-amber-200">
+                          {sessionSummary.recommendedDrill.title}
+                        </div>
+                        <div className="mt-0.5 text-xs text-neutral-400">{sessionSummary.recommendedDrill.reason}</div>
+                      </div>
+                    )}
+
+                    {sessionSummary.weakMoments?.length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-[11px] uppercase tracking-wide text-neutral-500">Weak moments</div>
+                        <div className="mt-1.5 space-y-2">
+                          {sessionSummary.weakMoments.slice(0, 2).map((m, i) => (
+                            <div key={i} className="rounded-lg border border-neutral-800 bg-black p-3">
+                              <div className="text-xs text-neutral-300 italic">“{m.weakMoment}”</div>
+                              {m.recommendedNextMove && (
+                                <div className="mt-1 text-[11px] text-neutral-500">{m.recommendedNextMove}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {sessionSummary.nextBestAction && (
+                      <div className="mt-3 text-xs">
+                        <span className="text-neutral-500">Next best action: </span>
+                        <span className="font-medium text-neutral-200">{sessionSummary.nextBestAction}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : !ended && !isScored ? (
+                  <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-500">
+                    Complete the sparring session to see your coaching summary.
                   </div>
                 ) : null}
 
