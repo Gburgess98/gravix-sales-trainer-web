@@ -175,6 +175,25 @@ type ReviewQueueItem = {
 
 type ReviewNotice = { type: 'success' | 'error'; text: string }
 
+// Tier 2A Day 105 — GET /v1/manager/sparring-sessions
+type RecentSparringItem = {
+  sessionId: string
+  repId: string | null
+  repName: string
+  assignmentId: string | null
+  persona: string | null
+  difficulty: string
+  overall: number
+  weakestDimension: string
+  strongestDimension: string
+  recommendedDrill: { type: string; title: string; reason: string } | null
+  summaryText: string
+  nextBestAction: string
+  completedAt: string | null
+  turnCount: number
+  source: 'assignment' | 'manual' | 'unknown'
+}
+
 // ── Sprint 4 Day 92 — Assign Coaching from a call (rule-based pre-fill) ──────
 
 const SKILL_TO_TITLE: Record<string, string> = {
@@ -657,6 +676,11 @@ export default function CoachingPage() {
   const [replayLoading, setReplayLoading] = useState(false)
   const [replayThreshold, setReplayThreshold] = useState<ReplayThreshold>('70')
 
+  // Recent sparring (Tier 2A Day 105)
+  const [recentSparring, setRecentSparring] = useState<RecentSparringItem[]>([])
+  const [sparringLoading, setSparringLoading] = useState(true)
+  const [sparringError, setSparringError] = useState<string | null>(null)
+
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false)
@@ -857,7 +881,28 @@ export default function CoachingPage() {
     }
   }, [assignDraft, assigning, loadOverview, loadAssignments])
 
+  const loadRecentSparring = useCallback(async () => {
+    setSparringLoading(true)
+    setSparringError(null)
+    try {
+      const res = await proxyFetch('/v1/manager/sparring-sessions?days=30&limit=5', { cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok) {
+        setRecentSparring(data.items ?? [])
+      } else {
+        setRecentSparring([])
+        setSparringError(data?.error || 'Could not load recent sparring.')
+      }
+    } catch {
+      setRecentSparring([])
+      setSparringError('Could not load recent sparring.')
+    } finally {
+      setSparringLoading(false)
+    }
+  }, [])
+
   useEffect(() => { loadOverview() }, [loadOverview])
+  useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -1201,6 +1246,55 @@ export default function CoachingPage() {
                           <div className="mt-2 text-xs text-neutral-500">{commandCentre.coachingImpact.summary}</div>
                         </SectionCard>
                       )}
+
+                      {/* Tier 2A Day 105 — Recent Sparring */}
+                      <SectionCard variant="coaching" title="Recent Sparring" subtitle="Completed sessions · last 30 days.">
+                        {sparringLoading && <LoadingText text="Loading recent sparring…" />}
+                        {sparringError && !sparringLoading && (
+                          <div className="text-sm text-red-300">Could not load recent sparring.</div>
+                        )}
+                        {!sparringLoading && !sparringError && recentSparring.length === 0 && (
+                          <EmptyRow message="No completed sparring sessions yet." />
+                        )}
+                        {!sparringLoading && !sparringError && recentSparring.length > 0 && (
+                          <div className="space-y-2">
+                            {recentSparring.map((s) => (
+                              <div key={s.sessionId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium text-white truncate">{s.repName}</span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {s.source === 'assignment' && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 uppercase tracking-wide font-semibold">
+                                        Assigned drill
+                                      </span>
+                                    )}
+                                    <ScorePill score={s.overall} />
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                  <span className="capitalize">{s.difficulty}</span>
+                                  {s.weakestDimension !== 'unknown' && (
+                                    <span>Weakest area: <span className="text-neutral-300">{s.weakestDimension}</span></span>
+                                  )}
+                                  {s.completedAt && <span>Completed {new Date(s.completedAt).toLocaleDateString('en-GB')}</span>}
+                                </div>
+                                {s.recommendedDrill?.title && (
+                                  <div className="text-xs font-medium text-amber-300 truncate">
+                                    Recommended drill: {s.recommendedDrill.title}
+                                  </div>
+                                )}
+                                <div className="text-xs text-neutral-500 truncate" title={s.summaryText}>{s.summaryText}</div>
+                                <Link
+                                  href={`/sparring/${s.sessionId}`}
+                                  className="inline-block rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                >
+                                  Open sparring
+                                </Link>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </SectionCard>
                     </div>
                   </div>
                 </>
