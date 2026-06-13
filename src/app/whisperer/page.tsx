@@ -75,6 +75,11 @@ export default function WhispererPage() {
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  // Reconnect/backoff (Day 113)
+  const userStoppedRef = useRef(false)
+  const reconnectAttemptRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const RECONNECT_BACKOFF_MS = [500, 1000, 2000]
 
   // Shared display
   const [transcript, setTranscript] = useState<TranscriptRow[]>([])
@@ -144,40 +149,33 @@ export default function WhispererPage() {
 
   // ── Live listener ──────────────────────────────────────────────────────────
 
-  const teardownListening = useCallback(() => {
+  // Tear down WS + recorder; optionally keep the mic stream for reconnect.
+  const teardownConnection = useCallback((keepStream = false) => {
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null }
     try { recorderRef.current?.stop() } catch {}
     recorderRef.current = null
     try { wsRef.current?.close() } catch {}
     wsRef.current = null
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
+    if (!keepStream) {
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
     setInterim('')
   }, [])
 
-  const startListening = useCallback(async () => {
-    if (!sessionId) return
-    setError(null)
+  const teardownListening = useCallback(() => {
+    userStoppedRef.current = true
+    reconnectAttemptRef.current = 0
+    teardownConnection(false)
+  }, [teardownConnection])
 
-    const mime = pickMimeType()
-    if (!mime) {
-      setError('This browser does not support live audio capture. Use the manual simulator.')
-      setLiveStatus('error')
-      return
-    }
+  // Fetch a fresh short-lived token + open the Deepgram WS, reusing the live
+  // mic stream. Used by both initial start and reconnect (token may have
+  // expired, so it is always re-minted).
+  const connectDeepgram = useCallback(async (mime: string) => {
+    const stream = streamRef.current
+    if (!stream) return
 
-    // 1. Mic permission
-    setLiveStatus('requesting_mic')
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      setError('Microphone permission was denied. Use the manual simulator instead.')
-      setLiveStatus('error')
-      return
-    }
-    streamRef.current = stream
-
-    // 2. Short-lived Deepgram token (permanent key stays server-side)
     setLiveStatus('connecting')
     let token = ''
     try {
@@ -191,18 +189,17 @@ export default function WhispererPage() {
           : 'Live transcription is unavailable right now (token could not be issued).'
         setError(`${reason} The manual simulator still works.`)
         setLiveStatus('error')
-        teardownListening()
+        teardownConnection(false)
         return
       }
       token = data.token
     } catch {
       setError('Could not reach the transcription service. The manual simulator still works.')
       setLiveStatus('error')
-      teardownListening()
+      teardownConnection(false)
       return
     }
 
-    // 3. Open Deepgram realtime WS (token via subprotocol — never in a URL/log)
     try {
       const params = new URLSearchParams({
         model: 'nova-3', language: 'en', smart_format: 'true',
@@ -212,6 +209,8 @@ export default function WhispererPage() {
       wsRef.current = ws
 
       ws.onopen = () => {
+        reconnectAttemptRef.current = 0 // a clean connection resets the backoff
+        setError(null)
         setLiveStatus('listening')
         const recorder = new MediaRecorder(stream, { mimeType: mime })
         recorderRef.current = recorder
@@ -239,30 +238,69 @@ export default function WhispererPage() {
         }
       }
 
-      ws.onerror = () => {
-        setError('Live transcription connection error. The manual simulator still works.')
-        setLiveStatus('error')
-      }
+      ws.onerror = () => { /* surfaced via onclose → reconnect path */ }
+
       ws.onclose = () => {
-        if (recorderRef.current) {
-          // Unexpected close while still recording
-          setLiveStatus((s) => (s === 'listening' ? 'reconnecting' : s))
+        // Stop the recorder feeding a dead socket, but keep the mic stream.
+        try { recorderRef.current?.stop() } catch {}
+        recorderRef.current = null
+        if (userStoppedRef.current) return // intentional stop — no reconnect
+
+        const attempt = reconnectAttemptRef.current
+        if (attempt >= RECONNECT_BACKOFF_MS.length) {
+          setError('Live transcription stopped. You can restart listening or use the manual simulator.')
+          setLiveStatus('error')
+          teardownConnection(false)
+          return
         }
+        const delay = RECONNECT_BACKOFF_MS[attempt]
+        reconnectAttemptRef.current = attempt + 1
+        setLiveStatus('reconnecting')
+        setError('Connection dropped. Reconnecting…')
+        reconnectTimerRef.current = setTimeout(() => {
+          if (!userStoppedRef.current && streamRef.current) void connectDeepgram(mime)
+        }, delay)
       }
     } catch {
       setError('Could not open the live transcription stream.')
       setLiveStatus('error')
-      teardownListening()
+      teardownConnection(false)
     }
-  }, [sessionId, postSegment, teardownListening])
+  }, [postSegment, teardownConnection])
+
+  const startListening = useCallback(async () => {
+    if (!sessionId) return
+    setError(null)
+    userStoppedRef.current = false
+    reconnectAttemptRef.current = 0
+
+    const mime = pickMimeType()
+    if (!mime) {
+      setError('This browser does not support live audio capture. Use the manual simulator.')
+      setLiveStatus('error')
+      return
+    }
+
+    // Mic permission (reused across reconnects)
+    setLiveStatus('requesting_mic')
+    try {
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      setError('Microphone permission was denied. Use the manual simulator instead.')
+      setLiveStatus('error')
+      return
+    }
+
+    await connectDeepgram(mime)
+  }, [sessionId, connectDeepgram])
 
   const stopListening = useCallback(() => {
     teardownListening()
     setLiveStatus('stopped')
   }, [teardownListening])
 
-  // Clean up media/socket on unmount
-  useEffect(() => () => teardownListening(), [teardownListening])
+  // Clean up media/socket/timers on unmount
+  useEffect(() => () => { teardownListening() }, [teardownListening])
 
   // ── Simulator ───────────────────────────────────────────────────────────────
 
@@ -322,8 +360,11 @@ export default function WhispererPage() {
             {sessionStatus === 'active' ? (mode === 'live' ? LIVE_STATUS_LABEL[liveStatus] : 'Simulator') : sessionStatus === 'ended' ? 'Session ended' : 'Idle'}
           </span>
           {lastLatencyMs !== null && (
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-              Latency {lastLatencyMs}ms
+            <span
+              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300"
+              title="Time from sending the line to the suggestion appearing"
+            >
+              Last suggestion latency {lastLatencyMs}ms
             </span>
           )}
         </div>
