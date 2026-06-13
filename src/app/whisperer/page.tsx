@@ -133,7 +133,8 @@ export default function WhispererPage() {
     setBusy(true); setError(null); setEndSummary(null)
     try {
       const res = await proxyFetch('/api/proxy/v1/whisperer/sessions', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}),
+        // Day 114: record whether this is a live-listener or manual-simulator session
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: mode }),
       })
       const data = await res.json()
       if (!data?.ok) throw new Error(data?.error || 'failed')
@@ -145,7 +146,7 @@ export default function WhispererPage() {
     } finally {
       setBusy(false)
     }
-  }, [])
+  }, [mode])
 
   // ── Live listener ──────────────────────────────────────────────────────────
 

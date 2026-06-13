@@ -175,6 +175,35 @@ type ReviewQueueItem = {
 
 type ReviewNotice = { type: 'success' | 'error'; text: string }
 
+// Tier 2B Day 114 — GET /v1/manager/whisperer-sessions
+type WhispererItem = {
+  sessionId: string
+  repId: string | null
+  repName: string
+  status: 'active' | 'ended' | 'unknown'
+  startedAt: string
+  endedAt: string | null
+  triggerCount: number
+  topTriggerTypes: Array<{ type: string; count: number }>
+  avgLatencyMs: number | null
+  p95LatencyMs: number | null
+  latestSuggestion: { type: string; title: string; urgency: string; phrase: string | null; createdAt: string } | null
+  source: string
+}
+type WhispererInsights = {
+  ok: boolean
+  persistence: boolean
+  items: WhispererItem[]
+  summary: {
+    sessionCount: number
+    triggerCount: number
+    topTriggerTypes: Array<{ type: string; count: number }>
+    avgLatencyMs: number | null
+    activeSessions: number
+    endedSessions: number
+  }
+}
+
 // Tier 2A Day 105 — GET /v1/manager/sparring-sessions
 type RecentSparringItem = {
   sessionId: string
@@ -681,6 +710,11 @@ export default function CoachingPage() {
   const [sparringLoading, setSparringLoading] = useState(true)
   const [sparringError, setSparringError] = useState<string | null>(null)
 
+  // Whisperer insights (Tier 2B Day 114)
+  const [whisperer, setWhisperer] = useState<WhispererInsights | null>(null)
+  const [whispererLoading, setWhispererLoading] = useState(true)
+  const [whispererError, setWhispererError] = useState(false)
+
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false)
@@ -901,8 +935,25 @@ export default function CoachingPage() {
     }
   }, [])
 
+  const loadWhisperer = useCallback(async () => {
+    setWhispererLoading(true)
+    setWhispererError(false)
+    try {
+      const res = await proxyFetch('/v1/manager/whisperer-sessions?days=30&limit=5', { cache: 'no-store' })
+      const data = await res.json()
+      // Require the full shape — a bare {ok:true} (e.g. mocked catch-all) is treated as empty
+      if (data?.ok && Array.isArray(data.items) && data.summary) setWhisperer(data)
+      else setWhisperer(null)
+    } catch {
+      setWhisperer(null); setWhispererError(true)
+    } finally {
+      setWhispererLoading(false)
+    }
+  }, [])
+
   useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
+  useEffect(() => { loadWhisperer() }, [loadWhisperer])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -1292,6 +1343,74 @@ export default function CoachingPage() {
                                 </Link>
                               </div>
                             ))}
+                          </div>
+                        )}
+                      </SectionCard>
+
+                      {/* Tier 2B Day 114 — Whisperer Insights */}
+                      <SectionCard variant="ai" title="Whisperer Insights" subtitle="Live coaching activity · last 30 days.">
+                        {whispererLoading && <LoadingText text="Loading Whisperer activity…" />}
+                        {whispererError && !whispererLoading && (
+                          <div className="text-sm text-red-300">Could not load Whisperer sessions.</div>
+                        )}
+                        {!whispererLoading && !whispererError && whisperer && whisperer.persistence === false && (
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                            Whisperer persistence is not enabled yet.
+                          </div>
+                        )}
+                        {!whispererLoading && !whispererError && whisperer && whisperer.persistence !== false && whisperer.items.length === 0 && (
+                          <EmptyRow message="No Whisperer sessions yet." />
+                        )}
+                        {!whispererLoading && !whispererError && whisperer && whisperer.items.length > 0 && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-2 py-1.5">
+                                <div className="text-sm font-semibold text-white tabular-nums">{whisperer.summary.sessionCount}</div>
+                                <div className="text-[10px] text-neutral-500">sessions</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-2 py-1.5">
+                                <div className="text-sm font-semibold text-white tabular-nums">{whisperer.summary.triggerCount}</div>
+                                <div className="text-[10px] text-neutral-500">triggers</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-2 py-1.5">
+                                <div className="text-sm font-semibold text-white tabular-nums">
+                                  {whisperer.summary.avgLatencyMs !== null ? `${whisperer.summary.avgLatencyMs}ms` : '—'}
+                                </div>
+                                <div className="text-[10px] text-neutral-500">avg latency</div>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+                              {whisperer.summary.topTriggerTypes[0] && (
+                                <span>Top objection: <span className="text-neutral-300 capitalize">{whisperer.summary.topTriggerTypes[0].type.replace('_', ' ')}</span></span>
+                              )}
+                              <span>{whisperer.summary.activeSessions} active · {whisperer.summary.endedSessions} ended</span>
+                            </div>
+
+                            <div className="space-y-2">
+                              {whisperer.items.map((s) => (
+                                <div key={s.sessionId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{s.repName}</span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-[10px] text-neutral-500">{s.triggerCount} trigger{s.triggerCount === 1 ? '' : 's'}</span>
+                                      <StatusBadge status={s.status} />
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                    {s.topTriggerTypes[0] && <span className="capitalize">{s.topTriggerTypes[0].type.replace('_', ' ')}</span>}
+                                    {s.source !== 'unknown' && <span className="capitalize">{s.source}</span>}
+                                    {s.avgLatencyMs !== null && <span>{s.avgLatencyMs}ms</span>}
+                                    {s.startedAt && <span>{new Date(s.startedAt).toLocaleDateString('en-GB')}</span>}
+                                  </div>
+                                  {s.latestSuggestion && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs text-neutral-300 truncate">{s.latestSuggestion.title}</span>
+                                      <UrgencyBadge urgency={s.latestSuggestion.urgency as any} />
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </SectionCard>
