@@ -30,6 +30,7 @@
     "validate-tier-2b-day-112": "bash scripts/validate-tier-2b-day-112.sh",
     "validate-tier-2b-day-113": "bash scripts/validate-tier-2b-day-113.sh",
     "validate-tier-2b-day-114": "bash scripts/validate-tier-2b-day-114.sh",
+    "validate-tier-2b-day-115": "bash scripts/validate-tier-2b-day-115.sh",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",

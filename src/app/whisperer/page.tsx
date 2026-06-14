@@ -7,6 +7,7 @@
 // minted server-side via POST /v1/whisperer/deepgram-token.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { proxyFetch } from '@/lib/api'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyRow } from '@/components/ui/empty-state'
@@ -58,6 +59,10 @@ function pickMimeType(): string | null {
 }
 
 export default function WhispererPage() {
+  // Day 115: optional ?callId=<id> links the session to a call for later replay
+  const searchParams = useSearchParams()
+  const callId = (searchParams?.get('callId') || '').trim() || null
+
   const [mode, setMode] = useState<Mode>('live')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'active' | 'ended'>('idle')
@@ -133,8 +138,8 @@ export default function WhispererPage() {
     setBusy(true); setError(null); setEndSummary(null)
     try {
       const res = await proxyFetch('/api/proxy/v1/whisperer/sessions', {
-        // Day 114: record whether this is a live-listener or manual-simulator session
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: mode }),
+        // Day 114: record live vs manual source. Day 115: link to a call when ?callId is present.
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: mode, ...(callId ? { callId } : {}) }),
       })
       const data = await res.json()
       if (!data?.ok) throw new Error(data?.error || 'failed')
@@ -146,7 +151,7 @@ export default function WhispererPage() {
     } finally {
       setBusy(false)
     }
-  }, [mode])
+  }, [mode, callId])
 
   // ── Live listener ──────────────────────────────────────────────────────────
 

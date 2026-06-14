@@ -198,6 +198,26 @@ export default function CallPage() {
   const [assigningCoaching, setAssigningCoaching] = useState(false);
   const [coachingAssigned, setCoachingAssigned] = useState(false);
 
+  // Whisperer moments linked to this call (Tier 2B Day 115)
+  const [whispererMoments, setWhispererMoments] = useState<any[]>([]);
+  const [whispererMomentsError, setWhispererMomentsError] = useState(false);
+  useEffect(() => {
+    if (!callId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await proxyFetch(`/v1/calls/${encodeURIComponent(callId)}/whisperer-triggers`, { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!alive) return;
+        if (data?.ok && Array.isArray(data.items)) setWhispererMoments(data.items);
+        else setWhispererMomentsError(true);
+      } catch {
+        if (alive) setWhispererMomentsError(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [callId]);
+
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [drills, setDrills] = useState<{ id: string; label: string }[]>([]);
@@ -1844,6 +1864,63 @@ export default function CallPage() {
               ))}
             </ul>
           )}
+        </section>
+
+        {/* Whisperer Moments (Tier 2B Day 115) — live coaching moments linked to this call */}
+        <section id="whisperer-moments" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">Whisperer Moments</h2>
+            {whispererMoments.length > 0 && (
+              <span className="text-xs text-neutral-400">{whispererMoments.length} moment{whispererMoments.length === 1 ? "" : "s"}</span>
+            )}
+          </div>
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+            {whispererMomentsError ? (
+              <div className="text-sm text-red-400">Could not load Whisperer moments.</div>
+            ) : whispererMoments.length === 0 ? (
+              <div className="text-sm text-neutral-400">No Whisperer moments linked to this call yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {whispererMoments.map((m) => (
+                  <div key={m.triggerId} className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-300 shrink-0">
+                          {String(m.type).replace("_", " ")}
+                        </span>
+                        {m.phrase && <span className="text-xs text-neutral-400 truncate">“{m.phrase}”</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {m.suggestion?.urgency && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${
+                            m.suggestion.urgency === "high" ? "border-red-500/30 bg-red-500/10 text-red-300"
+                            : m.suggestion.urgency === "medium" ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : "border-neutral-700 bg-neutral-900 text-neutral-400"
+                          }`}>
+                            {m.suggestion.urgency}
+                          </span>
+                        )}
+                        {m.source && m.source !== "unknown" && (
+                          <span className="text-[10px] text-neutral-500 capitalize">{m.source}</span>
+                        )}
+                      </div>
+                    </div>
+                    {m.segmentText && <div className="text-xs text-neutral-400 italic">{m.segmentText}</div>}
+                    {m.suggestion?.title && (
+                      <div className="text-sm font-medium text-neutral-100">
+                        {m.suggestion.emoji ? `${m.suggestion.emoji} ` : ""}{m.suggestion.title}
+                      </div>
+                    )}
+                    {m.suggestion?.response && <p className="text-xs text-neutral-300 leading-relaxed">{m.suggestion.response}</p>}
+                    <div className="flex flex-wrap gap-x-3 text-[11px] text-neutral-500">
+                      {m.detectedAt && <span>{new Date(m.detectedAt).toLocaleString("en-GB")}</span>}
+                      {typeof m.latencyMs === "number" && <span>{m.latencyMs}ms</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Coach assignments (main panel) */}
