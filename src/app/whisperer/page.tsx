@@ -211,16 +211,23 @@ export default function WhispererPage() {
         model: 'nova-3', language: 'en', smart_format: 'true',
         interim_results: 'true', endpointing: '300',
       })
-      const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', token])
+      // Day 117 fix: short-lived Grant tokens authenticate via the `bearer`
+      // WebSocket subprotocol (they're Bearer access tokens — Day 113 proved
+      // `Authorization: Bearer` works against the REST listen API). The `token`
+      // subprotocol is only for permanent API keys, which caused 1008 closes.
+      console.info('[whisperer] token acquired (not shown); opening Deepgram WS via bearer subprotocol')
+      const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['bearer', token])
       wsRef.current = ws
 
       ws.onopen = () => {
         reconnectAttemptRef.current = 0 // a clean connection resets the backoff
         setError(null)
         setLiveStatus('listening')
+        console.info('[whisperer] Deepgram WS open; MediaRecorder mimeType =', mime)
         const recorder = new MediaRecorder(stream, { mimeType: mime })
         recorderRef.current = recorder
         recorder.ondataavailable = (e) => {
+          // Never send before the socket is OPEN
           if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data)
         }
         recorder.start(250) // 250ms chunks
@@ -244,17 +251,28 @@ export default function WhispererPage() {
         }
       }
 
-      ws.onerror = () => { /* surfaced via onclose → reconnect path */ }
+      ws.onerror = () => {
+        console.warn('[whisperer] Deepgram WS error (details in onclose)')
+        /* surfaced via onclose → reconnect path */
+      }
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        // Safe diagnostics — never log the token
+        console.warn('[whisperer] Deepgram WS closed', { code: ev.code, reason: ev.reason || '(none)', wasClean: ev.wasClean })
         // Stop the recorder feeding a dead socket, but keep the mic stream.
         try { recorderRef.current?.stop() } catch {}
         recorderRef.current = null
         if (userStoppedRef.current) return // intentional stop — no reconnect
 
+        // 1008 = policy violation, Deepgram's code for an auth/token problem.
+        const authClose = ev.code === 1008 || ev.code === 4001 || ev.code === 4008
         const attempt = reconnectAttemptRef.current
-        if (attempt >= RECONNECT_BACKOFF_MS.length) {
-          setError('Live transcription stopped. You can restart listening or use the manual simulator.')
+        if (authClose || attempt >= RECONNECT_BACKOFF_MS.length) {
+          setError(
+            authClose
+              ? `Deepgram authentication failed (close code ${ev.code}). Check temporary token configuration. The manual simulator still works.`
+              : `Deepgram connection closed${ev.code ? ` (code ${ev.code})` : ''}. You can restart listening or use the manual simulator.`
+          )
           setLiveStatus('error')
           teardownConnection(false)
           return
