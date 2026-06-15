@@ -175,6 +175,21 @@ type ReviewQueueItem = {
 
 type ReviewNotice = { type: 'success' | 'error'; text: string }
 
+// Tier 2B Day 119 — custom whisperer trigger library
+type CustomTrigger = {
+  id: string
+  name: string
+  type: string
+  matchPhrases: string[]
+  matchKeywords: string[]
+  suggestionTitle: string
+  suggestionResponse: string
+  urgency: string
+  emoji: string | null
+  enabled: boolean
+  priority: number
+}
+
 // Tier 2B Day 114 — GET /v1/manager/whisperer-sessions
 type WhispererItem = {
   sessionId: string
@@ -717,6 +732,17 @@ export default function CoachingPage() {
   const [whispererLoading, setWhispererLoading] = useState(true)
   const [whispererError, setWhispererError] = useState(false)
 
+  // Custom whisperer triggers (Tier 2B Day 119)
+  const [customTriggers, setCustomTriggers] = useState<CustomTrigger[]>([])
+  const [customTriggersPersistence, setCustomTriggersPersistence] = useState(true)
+  const [showTriggerForm, setShowTriggerForm] = useState(false)
+  const [triggerDraft, setTriggerDraft] = useState({
+    name: '', type: 'competitor', matchPhrases: '', matchKeywords: '',
+    suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true,
+  })
+  const [savingTrigger, setSavingTrigger] = useState(false)
+  const [triggerNotice, setTriggerNotice] = useState<string | null>(null)
+
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false)
@@ -953,9 +979,58 @@ export default function CoachingPage() {
     }
   }, [])
 
+  const loadCustomTriggers = useCallback(async () => {
+    try {
+      const res = await proxyFetch('/v1/manager/whisperer-trigger-library', { cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok) {
+        setCustomTriggers(data.items ?? [])
+        setCustomTriggersPersistence(data.persistence !== false)
+      }
+    } catch { /* fail-soft */ }
+  }, [])
+
+  const submitTrigger = useCallback(async () => {
+    if (savingTrigger) return
+    setSavingTrigger(true)
+    setTriggerNotice(null)
+    try {
+      const res = await proxyFetch('/v1/manager/whisperer-trigger-library', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: triggerDraft.name.trim(),
+          type: triggerDraft.type,
+          matchPhrases: triggerDraft.matchPhrases.split(',').map((s) => s.trim()).filter(Boolean),
+          matchKeywords: triggerDraft.matchKeywords.split(',').map((s) => s.trim()).filter(Boolean),
+          suggestionTitle: triggerDraft.suggestionTitle.trim(),
+          suggestionResponse: triggerDraft.suggestionResponse.trim(),
+          urgency: triggerDraft.urgency,
+          enabled: triggerDraft.enabled,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setTriggerNotice('Custom trigger saved.')
+        setShowTriggerForm(false)
+        setTriggerDraft({ name: '', type: 'competitor', matchPhrases: '', matchKeywords: '', suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true })
+        loadCustomTriggers()
+      } else if (data?.error === 'migration_required') {
+        setTriggerNotice('Custom triggers are not enabled yet (migration required).')
+      } else {
+        setTriggerNotice(`Could not save trigger${data?.error ? ` (${data.error})` : ''}.`)
+      }
+    } catch {
+      setTriggerNotice('Could not save trigger.')
+    } finally {
+      setSavingTrigger(false)
+    }
+  }, [triggerDraft, savingTrigger, loadCustomTriggers])
+
   useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
   useEffect(() => { loadWhisperer() }, [loadWhisperer])
+  useEffect(() => { loadCustomTriggers() }, [loadCustomTriggers])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -1427,6 +1502,62 @@ export default function CoachingPage() {
                               ))}
                             </div>
                           </div>
+                        )}
+                      </SectionCard>
+
+                      {/* Tier 2B Day 119 — Custom Triggers */}
+                      <SectionCard variant="ai" title="Custom Triggers" subtitle="Team-defined Whisperer objections & responses.">
+                        {triggerNotice && (
+                          <div className="mb-2 text-xs text-neutral-400">{triggerNotice}</div>
+                        )}
+                        {!customTriggersPersistence && (
+                          <div className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                            Custom triggers are not enabled yet (migration required).
+                          </div>
+                        )}
+                        {customTriggers.length === 0 ? (
+                          <EmptyRow message="No custom Whisperer triggers yet." />
+                        ) : (
+                          <div className="space-y-2">
+                            {customTriggers.slice(0, 5).map((t) => (
+                              <div key={t.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium text-white truncate">{t.name}</span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[10px] uppercase tracking-wide text-neutral-500">{t.type}</span>
+                                    {!t.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-500 uppercase">Off</span>}
+                                  </div>
+                                </div>
+                                <div className="text-[11px] text-neutral-500 truncate">{t.suggestionTitle}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {showTriggerForm ? (
+                          <div className="mt-3 space-y-2 rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                            <input value={triggerDraft.name} onChange={(e) => setTriggerDraft({ ...triggerDraft, name: e.target.value })} placeholder="Name (e.g. Competitor: Acme)" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
+                            <div className="flex gap-2">
+                              <select value={triggerDraft.type} onChange={(e) => setTriggerDraft({ ...triggerDraft, type: e.target.value })} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                                {['competitor', 'price', 'timing', 'authority', 'trust', 'send_info', 'custom'].map((x) => <option key={x} value={x}>{x}</option>)}
+                              </select>
+                              <select value={triggerDraft.urgency} onChange={(e) => setTriggerDraft({ ...triggerDraft, urgency: e.target.value })} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                                {['low', 'medium', 'high'].map((x) => <option key={x} value={x}>{x}</option>)}
+                              </select>
+                            </div>
+                            <input value={triggerDraft.matchPhrases} onChange={(e) => setTriggerDraft({ ...triggerDraft, matchPhrases: e.target.value })} placeholder="Match phrases (comma-separated)" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
+                            <input value={triggerDraft.matchKeywords} onChange={(e) => setTriggerDraft({ ...triggerDraft, matchKeywords: e.target.value })} placeholder="Keywords (comma-separated)" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
+                            <input value={triggerDraft.suggestionTitle} onChange={(e) => setTriggerDraft({ ...triggerDraft, suggestionTitle: e.target.value })} placeholder="Suggestion title" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
+                            <textarea value={triggerDraft.suggestionResponse} onChange={(e) => setTriggerDraft({ ...triggerDraft, suggestionResponse: e.target.value })} placeholder="Suggested response" rows={2} className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
+                            <div className="flex items-center gap-2">
+                              <button type="button" onClick={submitTrigger} disabled={savingTrigger} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{savingTrigger ? 'Saving…' : 'Save trigger'}</button>
+                              <button type="button" onClick={() => setShowTriggerForm(false)} className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => { setShowTriggerForm(true); setTriggerNotice(null) }} className="mt-3 rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900 transition-colors">
+                            Add trigger
+                          </button>
                         )}
                       </SectionCard>
                     </div>
