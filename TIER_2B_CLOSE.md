@@ -31,15 +31,15 @@ Rep opens /whisperer → starts session → manual/live transcript segment enter
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Realtime STT foundation | **Partial** — built (token + WS + mic); manual physical-mic validation pending |
-| 2 | Live transcript display | **Partial** — live UI built (interim + final); manual mic validation pending |
-| 3 | Trigger detection | **Implemented** |
+| 1 | Realtime STT foundation | **Implemented / Live QA passed** — Day 117 fixed WS auth (`bearer` token); George proved live mic end-to-end (Day 117/118) |
+| 2 | Live transcript display | **Implemented** — interim + final segments display live |
+| 3 | Trigger detection | **Implemented** — semantic intent classifier (Day 117), not exact phrases |
 | 4 | Sidebar suggestions | **Implemented** |
-| 5 | Latency monitor | **Implemented** |
+| 5 | Latency monitor | **Implemented** (live ~300ms observed) |
 | 6 | Silence > 5s | **Paused** (Deepgram endpointing hook ready, not prioritised) |
-| 7 | Custom trigger library | **Planned later** (table designed in data-model plan) |
+| 7 | Custom trigger library | **Planned Day 119** (table designed in data-model plan) |
 | 8 | Suggestion quality scoring | **Planned later** (`suggestion_outcome` field ready) |
-| 9 | Live session logging | **Implemented** |
+| 9 | Live session logging | **Implemented** (Day 118: stale-session classification + cleanup) |
 | 10 | Replay live trigger moments | **Implemented** (Day 115) |
 
 ## Known caveats

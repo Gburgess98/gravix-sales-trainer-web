@@ -180,7 +180,8 @@ type WhispererItem = {
   sessionId: string
   repId: string | null
   repName: string
-  status: 'active' | 'ended' | 'unknown'
+  status: 'active' | 'ended' | 'stale' | 'unknown'
+  isStale?: boolean
   startedAt: string
   endedAt: string | null
   triggerCount: number
@@ -200,6 +201,7 @@ type WhispererInsights = {
     topTriggerTypes: Array<{ type: string; count: number }>
     avgLatencyMs: number | null
     activeSessions: number
+    staleSessions?: number
     endedSessions: number
   }
 }
@@ -1383,8 +1385,17 @@ export default function CoachingPage() {
                               {whisperer.summary.topTriggerTypes[0] && (
                                 <span>Top objection: <span className="text-neutral-300 capitalize">{whisperer.summary.topTriggerTypes[0].type.replace('_', ' ')}</span></span>
                               )}
-                              <span>{whisperer.summary.activeSessions} active · {whisperer.summary.endedSessions} ended</span>
+                              <span>
+                                {whisperer.summary.activeSessions} active
+                                {(whisperer.summary.staleSessions ?? 0) > 0 ? ` · ${whisperer.summary.staleSessions} stale` : ''}
+                                {' · '}{whisperer.summary.endedSessions} ended
+                              </span>
                             </div>
+                            {(whisperer.summary.staleSessions ?? 0) > 0 && (
+                              <div className="text-[10px] text-neutral-600">
+                                Stale sessions are older active sessions that were not ended cleanly.
+                              </div>
+                            )}
 
                             <div className="space-y-2">
                               {whisperer.items.map((s) => (
@@ -1393,7 +1404,11 @@ export default function CoachingPage() {
                                     <span className="text-sm font-medium text-white truncate">{s.repName}</span>
                                     <div className="flex items-center gap-1.5 shrink-0">
                                       <span className="text-[10px] text-neutral-500">{s.triggerCount} trigger{s.triggerCount === 1 ? '' : 's'}</span>
-                                      <StatusBadge status={s.status} />
+                                      {s.status === 'stale' ? (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 uppercase tracking-wide font-semibold">Stale</span>
+                                      ) : (
+                                        <StatusBadge status={s.status} />
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
