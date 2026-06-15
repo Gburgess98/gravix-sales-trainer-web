@@ -37,7 +37,7 @@ Rep opens /whisperer → starts session → manual/live transcript segment enter
 | 4 | Sidebar suggestions | **Implemented** |
 | 5 | Latency monitor | **Implemented** (live ~300ms observed) |
 | 6 | Silence > 5s | **Paused** (Deepgram endpointing hook ready, not prioritised) |
-| 7 | Custom trigger library | **Planned Day 119** (table designed in data-model plan) |
+| 7 | Custom trigger library | **Implemented foundation** (Day 119/120: migration applied, manager CRUD, scoped detection, /coaching card; create→fire→disable proven) |
 | 8 | Suggestion quality scoring | **Planned later** (`suggestion_outcome` field ready) |
 | 9 | Live session logging | **Implemented** (Day 118: stale-session classification + cleanup) |
 | 10 | Replay live trigger moments | **Implemented** (Day 115) |
