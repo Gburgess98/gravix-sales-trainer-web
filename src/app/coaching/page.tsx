@@ -227,6 +227,10 @@ type WhispererInsights = {
       custom: { shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null }
       builtIn: { shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null }
     }
+    // Day 125 — noisy custom trigger health flags
+    customTriggerHealth?: {
+      needsEditing: Array<{ type: string; shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null; reason: string; severity: string }>
+    }
   }
 }
 
@@ -1573,6 +1577,34 @@ export default function CoachingPage() {
                               })()
                             )}
 
+                            {/* Day 125 — noisy custom trigger health flags */}
+                            {whisperer.summary.customTriggerHealth && (
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-900/20 px-3 py-2 space-y-1">
+                                <div className="text-[10px] uppercase tracking-wide text-neutral-500">Needs editing</div>
+                                {whisperer.summary.customTriggerHealth.needsEditing.length === 0 ? (
+                                  <div className="text-[11px] text-neutral-600">No custom trigger issues detected.</div>
+                                ) : (
+                                  whisperer.summary.customTriggerHealth.needsEditing.slice(0, 3).map((f) => (
+                                    <div key={f.type} className="text-[11px] space-y-0.5">
+                                      <div className="text-neutral-400">
+                                        <span className="text-amber-300 capitalize">{f.type.replace('_', ' ')}</span>
+                                        {' · '}{f.usedRate !== null ? `${f.usedRate}% used` : 'No ratings yet'}
+                                        {' · '}{f.shown} shown
+                                      </div>
+                                      <div className="text-neutral-600">Reason: {f.reason}</div>
+                                      <button
+                                        type="button"
+                                        onClick={() => document.getElementById('custom-triggers')?.scrollIntoView({ behavior: 'smooth' })}
+                                        className="text-[11px] text-emerald-300 hover:underline"
+                                      >
+                                        Review this custom trigger
+                                      </button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+
                             <div className="space-y-2">
                               {whisperer.items.map((s) => (
                                 <div key={s.sessionId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 space-y-1">
@@ -1607,6 +1639,7 @@ export default function CoachingPage() {
                       </SectionCard>
 
                       {/* Tier 2B Day 119 — Custom Triggers */}
+                      <div id="custom-triggers" className="scroll-mt-4">
                       <SectionCard variant="ai" title="Custom Triggers" subtitle="Team-defined Whisperer objections & responses.">
                         {triggerNotice && (
                           <div className="mb-2 text-xs text-neutral-400">{triggerNotice}</div>
@@ -1681,6 +1714,7 @@ export default function CoachingPage() {
                           </button>
                         )}
                       </SectionCard>
+                      </div>
                     </div>
                   </div>
                 </>

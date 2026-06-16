@@ -54,3 +54,19 @@ Rep opens /whisperer → starts session → manual/live transcript segment enter
 ## Next recommendation
 
 **Day 117 / next:** either (a) manual live-mic proof + speaker diarisation (`diarize=true`, label rep vs prospect) — do this **after** the tag, once the mic path is exercised; or (b) begin the **Tier 2C Voice Output audit**. Recommended immediate next: live-mic proof + diarisation before any new tier.
+
+---
+
+## Day 125 closeout addendum (manager-value layer)
+
+Built on top of the Day 116 foundation; Days 119–125 delivered the manager-facing value layer.
+
+| Item | Status |
+|---|---|
+| Custom trigger library | **Implemented** (Day 119–121: CRUD, enable/disable/delete, scoped detection, `customTriggerId` echo) |
+| Suggestion quality scoring | **Implemented** (Day 122/123: `suggestion_outcome` migration applied + proven; used/ignored/not_relevant across sessions, call review, manager insights) |
+| Usefulness breakdown | **Implemented** (Day 124: `usefulnessByType` + `customVsBuiltIn` in manager summary; `/coaching` "Usefulness by objection") |
+| Custom trigger health / needs-editing flags | **Implemented foundation** (Day 125: `summary.customTriggerHealth.needsEditing`, MVP thresholds, `/coaching` "Needs editing" with review link) |
+| AI Trigger Discovery | **Architecture planned** (Day 125: `WHISPERER_AI_TRIGGER_DISCOVERY_PLAN.md`; manager-approval-required, no LLM on hot path) |
+| Silence > 5s | **Paused** |
+| Speaker diarisation | **Later** (after live-mic proof) |
