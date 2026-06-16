@@ -124,6 +124,12 @@ function mapCalibratedSpeaker(label: SpeakerLabel, cal: Record<string, SpeakerRo
   return role === 'rep' || role === 'prospect' ? role : label
 }
 
+// Day 128: client-side "dead air" stub. After this long with no interim/final
+// speech while listening, surface a gentle re-engagement hint — at most once per
+// cooldown window. UI-only: nothing is posted to the API.
+const SILENCE_THRESHOLD_MS = 5000
+const SILENCE_COOLDOWN_MS = 30000
+
 export default function WhispererPage() {
   // Day 115: optional ?callId=<id> links the session to a call for later replay
   const searchParams = useSearchParams()
@@ -168,6 +174,17 @@ export default function WhispererPage() {
   const [calibration, setCalibration] = useState<Record<string, SpeakerRole>>({})
   const calibrationRef = useRef(calibration)
   useEffect(() => { calibrationRef.current = calibration }, [calibration])
+
+  // Day 128: silence detection stub (live only, UI-only).
+  const [silenceSeconds, setSilenceSeconds] = useState<number | null>(null)
+  const lastSpeechAtRef = useRef<number>(0)
+  const lastSilenceHintAtRef = useRef<number>(0)
+  const silenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Any speech (interim or final) resets the silence clock and clears the hint.
+  const markSpeechActivity = useCallback(() => {
+    lastSpeechAtRef.current = Date.now()
+    setSilenceSeconds(null)
+  }, [])
 
   // Diarised speaker labels seen so far this session (e.g. speaker_0, speaker_1).
   const seenSpeakers = useMemo(() => {
@@ -378,6 +395,8 @@ export default function WhispererPage() {
           const alt = msg?.channel?.alternatives?.[0]
           const text = String(alt?.transcript || '').trim()
           if (!text) return
+          // Day 128: any speech (interim or final) resets the silence clock.
+          markSpeechActivity()
           if (msg.is_final) {
             setInterim('')
             // Day 126: use Deepgram's provisional diarisation label when present.
@@ -436,13 +455,16 @@ export default function WhispererPage() {
       setLiveStatus('error')
       teardownConnection(false)
     }
-  }, [postSegment, teardownConnection])
+  }, [postSegment, teardownConnection, markSpeechActivity])
 
   const startListening = useCallback(async () => {
     if (!sessionId) return
     setError(null)
     userStoppedRef.current = false
     reconnectAttemptRef.current = 0
+    // Day 128: start the silence clock fresh when listening begins.
+    markSpeechActivity()
+    lastSilenceHintAtRef.current = 0
 
     const mime = pickMimeType()
     if (!mime) {
@@ -462,7 +484,7 @@ export default function WhispererPage() {
     }
 
     await connectDeepgram(mime)
-  }, [sessionId, connectDeepgram])
+  }, [sessionId, connectDeepgram, markSpeechActivity])
 
   const stopListening = useCallback(() => {
     teardownListening()
@@ -471,6 +493,25 @@ export default function WhispererPage() {
 
   // Clean up media/socket/timers on unmount
   useEffect(() => () => { teardownListening() }, [teardownListening])
+
+  // Day 128: poll for dead air only while actively listening. Fires the hint at
+  // most once per cooldown; cleanup clears the interval + hint when listening
+  // stops, the session ends, the mode changes, or the component unmounts.
+  useEffect(() => {
+    if (liveStatus !== 'listening') return
+    silenceTimerRef.current = setInterval(() => {
+      const now = Date.now()
+      const silentFor = now - lastSpeechAtRef.current
+      if (silentFor >= SILENCE_THRESHOLD_MS && now - lastSilenceHintAtRef.current >= SILENCE_COOLDOWN_MS) {
+        lastSilenceHintAtRef.current = now
+        setSilenceSeconds(Math.round(silentFor / 1000))
+      }
+    }, 1000)
+    return () => {
+      if (silenceTimerRef.current) { clearInterval(silenceTimerRef.current); silenceTimerRef.current = null }
+      setSilenceSeconds(null)
+    }
+  }, [liveStatus])
 
   // ── Simulator ───────────────────────────────────────────────────────────────
 
@@ -700,6 +741,22 @@ export default function WhispererPage() {
 
         <SectionCard variant="ai" title="Suggestions" subtitle="Trigger detected → suggested response.">
           {outcomeNotice && <div className="mb-2 text-[11px] text-neutral-400">{outcomeNotice}</div>}
+
+          {/* Day 128: dead-air re-engagement hint (live only, UI-only). */}
+          {mode === 'live' && silenceSeconds !== null && (
+            <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-amber-200">👂 Dead air detected</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-300">medium</span>
+              </div>
+              <p className="text-[11px] text-amber-300/80">Silence detected — try a re-engagement question. No speech for {silenceSeconds}s.</p>
+              <p className="text-xs text-neutral-200 leading-relaxed">
+                Try a simple re-engagement question: “What part of that is giving you the most hesitation?”
+              </p>
+              <p className="text-[10px] text-neutral-500">Silence detection is local to this live session.</p>
+            </div>
+          )}
+
           {suggestions.length === 0 ? (
             <EmptyRow message="No suggestions yet." />
           ) : (
