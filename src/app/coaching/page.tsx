@@ -221,6 +221,12 @@ type WhispererInsights = {
     // Day 122 — suggestion quality signal
     suggestionOutcomes?: { used: number; ignored: number; notRelevant: number; unrated: number }
     usedRate?: number | null
+    // Day 124 — usefulness breakdown
+    usefulnessByType?: Array<{ type: string; shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null }>
+    customVsBuiltIn?: {
+      custom: { shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null }
+      builtIn: { shown: number; used: number; ignored: number; notRelevant: number; unrated: number; usedRate: number | null }
+    }
   }
 }
 
@@ -1530,6 +1536,41 @@ export default function CoachingPage() {
                                   <span>Used rate: <span className="text-neutral-300">{whisperer.summary.usedRate}%</span></span>
                                 )}
                               </div>
+                            )}
+
+                            {/* Day 124 — usefulness breakdown by objection type + custom vs built-in */}
+                            {whisperer.summary.usefulnessByType && (
+                              (() => {
+                                const types = whisperer.summary.usefulnessByType!
+                                const cvb = whisperer.summary.customVsBuiltIn
+                                const anyRated = types.some((t) => t.usedRate !== null)
+                                if (!anyRated) {
+                                  return <div className="text-[11px] text-neutral-600">No suggestion ratings yet.</div>
+                                }
+                                return (
+                                  <div className="rounded-lg border border-neutral-800 bg-neutral-900/20 px-3 py-2 space-y-1">
+                                    <div className="text-[10px] uppercase tracking-wide text-neutral-500">Usefulness by objection</div>
+                                    {types.slice(0, 3).map((t) => (
+                                      <div key={t.type} className="text-[11px] text-neutral-400">
+                                        <span className="text-neutral-300 capitalize">{t.type.replace('_', ' ')}</span>
+                                        {' — '}
+                                        {t.usedRate !== null ? `${t.usedRate}% used` : 'No ratings yet'}
+                                        {' · '}{t.shown} shown
+                                      </div>
+                                    ))}
+                                    {cvb && (cvb.custom.shown > 0 || cvb.builtIn.shown > 0) && (
+                                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5 text-[11px] text-neutral-500">
+                                        {cvb.custom.shown > 0 && (
+                                          <span>Custom triggers: <span className="text-neutral-300">{cvb.custom.usedRate !== null ? `${cvb.custom.usedRate}% used` : 'No ratings yet'}</span></span>
+                                        )}
+                                        {cvb.builtIn.shown > 0 && (
+                                          <span>Built-in triggers: <span className="text-neutral-300">{cvb.builtIn.usedRate !== null ? `${cvb.builtIn.usedRate}% used` : 'No ratings yet'}</span></span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })()
                             )}
 
                             <div className="space-y-2">
