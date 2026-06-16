@@ -6,7 +6,7 @@
 // The permanent Deepgram key never reaches the browser — a short-lived token is
 // minted server-side via POST /v1/whisperer/deepgram-token.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { proxyFetch } from '@/lib/api'
 import { SectionCard } from '@/components/ui/section-card'
@@ -104,6 +104,26 @@ function speakerTone(s: string): string {
   return 'text-sky-300' // provisional diarisation labels / unknown
 }
 
+// Day 127: session-local calibration mapping diarisation labels → roles.
+type SpeakerRole = 'unknown' | 'rep' | 'prospect'
+const ROLE_OPTIONS: Array<{ value: SpeakerRole; label: string }> = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'rep', label: 'Rep' },
+  { value: 'prospect', label: 'Prospect' },
+]
+
+function isDiarisedLabel(s: string): boolean {
+  return /^speaker_\d+$/.test(s)
+}
+
+// Map a provisional diarisation label to its calibrated role for posting.
+// Uncalibrated/unknown speakers keep the diarised label so the API still treats
+// them prospect-like (triggers fire) until the rep calibrates them.
+function mapCalibratedSpeaker(label: SpeakerLabel, cal: Record<string, SpeakerRole>): SpeakerLabel {
+  const role = cal[label]
+  return role === 'rep' || role === 'prospect' ? role : label
+}
+
 export default function WhispererPage() {
   // Day 115: optional ?callId=<id> links the session to a call for later replay
   const searchParams = useSearchParams()
@@ -143,27 +163,64 @@ export default function WhispererPage() {
   const sessionIdRef = useRef<string | null>(null)
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
 
+  // Day 127: session-local rep/prospect calibration for diarised speakers.
+  // A ref mirrors state so the live WS closure always maps with the latest map.
+  const [calibration, setCalibration] = useState<Record<string, SpeakerRole>>({})
+  const calibrationRef = useRef(calibration)
+  useEffect(() => { calibrationRef.current = calibration }, [calibration])
+
+  // Diarised speaker labels seen so far this session (e.g. speaker_0, speaker_1).
+  const seenSpeakers = useMemo(() => {
+    const s = new Set<string>()
+    for (const r of transcript) if (isDiarisedLabel(r.speaker)) s.add(r.speaker)
+    return [...s].sort()
+  }, [transcript])
+
+  // Set one speaker's role; if exactly one other seen speaker is still Unknown,
+  // complement it (Rep ↔ Prospect) so the common two-party case is one tap.
+  const setSpeakerRole = useCallback((label: string, role: SpeakerRole) => {
+    setCalibration((prev) => {
+      const next = { ...prev, [label]: role }
+      if (role === 'rep' || role === 'prospect') {
+        const others = seenSpeakers.filter((s) => s !== label)
+        if (others.length === 1 && (next[others[0]] ?? 'unknown') === 'unknown') {
+          next[others[0]] = role === 'rep' ? 'prospect' : 'rep'
+        }
+      }
+      return next
+    })
+  }, [seenSpeakers])
+
   // Post a final transcript segment to the API and render any triggers.
-  const postSegment = useCallback(async (text: string, who: SpeakerLabel) => {
+  // `who` is the speaker actually sent (may be a calibrated rep/prospect role);
+  // `displaySpeaker` keeps the original diarised label for the transcript so we
+  // can still show "Speaker 0 · Rep". `diarized` is sent for API traceability.
+  const postSegment = useCallback(async (text: string, who: SpeakerLabel, displaySpeaker?: SpeakerLabel) => {
     const sid = sessionIdRef.current
     const clean = text.trim()
     if (!sid || !clean) return
     const sentAt = new Date()
+    const diarized = displaySpeaker && isDiarisedLabel(displaySpeaker) ? displaySpeaker : null
     try {
       const res = await proxyFetch(
         `/api/proxy/v1/whisperer/sessions/${encodeURIComponent(sid)}/segments`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: clean, speaker: who, clientSentAt: sentAt.toISOString() }),
+          body: JSON.stringify({
+            text: clean,
+            speaker: who,
+            ...(diarized ? { diarizedSpeaker: diarized } : {}),
+            clientSentAt: sentAt.toISOString(),
+          }),
         }
       )
       const data = await res.json()
       if (!data?.ok) return
       seq.current += 1
-      // Prefer the speaker label the API echoes back (it stores diarisation
-      // labels verbatim and falls back to prospect), so display matches storage.
-      const shown: SpeakerLabel = data.segment?.speaker ?? who
+      // Keep the original diarised label for display when given (so calibration
+      // can annotate it); otherwise fall back to the API echo / posted speaker.
+      const shown: SpeakerLabel = displaySpeaker ?? data.segment?.speaker ?? who
       setTranscript((prev) => [...prev, { id: `seg-${seq.current}`, text: clean, speaker: shown, at: data.segment.receivedAt }])
       const renderedAt = Date.now()
       const cards: SuggestionCard[] = (data.triggers ?? []).map((t: any) => ({
@@ -224,7 +281,7 @@ export default function WhispererPage() {
       if (!data?.ok) throw new Error(data?.error || 'failed')
       setSessionId(data.session.id)
       setSessionStatus('active')
-      setTranscript([]); setSuggestions([]); setLastLatencyMs(null); setInterim('')
+      setTranscript([]); setSuggestions([]); setLastLatencyMs(null); setInterim(''); setCalibration({})
     } catch {
       setError('Could not start the session.')
     } finally {
@@ -327,7 +384,11 @@ export default function WhispererPage() {
             // No diarisation data → default to prospect so triggers still fire
             // (Day 112 behaviour). We never assume speaker_0 = rep here.
             const spk = dominantSpeaker(alt) ?? 'prospect'
-            void postSegment(text, spk)
+            // Day 127: apply session calibration so a speaker the rep marked as
+            // Rep is posted as "rep" (suppressed); uncalibrated speakers keep
+            // their diarised label. Original label is kept for display.
+            const posted = mapCalibratedSpeaker(spk, calibrationRef.current)
+            void postSegment(text, posted, spk)
           } else {
             setInterim(text)
           }
@@ -513,29 +574,64 @@ export default function WhispererPage() {
           ) : (
             <div className="space-y-3">
               {mode === 'live' ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {liveStatus !== 'listening' ? (
-                    <button
-                      type="button"
-                      onClick={startListening}
-                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors"
-                    >
-                      Start listening
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={stopListening}
-                      className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition-colors"
-                    >
-                      Stop listening
-                    </button>
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {liveStatus !== 'listening' ? (
+                      <button
+                        type="button"
+                        onClick={startListening}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors"
+                      >
+                        Start listening
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={stopListening}
+                        className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition-colors"
+                      >
+                        Stop listening
+                      </button>
+                    )}
+                    <span className="text-xs text-neutral-500">{LIVE_STATUS_LABEL[liveStatus]}</span>
+                    <span className="basis-full text-[11px] text-neutral-500">
+                      Speaker labels are provisional. Calibrate the roles below so triggers only fire on buyer speech.
+                    </span>
+                  </div>
+
+                  {/* Day 127: rep/prospect speaker calibration (appears once a
+                      diarised speaker has been heard; local to this session). */}
+                  {seenSpeakers.length > 0 && (
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-2">
+                      <div className="text-xs font-medium text-neutral-200">Speaker calibration</div>
+                      <p className="text-[11px] text-neutral-500">
+                        Tell Gravix which speaker is the rep so triggers only fire on buyer speech.
+                      </p>
+                      <div className="space-y-1.5">
+                        {seenSpeakers.map((sp) => (
+                          <div key={sp} className="flex items-center gap-2">
+                            <span className={`w-20 text-[11px] font-semibold ${speakerTone(sp)}`}>{formatSpeaker(sp)}</span>
+                            <div className="inline-flex rounded-md border border-neutral-800 bg-neutral-950 p-0.5">
+                              {ROLE_OPTIONS.map((o) => {
+                                const active = (calibration[sp] ?? 'unknown') === o.value
+                                return (
+                                  <button
+                                    key={o.value}
+                                    type="button"
+                                    onClick={() => setSpeakerRole(sp, o.value)}
+                                    className={`rounded px-2 py-0.5 text-[11px] transition-colors ${active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-400 hover:text-neutral-200'}`}
+                                  >
+                                    {o.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  <span className="text-xs text-neutral-500">{LIVE_STATUS_LABEL[liveStatus]}</span>
-                  <span className="basis-full text-[11px] text-neutral-500">
-                    Speaker labels are provisional. Rep/prospect calibration is coming later.
-                  </span>
-                </div>
+                </>
               ) : (
                 <div className="flex gap-2">
                   <select
@@ -574,14 +670,19 @@ export default function WhispererPage() {
                 {transcript.length === 0 ? (
                   <div className="text-xs text-neutral-500 py-2">No transcript yet — {mode === 'live' ? 'start listening' : 'send a line'} to begin.</div>
                 ) : (
-                  transcript.map((row) => (
-                    <div key={row.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 text-sm">
-                      <span className={`mr-2 text-[10px] uppercase tracking-wide font-semibold ${speakerTone(row.speaker)}`}>
-                        {formatSpeaker(row.speaker)}
-                      </span>
-                      <span className="text-neutral-200">{row.text}</span>
-                    </div>
-                  ))
+                  transcript.map((row) => {
+                    // Day 127: annotate diarised rows with their calibrated role.
+                    const role = isDiarisedLabel(row.speaker) ? calibration[row.speaker] : undefined
+                    return (
+                      <div key={row.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 text-sm">
+                        <span className={`mr-2 text-[10px] uppercase tracking-wide font-semibold ${speakerTone(row.speaker)}`}>
+                          {formatSpeaker(row.speaker)}
+                          {role === 'rep' || role === 'prospect' ? ` · ${role === 'rep' ? 'Rep' : 'Prospect'}` : ''}
+                        </span>
+                        <span className="text-neutral-200">{row.text}</span>
+                      </div>
+                    )
+                  })
                 )}
               </div>
 
