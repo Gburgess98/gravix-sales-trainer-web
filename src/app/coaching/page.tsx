@@ -218,6 +218,9 @@ type WhispererInsights = {
     activeSessions: number
     staleSessions?: number
     endedSessions: number
+    // Day 122 — suggestion quality signal
+    suggestionOutcomes?: { used: number; ignored: number; notRelevant: number; unrated: number }
+    usedRate?: number | null
   }
 }
 
@@ -1514,6 +1517,18 @@ export default function CoachingPage() {
                             {(whisperer.summary.staleSessions ?? 0) > 0 && (
                               <div className="text-[10px] text-neutral-600">
                                 Stale sessions are older active sessions that were not ended cleanly.
+                              </div>
+                            )}
+                            {whisperer.summary.suggestionOutcomes && (
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+                                <span>
+                                  Suggestion use: <span className="text-neutral-300">{whisperer.summary.suggestionOutcomes.used} used</span>
+                                  {' · '}{whisperer.summary.suggestionOutcomes.ignored} ignored
+                                  {' · '}{whisperer.summary.suggestionOutcomes.notRelevant} not relevant
+                                </span>
+                                {typeof whisperer.summary.usedRate === 'number' && (
+                                  <span>Used rate: <span className="text-neutral-300">{whisperer.summary.usedRate}%</span></span>
+                                )}
                               </div>
                             )}
 

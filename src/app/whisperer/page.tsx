@@ -24,6 +24,7 @@ type LiveStatus =
   | 'error'
 
 type TranscriptRow = { id: string; text: string; speaker: Speaker; at: string }
+type SuggestionOutcome = 'used' | 'ignored' | 'not_relevant'
 type SuggestionCard = {
   id: string
   type: string
@@ -34,7 +35,14 @@ type SuggestionCard = {
   urgency: 'low' | 'medium' | 'high'
   emoji: string | null
   latencyMs: number | null
+  outcome: SuggestionOutcome | null
 }
+
+const OUTCOME_BUTTONS: Array<{ value: SuggestionOutcome; label: string; notice: string }> = [
+  { value: 'used', label: 'Used', notice: 'Marked used.' },
+  { value: 'ignored', label: 'Ignored', notice: 'Marked ignored.' },
+  { value: 'not_relevant', label: 'Not relevant', notice: 'Marked not relevant.' },
+]
 
 const URGENCY_CLS: Record<string, string> = {
   high: 'border-red-500/30 bg-red-500/10 text-red-300',
@@ -90,6 +98,9 @@ export default function WhispererPage() {
   const [transcript, setTranscript] = useState<TranscriptRow[]>([])
   const [suggestions, setSuggestions] = useState<SuggestionCard[]>([])
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null)
+  // Day 122: suggestion outcome scoring (used / ignored / not relevant)
+  const [outcomeNotice, setOutcomeNotice] = useState<string | null>(null)
+  const [outcomeBusyId, setOutcomeBusyId] = useState<string | null>(null)
   const seq = useRef(0)
   const sessionIdRef = useRef<string | null>(null)
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
@@ -124,6 +135,7 @@ export default function WhispererPage() {
         urgency: t.suggestion?.urgency ?? 'low',
         emoji: t.suggestion?.emoji ?? null,
         latencyMs: Math.max(0, renderedAt - sentAt.getTime()),
+        outcome: t.suggestionOutcome ?? null,
       }))
       if (cards.length > 0) {
         setSuggestions((prev) => [...cards, ...prev].slice(0, 12))
@@ -133,6 +145,32 @@ export default function WhispererPage() {
       /* segment best-effort; transcript display unaffected */
     }
   }, [])
+
+  // Day 122: mark a suggestion's usefulness; optimistic with rollback on failure.
+  const markOutcome = useCallback(async (triggerId: string, outcome: SuggestionOutcome, notice: string) => {
+    setOutcomeBusyId(triggerId)
+    setOutcomeNotice(null)
+    const prevOutcome = suggestions.find((s) => s.id === triggerId)?.outcome ?? null
+    setSuggestions((prev) => prev.map((s) => (s.id === triggerId ? { ...s, outcome } : s)))
+    try {
+      const res = await proxyFetch(
+        `/api/proxy/v1/whisperer/triggers/${encodeURIComponent(triggerId)}/outcome`,
+        { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ outcome }) }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setOutcomeNotice(notice)
+      } else {
+        setSuggestions((prev) => prev.map((s) => (s.id === triggerId ? { ...s, outcome: prevOutcome } : s)))
+        setOutcomeNotice('Could not update suggestion outcome.')
+      }
+    } catch {
+      setSuggestions((prev) => prev.map((s) => (s.id === triggerId ? { ...s, outcome: prevOutcome } : s)))
+      setOutcomeNotice('Could not update suggestion outcome.')
+    } finally {
+      setOutcomeBusyId(null)
+    }
+  }, [suggestions])
 
   const startSession = useCallback(async () => {
     setBusy(true); setError(null); setEndSummary(null)
@@ -510,6 +548,7 @@ export default function WhispererPage() {
         </SectionCard>
 
         <SectionCard variant="ai" title="Suggestions" subtitle="Trigger detected → suggested response.">
+          {outcomeNotice && <div className="mb-2 text-[11px] text-neutral-400">{outcomeNotice}</div>}
           {suggestions.length === 0 ? (
             <EmptyRow message="No suggestions yet." />
           ) : (
@@ -526,6 +565,23 @@ export default function WhispererPage() {
                     {s.latencyMs !== null && <> · {s.latencyMs}ms</>}
                   </div>
                   <p className="text-xs text-neutral-200 leading-relaxed">{s.response}</p>
+                  {/* Day 122: suggestion quality scoring */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {OUTCOME_BUTTONS.map((b) => {
+                      const selected = s.outcome === b.value
+                      return (
+                        <button
+                          key={b.value}
+                          type="button"
+                          onClick={() => markOutcome(s.id, b.value, b.notice)}
+                          disabled={outcomeBusyId === s.id}
+                          className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${selected ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800'}`}
+                        >
+                          {b.label}{selected ? ' ✓' : ''}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               ))}
             </div>

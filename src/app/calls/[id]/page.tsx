@@ -218,6 +218,34 @@ export default function CallPage() {
     return () => { alive = false; };
   }, [callId]);
 
+  // Day 122: mark a Whisperer suggestion's usefulness from call review.
+  const [momentOutcomeNotice, setMomentOutcomeNotice] = useState<string | null>(null);
+  const [momentOutcomeBusyId, setMomentOutcomeBusyId] = useState<string | null>(null);
+  const markMomentOutcome = useCallback(async (triggerId: string, outcome: "used" | "ignored" | "not_relevant") => {
+    const NOTICE: Record<string, string> = { used: "Marked used.", ignored: "Marked ignored.", not_relevant: "Marked not relevant." };
+    setMomentOutcomeBusyId(triggerId);
+    setMomentOutcomeNotice(null);
+    const prev = whispererMoments.find((m) => m.triggerId === triggerId)?.suggestionOutcome ?? null;
+    setWhispererMoments((list) => list.map((m) => (m.triggerId === triggerId ? { ...m, suggestionOutcome: outcome } : m)));
+    try {
+      const res = await proxyFetch(`/v1/whisperer/triggers/${encodeURIComponent(triggerId)}/outcome`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ outcome }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok) {
+        setMomentOutcomeNotice(NOTICE[outcome]);
+      } else {
+        setWhispererMoments((list) => list.map((m) => (m.triggerId === triggerId ? { ...m, suggestionOutcome: prev } : m)));
+        setMomentOutcomeNotice("Could not update suggestion outcome.");
+      }
+    } catch {
+      setWhispererMoments((list) => list.map((m) => (m.triggerId === triggerId ? { ...m, suggestionOutcome: prev } : m)));
+      setMomentOutcomeNotice("Could not update suggestion outcome.");
+    } finally {
+      setMomentOutcomeBusyId(null);
+    }
+  }, [whispererMoments]);
+
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [drills, setDrills] = useState<{ id: string; label: string }[]>([]);
@@ -1881,6 +1909,7 @@ export default function CallPage() {
               <div className="text-sm text-neutral-400">No Whisperer moments linked to this call yet.</div>
             ) : (
               <div className="space-y-2">
+                {momentOutcomeNotice && <div className="text-[11px] text-neutral-400">{momentOutcomeNotice}</div>}
                 {whispererMoments.map((m) => (
                   <div key={m.triggerId} className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
@@ -1915,6 +1944,27 @@ export default function CallPage() {
                     <div className="flex flex-wrap gap-x-3 text-[11px] text-neutral-500">
                       {m.detectedAt && <span>{new Date(m.detectedAt).toLocaleString("en-GB")}</span>}
                       {typeof m.latencyMs === "number" && <span>{m.latencyMs}ms</span>}
+                    </div>
+                    {/* Day 122: suggestion outcome — show current + allow manager to mark on review */}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      {([
+                        { value: "used", label: "Used" },
+                        { value: "ignored", label: "Ignored" },
+                        { value: "not_relevant", label: "Not relevant" },
+                      ] as const).map((b) => {
+                        const selected = m.suggestionOutcome === b.value;
+                        return (
+                          <button
+                            key={b.value}
+                            type="button"
+                            onClick={() => markMomentOutcome(m.triggerId, b.value)}
+                            disabled={momentOutcomeBusyId === m.triggerId}
+                            className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${selected ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800"}`}
+                          >
+                            {b.label}{selected ? " ✓" : ""}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

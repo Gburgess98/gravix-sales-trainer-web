@@ -37,6 +37,8 @@
     "validate-tier-2b-day-119": "bash scripts/validate-tier-2b-day-119.sh",
     "validate-tier-2b-day-120": "bash scripts/validate-tier-2b-day-120.sh",
     "validate-tier-2b-day-121": "bash scripts/validate-tier-2b-day-121.sh",
+    "validate-tier-2b-day-122": "bash scripts/validate-tier-2b-day-122.sh",
+    "validate-tier-2b-day-123": "bash scripts/validate-tier-2b-day-123.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",
