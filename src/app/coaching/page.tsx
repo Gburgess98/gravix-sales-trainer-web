@@ -1027,6 +1027,51 @@ export default function CoachingPage() {
     }
   }, [triggerDraft, savingTrigger, loadCustomTriggers])
 
+  const [triggerActioningId, setTriggerActioningId] = useState<string | null>(null)
+
+  const toggleTrigger = useCallback(async (id: string, enabled: boolean) => {
+    setTriggerActioningId(id)
+    setTriggerNotice(null)
+    try {
+      const res = await proxyFetch(`/v1/manager/whisperer-trigger-library/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setTriggerNotice(enabled ? 'Trigger enabled.' : 'Trigger disabled.')
+        loadCustomTriggers()
+      } else {
+        setTriggerNotice('Could not update trigger.')
+      }
+    } catch {
+      setTriggerNotice('Could not update trigger.')
+    } finally {
+      setTriggerActioningId(null)
+    }
+  }, [loadCustomTriggers])
+
+  const deleteTrigger = useCallback(async (id: string, name: string) => {
+    if (typeof window !== 'undefined' && !window.confirm(`Delete the custom trigger "${name}"?`)) return
+    setTriggerActioningId(id)
+    setTriggerNotice(null)
+    try {
+      const res = await proxyFetch(`/v1/manager/whisperer-trigger-library/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setTriggerNotice('Trigger deleted.')
+        loadCustomTriggers()
+      } else {
+        setTriggerNotice('Could not delete trigger.')
+      }
+    } catch {
+      setTriggerNotice('Could not delete trigger.')
+    } finally {
+      setTriggerActioningId(null)
+    }
+  }, [loadCustomTriggers])
+
   useEffect(() => { loadOverview() }, [loadOverview])
   useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
   useEffect(() => { loadWhisperer() }, [loadWhisperer])
@@ -1525,10 +1570,30 @@ export default function CoachingPage() {
                                   <span className="text-sm font-medium text-white truncate">{t.name}</span>
                                   <div className="flex items-center gap-1.5 shrink-0">
                                     <span className="text-[10px] uppercase tracking-wide text-neutral-500">{t.type}</span>
-                                    {!t.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-500 uppercase">Off</span>}
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${t.enabled ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-neutral-700 bg-neutral-900 text-neutral-500'}`}>
+                                      {t.enabled ? 'Enabled' : 'Disabled'}
+                                    </span>
                                   </div>
                                 </div>
                                 <div className="text-[11px] text-neutral-500 truncate">{t.suggestionTitle}</div>
+                                <div className="flex items-center gap-2 pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTrigger(t.id, !t.enabled)}
+                                    disabled={triggerActioningId === t.id}
+                                    className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                                  >
+                                    {t.enabled ? 'Disable' : 'Enable'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTrigger(t.id, t.name)}
+                                    disabled={triggerActioningId === t.id}
+                                    className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
