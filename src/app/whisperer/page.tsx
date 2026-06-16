@@ -13,6 +13,9 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyRow } from '@/components/ui/empty-state'
 
 type Speaker = 'prospect' | 'rep'
+// Day 126: a transcript row's speaker may also be a provisional diarisation
+// label ("speaker_0", "speaker_1", …) or "unknown" when Deepgram returns one.
+type SpeakerLabel = Speaker | 'unknown' | string
 type Mode = 'live' | 'simulator'
 type LiveStatus =
   | 'idle'
@@ -23,7 +26,7 @@ type LiveStatus =
   | 'stopped'
   | 'error'
 
-type TranscriptRow = { id: string; text: string; speaker: Speaker; at: string }
+type TranscriptRow = { id: string; text: string; speaker: SpeakerLabel; at: string }
 type SuggestionOutcome = 'used' | 'ignored' | 'not_relevant'
 type SuggestionCard = {
   id: string
@@ -66,6 +69,41 @@ function pickMimeType(): string | null {
   return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? null
 }
 
+// Day 126: with diarize=true, Deepgram tags each word in the final alternative
+// with an integer `speaker`. Pick the dominant speaker across the words so a
+// segment carries a single provisional label ("speaker_0", "speaker_1", …).
+// Returns null when no diarisation data is present (older payloads / no diarize).
+function dominantSpeaker(alt: any): string | null {
+  const words = Array.isArray(alt?.words) ? alt.words : []
+  if (!words.length) return null
+  const counts = new Map<number, number>()
+  for (const w of words) {
+    if (typeof w?.speaker === 'number') counts.set(w.speaker, (counts.get(w.speaker) ?? 0) + 1)
+  }
+  let best = -1
+  let bestN = -1
+  for (const [spk, n] of counts) {
+    if (n > bestN) { bestN = n; best = spk }
+  }
+  return best >= 0 ? `speaker_${best}` : null
+}
+
+// Day 126: human-readable label for any speaker value (logical or diarised).
+function formatSpeaker(s: string): string {
+  if (s === 'prospect') return 'Prospect'
+  if (s === 'rep') return 'Rep'
+  if (s === 'unknown') return 'Unknown'
+  const m = /^speaker_(\d+)$/.exec(s)
+  if (m) return `Speaker ${m[1]}`
+  return s
+}
+
+function speakerTone(s: string): string {
+  if (s === 'rep') return 'text-emerald-300'
+  if (s === 'prospect') return 'text-amber-300'
+  return 'text-sky-300' // provisional diarisation labels / unknown
+}
+
 export default function WhispererPage() {
   // Day 115: optional ?callId=<id> links the session to a call for later replay
   const searchParams = useSearchParams()
@@ -106,7 +144,7 @@ export default function WhispererPage() {
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
 
   // Post a final transcript segment to the API and render any triggers.
-  const postSegment = useCallback(async (text: string, who: Speaker) => {
+  const postSegment = useCallback(async (text: string, who: SpeakerLabel) => {
     const sid = sessionIdRef.current
     const clean = text.trim()
     if (!sid || !clean) return
@@ -123,7 +161,10 @@ export default function WhispererPage() {
       const data = await res.json()
       if (!data?.ok) return
       seq.current += 1
-      setTranscript((prev) => [...prev, { id: `seg-${seq.current}`, text: clean, speaker: who, at: data.segment.receivedAt }])
+      // Prefer the speaker label the API echoes back (it stores diarisation
+      // labels verbatim and falls back to prospect), so display matches storage.
+      const shown: SpeakerLabel = data.segment?.speaker ?? who
+      setTranscript((prev) => [...prev, { id: `seg-${seq.current}`, text: clean, speaker: shown, at: data.segment.receivedAt }])
       const renderedAt = Date.now()
       const cards: SuggestionCard[] = (data.triggers ?? []).map((t: any) => ({
         id: t.id,
@@ -248,6 +289,9 @@ export default function WhispererPage() {
       const params = new URLSearchParams({
         model: 'nova-3', language: 'en', smart_format: 'true',
         interim_results: 'true', endpointing: '300',
+        // Day 126: speaker diarisation. Deepgram tags each word with a speaker
+        // index; we derive a provisional per-segment label from the final words.
+        diarize: 'true',
       })
       // Day 117 fix: short-lived Grant tokens authenticate via the `bearer`
       // WebSocket subprotocol (they're Bearer access tokens — Day 113 proved
@@ -279,8 +323,11 @@ export default function WhispererPage() {
           if (!text) return
           if (msg.is_final) {
             setInterim('')
-            // Day 112: live segments default to prospect so triggers can fire.
-            void postSegment(text, 'prospect')
+            // Day 126: use Deepgram's provisional diarisation label when present.
+            // No diarisation data → default to prospect so triggers still fire
+            // (Day 112 behaviour). We never assume speaker_0 = rep here.
+            const spk = dominantSpeaker(alt) ?? 'prospect'
+            void postSegment(text, spk)
           } else {
             setInterim(text)
           }
@@ -485,6 +532,9 @@ export default function WhispererPage() {
                     </button>
                   )}
                   <span className="text-xs text-neutral-500">{LIVE_STATUS_LABEL[liveStatus]}</span>
+                  <span className="basis-full text-[11px] text-neutral-500">
+                    Speaker labels are provisional. Rep/prospect calibration is coming later.
+                  </span>
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -526,8 +576,8 @@ export default function WhispererPage() {
                 ) : (
                   transcript.map((row) => (
                     <div key={row.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 text-sm">
-                      <span className={`mr-2 text-[10px] uppercase tracking-wide font-semibold ${row.speaker === 'prospect' ? 'text-amber-300' : 'text-emerald-300'}`}>
-                        {row.speaker}
+                      <span className={`mr-2 text-[10px] uppercase tracking-wide font-semibold ${speakerTone(row.speaker)}`}>
+                        {formatSpeaker(row.speaker)}
                       </span>
                       <span className="text-neutral-200">{row.text}</span>
                     </div>
