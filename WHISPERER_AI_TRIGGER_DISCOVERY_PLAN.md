@@ -76,3 +76,28 @@ Read-only, manager-gated, tenant-scoped — surfaces candidates for review. A
 companion approve action would insert into the Custom Trigger Library. Both are
 deferred; this note exists so the data and UX are designed for human approval
 from day one.
+
+## Status (Days 130–132)
+
+- **Day 130** — read-only `GET /v1/manager/whisperer-trigger-candidates` shipped,
+  mining `whisperer_triggers.segment_text`. No DB writes, no activation.
+- **Day 131** — "Use this candidate" pre-fills the existing Custom Trigger form;
+  the manager edits and saves manually. No auto-submit, no API change.
+- **Day 132** — the endpoint now **dedupes**: candidates overlapping an enabled
+  in-scope custom trigger (phrase or keyword) are suppressed, with
+  `summary.suppressedExistingCount` reported. Web adds a local **hide/dismiss**
+  ("Hide for now") and hides a candidate once it has been loaded into the form.
+
+### Local hide/dismiss is non-persistent
+
+The Day 132 dismiss is component state only — hidden candidates reappear on
+refresh, and the UI says so. Approval remains entirely manager-controlled.
+
+### Persistent candidate lifecycle (future, needs a migration)
+
+- New table `whisperer_trigger_candidate_decisions`:
+  - statuses: `approved`, `dismissed`, `rejected`
+  - `sourceCandidateId` tracking + actor/tenant + timestamps
+- Server-side suppression of dismissed/approved candidates across sessions, and
+  audit-logged approve/reject actions. Deferred — Day 132 deliberately avoids a
+  migration.

@@ -34,7 +34,9 @@ import re, sys
 src = open(sys.argv[1]).read()
 m = re.search(r'router\.get\("/whisperer-trigger-candidates".*?\n\}\);', src, re.S)
 block = m.group(0) if m else ""
-hit = re.search(r'\.insert\(|\.update\(|\.upsert\(|\.delete\(|whisperer_trigger_library', block)
+# Read-only means no writes. (Day 132 added a read of whisperer_trigger_library
+# for dedupe, which is fine — only insert/update/upsert/delete are forbidden.)
+hit = re.search(r'\.insert\(|\.update\(|\.upsert\(|\.delete\(', block)
 sys.exit(1 if hit else 0)
 PY
 check "candidates endpoint does not write/insert triggers" $?

@@ -782,6 +782,11 @@ export default function CoachingPage() {
   // Day 131: remembers which candidate (if any) prefilled the form, for the
   // success notice. Cleared on save/cancel. Nothing activates until save.
   const [candidateSourceId, setCandidateSourceId] = useState<string | null>(null)
+  // Day 132: locally hidden candidates (non-persistent — reappear on refresh).
+  const [dismissedCandidateIds, setDismissedCandidateIds] = useState<string[]>([])
+  const dismissCandidate = useCallback((id: string) => {
+    setDismissedCandidateIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+  }, [])
 
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
@@ -1046,6 +1051,8 @@ export default function CoachingPage() {
     setCandidateSourceId(c.id)
     setShowTriggerForm(true)
     setTriggerNotice('Candidate loaded into Custom Trigger form. Review and save to activate.')
+    // Day 132: hide the loaded candidate locally to reduce clutter.
+    setDismissedCandidateIds((prev) => (prev.includes(c.id) ? prev : [...prev, c.id]))
     if (typeof document !== 'undefined') {
       document.getElementById('custom-triggers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
@@ -1706,18 +1713,25 @@ export default function CoachingPage() {
 
                       {/* Tier 2B Day 130 — Suggested Trigger Candidates (read-only) */}
                       <SectionCard variant="ai" title="Suggested Trigger Candidates" subtitle="Recurring sales moments mined from recent sessions.">
-                        <p className="mb-3 text-[11px] text-neutral-500">
+                        <p className="mb-1 text-[11px] text-neutral-500">
                           Gravix can spot repeated sales moments and suggest triggers. Managers approve before anything goes live.
                         </p>
-                        {candidatesLoading ? (
+                        <p className="mb-3 text-[10px] text-neutral-600">
+                          Hidden candidates will reappear after refresh until dismissal persistence is added.
+                        </p>
+                        {(() => {
+                          const visibleCandidates = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id))
+                          return candidatesLoading ? (
                           <div className="text-xs text-neutral-500 py-2">Loading candidates…</div>
                         ) : candidatesError ? (
                           <div className="text-xs text-red-400 py-2">Could not load trigger candidates.</div>
                         ) : triggerCandidates.length === 0 ? (
                           <div className="text-xs text-neutral-500 py-2">No trigger candidates yet.</div>
+                        ) : visibleCandidates.length === 0 ? (
+                          <div className="text-xs text-neutral-500 py-2">No visible trigger candidates. Refresh to review hidden suggestions again.</div>
                         ) : (
                           <div className="space-y-2">
-                            {triggerCandidates.map((c) => {
+                            {visibleCandidates.map((c) => {
                               const open = expandedCandidateId === c.id
                               return (
                                 <div key={c.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
@@ -1752,6 +1766,13 @@ export default function CoachingPage() {
                                     >
                                       {open ? 'Hide details' : 'Review candidate'}
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => dismissCandidate(c.id)}
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      Hide for now
+                                    </button>
                                     <span className="text-[10px] text-neutral-600">Manager approval required</span>
                                   </div>
                                   {open && (
@@ -1775,7 +1796,8 @@ export default function CoachingPage() {
                               )
                             })}
                           </div>
-                        )}
+                        )
+                        })()}
                       </SectionCard>
 
                       {/* Tier 2B Day 119 — Custom Triggers */}
