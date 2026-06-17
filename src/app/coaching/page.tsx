@@ -779,6 +779,9 @@ export default function CoachingPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState(false)
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null)
+  // Day 131: remembers which candidate (if any) prefilled the form, for the
+  // success notice. Cleared on save/cancel. Nothing activates until save.
+  const [candidateSourceId, setCandidateSourceId] = useState<string | null>(null)
 
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
@@ -1027,6 +1030,27 @@ export default function CoachingPage() {
     } catch { /* fail-soft */ }
   }, [])
 
+  // Day 131: prefill the existing Custom Trigger form from a candidate. This
+  // does NOT activate anything — the manager must review and click Save.
+  const useCandidate = useCallback((c: TriggerCandidate) => {
+    setTriggerDraft({
+      name: c.suggestedName,
+      type: c.type,
+      matchPhrases: c.suggestedPhrases.join(', '),
+      matchKeywords: c.suggestedKeywords.join(', '),
+      suggestionTitle: c.title || c.suggestedName,
+      suggestionResponse: c.suggestedResponse,
+      urgency: c.suggestedUrgency || 'medium',
+      enabled: true,
+    })
+    setCandidateSourceId(c.id)
+    setShowTriggerForm(true)
+    setTriggerNotice('Candidate loaded into Custom Trigger form. Review and save to activate.')
+    if (typeof document !== 'undefined') {
+      document.getElementById('custom-triggers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [])
+
   // Day 130: read-only AI Trigger Discovery candidates (no activation here).
   const loadTriggerCandidates = useCallback(async () => {
     setCandidatesLoading(true)
@@ -1064,8 +1088,9 @@ export default function CoachingPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (data?.ok) {
-        setTriggerNotice('Custom trigger saved.')
+        setTriggerNotice(candidateSourceId ? 'Custom trigger created from candidate.' : 'Custom trigger saved.')
         setShowTriggerForm(false)
+        setCandidateSourceId(null)
         setTriggerDraft({ name: '', type: 'competitor', matchPhrases: '', matchKeywords: '', suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true })
         loadCustomTriggers()
       } else if (data?.error === 'migration_required') {
@@ -1078,7 +1103,7 @@ export default function CoachingPage() {
     } finally {
       setSavingTrigger(false)
     }
-  }, [triggerDraft, savingTrigger, loadCustomTriggers])
+  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId])
 
   const [triggerActioningId, setTriggerActioningId] = useState<string | null>(null)
 
@@ -1715,12 +1740,19 @@ export default function CoachingPage() {
                                   <div className="flex items-center gap-2 pt-0.5">
                                     <button
                                       type="button"
+                                      onClick={() => useCandidate(c)}
+                                      className="rounded-md bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-500 transition-colors"
+                                    >
+                                      Use this candidate
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => setExpandedCandidateId(open ? null : c.id)}
                                       className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 transition-colors"
                                     >
                                       {open ? 'Hide details' : 'Review candidate'}
                                     </button>
-                                    <span className="text-[10px] text-neutral-600">Approval flow coming next.</span>
+                                    <span className="text-[10px] text-neutral-600">Manager approval required</span>
                                   </div>
                                   {open && (
                                     <div className="mt-1 space-y-1.5 border-t border-neutral-800 pt-2">
@@ -1734,6 +1766,9 @@ export default function CoachingPage() {
                                           ))}
                                         </ul>
                                       )}
+                                      <p className="text-[10px] text-neutral-600">
+                                        Manager approval required. This candidate will not go live until saved as a custom trigger.
+                                      </p>
                                     </div>
                                   )}
                                 </div>
