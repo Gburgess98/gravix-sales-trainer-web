@@ -782,11 +782,46 @@ export default function CoachingPage() {
   // Day 131: remembers which candidate (if any) prefilled the form, for the
   // success notice. Cleared on save/cancel. Nothing activates until save.
   const [candidateSourceId, setCandidateSourceId] = useState<string | null>(null)
-  // Day 132: locally hidden candidates (non-persistent — reappear on refresh).
+  // Day 132/133: hidden candidates. Local set hides immediately; Day 133 also
+  // persists the decision server-side so it stays hidden across refreshes.
   const [dismissedCandidateIds, setDismissedCandidateIds] = useState<string[]>([])
-  const dismissCandidate = useCallback((id: string) => {
-    setDismissedCandidateIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+  const [candidateNotice, setCandidateNotice] = useState<string | null>(null)
+
+  // Day 133: persist a manager decision for a candidate. Fail-soft: a missing
+  // migration still hides the candidate for this session.
+  const postCandidateDecision = useCallback(async (
+    candidateId: string,
+    decision: 'approved' | 'dismissed' | 'rejected',
+    opts: { candidateType?: string; source?: Record<string, unknown> } = {}
+  ): Promise<'ok' | 'migration_required' | 'error'> => {
+    try {
+      const res = await proxyFetch(`/v1/manager/whisperer-trigger-candidates/${encodeURIComponent(candidateId)}/decision`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision, ...(opts.candidateType ? { candidateType: opts.candidateType } : {}), ...(opts.source ? { source: opts.source } : {}) }),
+      })
+      const data = await res.json().catch(() => ({}))
+      return data?.ok ? 'ok' : data?.error === 'migration_required' ? 'migration_required' : 'error'
+    } catch {
+      return 'error'
+    }
   }, [])
+
+  // Dismiss/reject: optimistically hide, then persist the decision.
+  const decideCandidate = useCallback(async (c: TriggerCandidate, decision: 'dismissed' | 'rejected') => {
+    setDismissedCandidateIds((prev) => (prev.includes(c.id) ? prev : [...prev, c.id]))
+    const r = await postCandidateDecision(c.id, decision, {
+      candidateType: c.type,
+      source: { title: c.suggestedName, seenCount: c.seenCount, confidence: c.confidence },
+    })
+    setCandidateNotice(
+      r === 'ok'
+        ? decision === 'rejected' ? 'Candidate rejected.' : 'Candidate dismissed.'
+        : r === 'migration_required'
+          ? 'Hidden for now (decision persistence not enabled yet).'
+          : 'Hidden for now (could not save decision).'
+    )
+  }, [postCandidateDecision])
 
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
@@ -1097,6 +1132,11 @@ export default function CoachingPage() {
       if (data?.ok) {
         setTriggerNotice(candidateSourceId ? 'Custom trigger created from candidate.' : 'Custom trigger saved.')
         setShowTriggerForm(false)
+        // Day 133: only mark the candidate approved AFTER a successful save, then
+        // refetch so the now-actioned candidate drops out of the list.
+        if (candidateSourceId) {
+          void postCandidateDecision(candidateSourceId, 'approved').then(() => loadTriggerCandidates())
+        }
         setCandidateSourceId(null)
         setTriggerDraft({ name: '', type: 'competitor', matchPhrases: '', matchKeywords: '', suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true })
         loadCustomTriggers()
@@ -1110,7 +1150,7 @@ export default function CoachingPage() {
     } finally {
       setSavingTrigger(false)
     }
-  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId])
+  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId, postCandidateDecision, loadTriggerCandidates])
 
   const [triggerActioningId, setTriggerActioningId] = useState<string | null>(null)
 
@@ -1716,9 +1756,10 @@ export default function CoachingPage() {
                         <p className="mb-1 text-[11px] text-neutral-500">
                           Gravix can spot repeated sales moments and suggest triggers. Managers approve before anything goes live.
                         </p>
-                        <p className="mb-3 text-[10px] text-neutral-600">
-                          Hidden candidates will reappear after refresh until dismissal persistence is added.
+                        <p className="mb-2 text-[10px] text-neutral-600">
+                          Dismissed candidates stay hidden for this manager scope.
                         </p>
+                        {candidateNotice && <div className="mb-2 text-[11px] text-neutral-400">{candidateNotice}</div>}
                         {(() => {
                           const visibleCandidates = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id))
                           return candidatesLoading ? (
@@ -1768,10 +1809,17 @@ export default function CoachingPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => dismissCandidate(c.id)}
+                                      onClick={() => decideCandidate(c, 'dismissed')}
                                       className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
                                     >
                                       Hide for now
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => decideCandidate(c, 'rejected')}
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      Reject
                                     </button>
                                     <span className="text-[10px] text-neutral-600">Manager approval required</span>
                                   </div>

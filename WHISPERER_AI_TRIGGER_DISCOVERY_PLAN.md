@@ -88,16 +88,27 @@ from day one.
   `summary.suppressedExistingCount` reported. Web adds a local **hide/dismiss**
   ("Hide for now") and hides a candidate once it has been loaded into the form.
 
-### Local hide/dismiss is non-persistent
+- **Day 133** — **persistent candidate decisions** shipped. Migration
+  `sql/20260617_whisperer_trigger_candidate_decisions.sql` adds the decisions
+  table; `POST /v1/manager/whisperer-trigger-candidates/:id/decision` records
+  `approved` / `dismissed` / `rejected` (tenant-stamped, manager-gated). The
+  candidate GET now suppresses any candidate with a persisted decision in scope
+  and reports `summary.suppressedDecisionCount`. Candidate ids are stable
+  (`candidate-<type>-<token>`) so decisions match across runs.
 
-The Day 132 dismiss is component state only — hidden candidates reappear on
-refresh, and the UI says so. Approval remains entirely manager-controlled.
+### Decision lifecycle (Day 133)
 
-### Persistent candidate lifecycle (future, needs a migration)
+- A decision **never** creates or enables a trigger — activation still requires
+  a Custom Trigger Library save. "Use this candidate" pre-fills the form and the
+  candidate is marked `approved` only **after** a successful save.
+- Dismiss → `dismissed`; Reject → `rejected`. Both persist per manager scope and
+  survive refresh (closing the Day 132 caveat). Fail-soft: if the migration is
+  not applied, the decision POST returns `503 migration_required` and the UI
+  falls back to hiding for the session; the candidate GET still works with
+  `suppressedDecisionCount: 0`.
 
-- New table `whisperer_trigger_candidate_decisions`:
-  - statuses: `approved`, `dismissed`, `rejected`
-  - `sourceCandidateId` tracking + actor/tenant + timestamps
-- Server-side suppression of dismissed/approved candidates across sessions, and
-  audit-logged approve/reject actions. Deferred — Day 132 deliberately avoids a
-  migration.
+### Future
+
+- Candidate decision **history / audit UI** for managers (who actioned what,
+  when), and the ability to un-dismiss. Decisions are already audit-logged
+  (`whisperer.candidate_decision`).

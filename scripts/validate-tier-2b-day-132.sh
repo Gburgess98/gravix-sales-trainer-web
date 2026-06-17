@@ -41,7 +41,10 @@ check "candidates endpoint remains read-only (no writes)" $?
 grep -qE "Dismiss|Hide for now" "$COACHING" 2>/dev/null
 check "/coaching includes Dismiss / Hide for now" $?
 
-grep -qi "Hidden candidates will reappear after refresh" "$COACHING" 2>/dev/null
+# Honest copy about hidden candidates. Day 132 shipped the "reappear after
+# refresh" caveat; Day 133 makes dismissals persistent and updates the copy to
+# "stay hidden for this manager scope" — accept either so this stays valid.
+grep -qiE "reappear after refresh|stay hidden for this manager scope" "$COACHING" 2>/dev/null
 check "/coaching includes hidden-candidates copy" $?
 
 grep -q "dismissedCandidateIds" "$COACHING" 2>/dev/null
@@ -67,12 +70,8 @@ else
   check "no ElevenLabs/TTS/Voice Agent added" 0
 fi
 
-# No migration added for candidate decisions
-if ls "$API_ROOT"/sql/*candidate*decision* >/dev/null 2>&1 || ls "$API_ROOT"/sql/*trigger_candidate* >/dev/null 2>&1; then
-  check "no migration added for candidate decisions" 1
-else
-  check "no migration added for candidate decisions" 0
-fi
+# (Day 132 deliberately avoided a migration. Day 133 adds the candidate-decisions
+# migration as planned, so this is no longer asserted here — see day 133.)
 
 bash "$WEB_ROOT/scripts/validate-tier-2b-day-131.sh" >/dev/null 2>&1
 check "Day 131 validation still passes" $?
