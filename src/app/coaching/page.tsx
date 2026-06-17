@@ -190,6 +190,24 @@ type CustomTrigger = {
   priority: number
 }
 
+// Tier 2B Day 130 — read-only AI Trigger Discovery candidate (no activation)
+type TriggerCandidate = {
+  id: string
+  type: string
+  title: string
+  suggestedName: string
+  suggestedDescription: string
+  suggestedPhrases: string[]
+  suggestedKeywords: string[]
+  suggestedResponse: string
+  suggestedUrgency: string
+  confidence: number
+  seenCount: number
+  examples: Array<{ text: string; sessionId: string | null; detectedAt: string | null }>
+  reason: string
+  status: string
+}
+
 // Tier 2B Day 114 — GET /v1/manager/whisperer-sessions
 type WhispererItem = {
   sessionId: string
@@ -756,6 +774,12 @@ export default function CoachingPage() {
   const [savingTrigger, setSavingTrigger] = useState(false)
   const [triggerNotice, setTriggerNotice] = useState<string | null>(null)
 
+  // Tier 2B Day 130 — Suggested Trigger Candidates (read-only discovery)
+  const [triggerCandidates, setTriggerCandidates] = useState<TriggerCandidate[]>([])
+  const [candidatesLoading, setCandidatesLoading] = useState(true)
+  const [candidatesError, setCandidatesError] = useState(false)
+  const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null)
+
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false)
@@ -1003,6 +1027,22 @@ export default function CoachingPage() {
     } catch { /* fail-soft */ }
   }, [])
 
+  // Day 130: read-only AI Trigger Discovery candidates (no activation here).
+  const loadTriggerCandidates = useCallback(async () => {
+    setCandidatesLoading(true)
+    setCandidatesError(false)
+    try {
+      const res = await proxyFetch('/v1/manager/whisperer-trigger-candidates?days=30&limit=10', { cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok && Array.isArray(data.items)) setTriggerCandidates(data.items)
+      else { setTriggerCandidates([]); setCandidatesError(true) }
+    } catch {
+      setTriggerCandidates([]); setCandidatesError(true)
+    } finally {
+      setCandidatesLoading(false)
+    }
+  }, [])
+
   const submitTrigger = useCallback(async () => {
     if (savingTrigger) return
     setSavingTrigger(true)
@@ -1089,6 +1129,7 @@ export default function CoachingPage() {
   useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
   useEffect(() => { loadWhisperer() }, [loadWhisperer])
   useEffect(() => { loadCustomTriggers() }, [loadCustomTriggers])
+  useEffect(() => { loadTriggerCandidates() }, [loadTriggerCandidates])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -1634,6 +1675,70 @@ export default function CoachingPage() {
                                 </div>
                               ))}
                             </div>
+                          </div>
+                        )}
+                      </SectionCard>
+
+                      {/* Tier 2B Day 130 — Suggested Trigger Candidates (read-only) */}
+                      <SectionCard variant="ai" title="Suggested Trigger Candidates" subtitle="Recurring sales moments mined from recent sessions.">
+                        <p className="mb-3 text-[11px] text-neutral-500">
+                          Gravix can spot repeated sales moments and suggest triggers. Managers approve before anything goes live.
+                        </p>
+                        {candidatesLoading ? (
+                          <div className="text-xs text-neutral-500 py-2">Loading candidates…</div>
+                        ) : candidatesError ? (
+                          <div className="text-xs text-red-400 py-2">Could not load trigger candidates.</div>
+                        ) : triggerCandidates.length === 0 ? (
+                          <div className="text-xs text-neutral-500 py-2">No trigger candidates yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {triggerCandidates.map((c) => {
+                              const open = expandedCandidateId === c.id
+                              return (
+                                <div key={c.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white">{c.title}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 border-sky-500/30 bg-sky-500/10 text-sky-300">Candidate</span>
+                                  </div>
+                                  <div className="text-[11px] text-neutral-500">
+                                    <span className="text-neutral-300">{c.type}</span>
+                                    {' · '}seen {c.seenCount}×
+                                    {' · '}confidence {c.confidence}
+                                    {' · '}{c.examples.length} example{c.examples.length === 1 ? '' : 's'}
+                                  </div>
+                                  {(c.suggestedPhrases[0] || c.suggestedKeywords[0]) && (
+                                    <div className="text-[11px] text-neutral-400">
+                                      Suggested: <span className="text-neutral-300">{c.suggestedPhrases[0] || c.suggestedKeywords[0]}</span>
+                                    </div>
+                                  )}
+                                  <p className="text-[11px] text-neutral-500">{c.reason}</p>
+                                  <div className="flex items-center gap-2 pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedCandidateId(open ? null : c.id)}
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      {open ? 'Hide details' : 'Review candidate'}
+                                    </button>
+                                    <span className="text-[10px] text-neutral-600">Approval flow coming next.</span>
+                                  </div>
+                                  {open && (
+                                    <div className="mt-1 space-y-1.5 border-t border-neutral-800 pt-2">
+                                      <div className="text-[11px] text-neutral-400">Suggested name: <span className="text-neutral-200">{c.suggestedName}</span></div>
+                                      <div className="text-[11px] text-neutral-400">{c.suggestedDescription}</div>
+                                      <p className="text-[11px] text-neutral-200 leading-relaxed">{c.suggestedResponse}</p>
+                                      {c.examples.length > 0 && (
+                                        <ul className="space-y-1">
+                                          {c.examples.map((ex, i) => (
+                                            <li key={i} className="text-[11px] text-neutral-500 italic">“{ex.text}”</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
                           </div>
                         )}
                       </SectionCard>
