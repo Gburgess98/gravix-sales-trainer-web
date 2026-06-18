@@ -1,7 +1,24 @@
 # Whisperer Raw Segment Storage — Plan (Day 141)
 
-**Status:** planning / schema design only. No migration and no product behaviour
-change shipped on Day 141. Implementation is scoped for Day 142+.
+**Status:** Day 141 planning + **Day 142 storage layer implemented** (code
+complete, fail-soft proven). The `whisperer_segments` table now persists every
+final transcript segment, triggered or not.
+
+## Day 142 — implemented
+
+- Migration `gravix-sales-trainer-api/sql/20260618_whisperer_segments.sql`
+  created (schema = section B; `source` check `live|manual|simulator`, non-empty
+  `text` check, tenant + speaker + GIN(`trigger_types`) indexes).
+- `POST /v1/whisperer/sessions/:id/segments` now persists the **final segment
+  regardless of triggers** via `persistWhispererSegment(...)` after detection,
+  stamping `triggers_count` + `trigger_types`, tenant columns from the session,
+  speaker/`speaker_role`/`speaker_original`, `source`, `client_sent_at`,
+  `received_at`/`processed_at`. Response gains `segment.{id,persistence}`.
+- **Fail-soft** via `whispererSegmentsTableMissing` — when the table is absent
+  the live route still works and returns `segment.persistence:false` (proven
+  live before the migration was applied). Pure DB insert, **no LLM**, text only.
+- Trigger detection, suggestions, and discovery ranking are **unchanged**.
+- **Discovery does NOT yet mine `whisperer_segments`** — that is Day 143.
 
 Gravix does not own the call. Gravix listens to the call, coaches the rep,
 scores the session, and trains the team. Raw transcript storage exists only to
