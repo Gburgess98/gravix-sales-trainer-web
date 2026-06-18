@@ -107,8 +107,23 @@ from day one.
   falls back to hiding for the session; the candidate GET still works with
   `suppressedDecisionCount: 0`.
 
+- **Day 136** — **reviewed candidate history + un-dismiss** shipped.
+  `GET /v1/manager/whisperer-trigger-candidate-decisions?days=30&limit=20` lists
+  the manager's persisted decisions in scope (fail-soft `persistence:false` when
+  the table is missing). `DELETE /v1/manager/whisperer-trigger-candidates/:id/decision`
+  removes the decision row in scope ("un-dismiss / reopen") so the candidate is
+  eligible to surface again — it never deletes a custom trigger or activates
+  anything (`503 migration_required` if the table is missing; `restored:false`
+  if no row). The `/coaching` Suggested Trigger Candidates card now shows a
+  **Reviewed candidates** section with decision badges and a **Restore** action
+  for dismissed/rejected items. Approved candidates are shown but **not**
+  restorable in this MVP (`Already approved`). Restore is audit-logged
+  (`whisperer.candidate_decision_restore`).
+
 ### Future
 
-- Candidate decision **history / audit UI** for managers (who actioned what,
-  when), and the ability to un-dismiss. Decisions are already audit-logged
-  (`whisperer.candidate_decision`).
+- Candidate **detail page** and a fuller **audit history** view (who actioned
+  what, when) beyond the lightweight reviewed-candidates list.
+- Track the **source candidate** into the Custom Trigger Library once the
+  library carries candidate meta/source, so an approved candidate links to the
+  trigger it created.

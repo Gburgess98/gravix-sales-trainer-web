@@ -208,6 +208,19 @@ type TriggerCandidate = {
   status: string
 }
 
+// Tier 2B Day 136 — reviewed candidate decision (history / un-dismiss)
+type ReviewedCandidateDecision = {
+  id: string
+  candidateId: string
+  candidateType: string | null
+  decision: 'approved' | 'dismissed' | 'rejected' | string
+  decidedBy: string | null
+  note: string | null
+  source: { title?: string; seenCount?: number; confidence?: number } | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
 // Tier 2B Day 114 — GET /v1/manager/whisperer-sessions
 type WhispererItem = {
   sessionId: string
@@ -786,6 +799,11 @@ export default function CoachingPage() {
   // persists the decision server-side so it stays hidden across refreshes.
   const [dismissedCandidateIds, setDismissedCandidateIds] = useState<string[]>([])
   const [candidateNotice, setCandidateNotice] = useState<string | null>(null)
+  // Day 136: reviewed candidate history + un-dismiss/restore.
+  const [reviewedCandidateDecisions, setReviewedCandidateDecisions] = useState<ReviewedCandidateDecision[]>([])
+  const [reviewedDecisionsLoading, setReviewedDecisionsLoading] = useState(true)
+  const [reviewedDecisionsPersistence, setReviewedDecisionsPersistence] = useState(true)
+  const [restoringCandidateId, setRestoringCandidateId] = useState<string | null>(null)
 
   // Day 133: persist a manager decision for a candidate. Fail-soft: a missing
   // migration still hides the candidate for this session.
@@ -807,6 +825,27 @@ export default function CoachingPage() {
     }
   }, [])
 
+  // Day 136: load the manager's reviewed candidate decisions (history).
+  const loadCandidateDecisions = useCallback(async () => {
+    setReviewedDecisionsLoading(true)
+    try {
+      const res = await proxyFetch('/v1/manager/whisperer-trigger-candidate-decisions?days=30&limit=20', { cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok && Array.isArray(data.items)) {
+        setReviewedCandidateDecisions(data.items)
+        setReviewedDecisionsPersistence(data.persistence !== false)
+      } else {
+        setReviewedCandidateDecisions([])
+        setReviewedDecisionsPersistence(false)
+      }
+    } catch {
+      setReviewedCandidateDecisions([])
+      setReviewedDecisionsPersistence(false)
+    } finally {
+      setReviewedDecisionsLoading(false)
+    }
+  }, [])
+
   // Dismiss/reject: optimistically hide, then persist the decision.
   const decideCandidate = useCallback(async (c: TriggerCandidate, decision: 'dismissed' | 'rejected') => {
     setDismissedCandidateIds((prev) => (prev.includes(c.id) ? prev : [...prev, c.id]))
@@ -821,7 +860,33 @@ export default function CoachingPage() {
           ? 'Hidden for now (decision persistence not enabled yet).'
           : 'Hidden for now (could not save decision).'
     )
-  }, [postCandidateDecision])
+    // Day 136: refresh history so the new decision shows in Reviewed candidates.
+    void loadCandidateDecisions()
+  }, [postCandidateDecision, loadCandidateDecisions])
+
+  // Day 136: un-dismiss / reopen a reviewed candidate. Deletes the persisted
+  // decision so the candidate is eligible to reappear if still discoverable.
+  const restoreCandidateDecision = useCallback(async (candidateId: string) => {
+    setRestoringCandidateId(candidateId)
+    try {
+      const res = await proxyFetch(`/v1/manager/whisperer-trigger-candidates/${encodeURIComponent(candidateId)}/decision`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        // Drop any local hide so it can surface again, then refetch both lists.
+        setDismissedCandidateIds((prev) => prev.filter((id) => id !== candidateId))
+        setCandidateNotice('Candidate restored.')
+        await Promise.all([loadCandidateDecisions(), loadTriggerCandidates()])
+      } else if (data?.error === 'migration_required') {
+        setCandidateNotice('Candidate decision history is not enabled yet.')
+      } else {
+        setCandidateNotice('Could not restore candidate.')
+      }
+    } catch {
+      setCandidateNotice('Could not restore candidate.')
+    } finally {
+      setRestoringCandidateId(null)
+    }
+  }, [loadCandidateDecisions])
 
   // Manager review queue (Sprint 4 Day 91)
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
@@ -1135,7 +1200,10 @@ export default function CoachingPage() {
         // Day 133: only mark the candidate approved AFTER a successful save, then
         // refetch so the now-actioned candidate drops out of the list.
         if (candidateSourceId) {
-          void postCandidateDecision(candidateSourceId, 'approved').then(() => loadTriggerCandidates())
+          void postCandidateDecision(candidateSourceId, 'approved').then(() => {
+            loadTriggerCandidates()
+            loadCandidateDecisions()
+          })
         }
         setCandidateSourceId(null)
         setTriggerDraft({ name: '', type: 'competitor', matchPhrases: '', matchKeywords: '', suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true })
@@ -1150,7 +1218,7 @@ export default function CoachingPage() {
     } finally {
       setSavingTrigger(false)
     }
-  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId, postCandidateDecision, loadTriggerCandidates])
+  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId, postCandidateDecision, loadTriggerCandidates, loadCandidateDecisions])
 
   const [triggerActioningId, setTriggerActioningId] = useState<string | null>(null)
 
@@ -1202,6 +1270,7 @@ export default function CoachingPage() {
   useEffect(() => { loadWhisperer() }, [loadWhisperer])
   useEffect(() => { loadCustomTriggers() }, [loadCustomTriggers])
   useEffect(() => { loadTriggerCandidates() }, [loadTriggerCandidates])
+  useEffect(() => { loadCandidateDecisions() }, [loadCandidateDecisions])
   useEffect(() => {
     if (tab === 'assignments' && assignments.length === 0) loadAssignments()
     if (tab === 'replay' && calls.length === 0) loadReplay()
@@ -1846,6 +1915,63 @@ export default function CoachingPage() {
                           </div>
                         )
                         })()}
+
+                        {/* Tier 2B Day 136 — Reviewed candidates (history + un-dismiss) */}
+                        <div className="mt-4 border-t border-neutral-800 pt-3">
+                          <div className="mb-1 text-[12px] font-semibold text-neutral-300">Reviewed candidates</div>
+                          <p className="mb-2 text-[10px] text-neutral-600">
+                            Candidates you have dismissed, rejected or approved. Restore a dismissed or rejected one to let it surface again.
+                          </p>
+                          {reviewedDecisionsLoading ? (
+                            <div className="text-xs text-neutral-500 py-1">Loading reviewed candidates…</div>
+                          ) : !reviewedDecisionsPersistence ? (
+                            <div className="text-[11px] text-neutral-500 py-1">Candidate decision history is not enabled yet.</div>
+                          ) : reviewedCandidateDecisions.length === 0 ? (
+                            <div className="text-[11px] text-neutral-500 py-1">No reviewed candidates yet.</div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {reviewedCandidateDecisions.map((d) => {
+                                const badge = d.decision === 'approved'
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                  : d.decision === 'rejected'
+                                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                                    : 'border-neutral-700 bg-neutral-900 text-neutral-400'
+                                const label = d.decision === 'approved' ? 'Approved' : d.decision === 'rejected' ? 'Rejected' : 'Dismissed'
+                                const canRestore = d.decision === 'dismissed' || d.decision === 'rejected'
+                                const name = d.source?.title || d.candidateId
+                                return (
+                                  <div key={d.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 space-y-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[12px] text-neutral-200 truncate">{name}</span>
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${badge}`}>{label}</span>
+                                    </div>
+                                    <div className="text-[10px] text-neutral-500">
+                                      {d.candidateType && <span className="text-neutral-400">{d.candidateType}</span>}
+                                      {d.candidateType && ' · '}
+                                      <span className="text-neutral-600">{d.candidateId}</span>
+                                      {d.updatedAt && <>{' · '}{new Date(d.updatedAt).toLocaleDateString('en-GB')}</>}
+                                    </div>
+                                    {d.note && <p className="text-[10px] text-neutral-500 italic">“{d.note}”</p>}
+                                    <div className="flex items-center gap-2 pt-0.5">
+                                      {canRestore ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => restoreCandidateDecision(d.candidateId)}
+                                          disabled={restoringCandidateId === d.candidateId}
+                                          className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                                        >
+                                          {restoringCandidateId === d.candidateId ? 'Restoring…' : 'Restore'}
+                                        </button>
+                                      ) : (
+                                        <span className="text-[10px] text-neutral-600">Already approved</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </SectionCard>
 
                       {/* Tier 2B Day 119 — Custom Triggers */}
