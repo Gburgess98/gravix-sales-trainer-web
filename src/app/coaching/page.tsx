@@ -216,7 +216,7 @@ type ReviewedCandidateDecision = {
   decision: 'approved' | 'dismissed' | 'rejected' | string
   decidedBy: string | null
   note: string | null
-  source: { title?: string; seenCount?: number; confidence?: number } | null
+  source: { title?: string; seenCount?: number; confidence?: number; examplesCount?: number } | null
   createdAt: string | null
   updatedAt: string | null
 }
@@ -851,7 +851,7 @@ export default function CoachingPage() {
     setDismissedCandidateIds((prev) => (prev.includes(c.id) ? prev : [...prev, c.id]))
     const r = await postCandidateDecision(c.id, decision, {
       candidateType: c.type,
-      source: { title: c.suggestedName, seenCount: c.seenCount, confidence: c.confidence },
+      source: { title: c.suggestedName, seenCount: c.seenCount, confidence: c.confidence, examplesCount: c.examples.length },
     })
     setCandidateNotice(
       r === 'ok'
@@ -1893,19 +1893,94 @@ export default function CoachingPage() {
                                     <span className="text-[10px] text-neutral-600">Manager approval required</span>
                                   </div>
                                   {open && (
-                                    <div className="mt-1 space-y-1.5 border-t border-neutral-800 pt-2">
-                                      <div className="text-[11px] text-neutral-400">Suggested name: <span className="text-neutral-200">{c.suggestedName}</span></div>
-                                      <div className="text-[11px] text-neutral-400">{c.suggestedDescription}</div>
-                                      <p className="text-[11px] text-neutral-200 leading-relaxed">{c.suggestedResponse}</p>
-                                      {c.examples.length > 0 && (
-                                        <ul className="space-y-1">
-                                          {c.examples.map((ex, i) => (
-                                            <li key={i} className="text-[11px] text-neutral-500 italic">“{ex.text}”</li>
-                                          ))}
-                                        </ul>
-                                      )}
+                                    <div className="mt-1 space-y-2.5 border-t border-neutral-800 pt-2.5">
+                                      {/* Day 138 — structured candidate review detail */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-medium text-white">{c.title}</span>
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 border-sky-500/30 bg-sky-500/10 text-sky-300">Candidate</span>
+                                      </div>
+                                      <div className="text-[11px] text-neutral-500">
+                                        <span className="text-neutral-300">{c.type}</span>
+                                        {' · '}seen {c.seenCount}×
+                                        {' · '}confidence {c.confidence}
+                                      </div>
+                                      <p className="text-[10px] text-neutral-500">
+                                        Review this candidate before adding it to your Custom Trigger Library.
+                                      </p>
+
+                                      <div>
+                                        <div className="text-[11px] font-semibold text-neutral-300">Why Gravix suggested this</div>
+                                        <p className="text-[11px] text-neutral-400 leading-relaxed">{c.reason}</p>
+                                        {c.suggestedDescription && (
+                                          <p className="text-[11px] text-neutral-500 leading-relaxed">{c.suggestedDescription}</p>
+                                        )}
+                                      </div>
+
+                                      <div className="space-y-0.5">
+                                        <div className="text-[11px] font-semibold text-neutral-300">Suggested trigger setup</div>
+                                        <div className="text-[11px] text-neutral-400">Name: <span className="text-neutral-200">{c.suggestedName}</span></div>
+                                        {c.suggestedPhrases.length > 0 && (
+                                          <div className="text-[11px] text-neutral-400">Phrases: <span className="text-neutral-300">{c.suggestedPhrases.join(', ')}</span></div>
+                                        )}
+                                        {c.suggestedKeywords.length > 0 && (
+                                          <div className="text-[11px] text-neutral-400">Keywords: <span className="text-neutral-300">{c.suggestedKeywords.join(', ')}</span></div>
+                                        )}
+                                        <div className="text-[11px] text-neutral-400">Urgency: <span className="text-neutral-300">{c.suggestedUrgency}</span></div>
+                                      </div>
+
+                                      <div>
+                                        <div className="text-[11px] font-semibold text-neutral-300">Suggested response</div>
+                                        <p className="text-[11px] text-neutral-200 leading-relaxed">{c.suggestedResponse}</p>
+                                      </div>
+
+                                      <div>
+                                        <div className="text-[11px] font-semibold text-neutral-300">Examples</div>
+                                        {c.examples.length === 0 ? (
+                                          <p className="text-[11px] text-neutral-600">No example snippets captured.</p>
+                                        ) : (
+                                          <ul className="space-y-1">
+                                            {c.examples.slice(0, 3).map((ex, i) => (
+                                              <li key={i} className="text-[11px] text-neutral-500">
+                                                <span className="italic">“{ex.text}”</span>
+                                                {(ex.detectedAt || ex.sessionId) && (
+                                                  <span className="text-[10px] text-neutral-600">
+                                                    {' — '}
+                                                    {ex.detectedAt ? new Date(ex.detectedAt).toLocaleDateString('en-GB') : ''}
+                                                    {ex.detectedAt && ex.sessionId ? ' · ' : ''}
+                                                    {ex.sessionId ? `session ${ex.sessionId.slice(0, 8)}` : ''}
+                                                  </span>
+                                                )}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-2 pt-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => useCandidate(c)}
+                                          className="rounded-md bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-500 transition-colors"
+                                        >
+                                          Use this candidate
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => decideCandidate(c, 'dismissed')}
+                                          className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
+                                        >
+                                          Dismiss
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => decideCandidate(c, 'rejected')}
+                                          className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
+                                        >
+                                          Reject
+                                        </button>
+                                      </div>
                                       <p className="text-[10px] text-neutral-600">
-                                        Manager approval required. This candidate will not go live until saved as a custom trigger.
+                                        Nothing goes live until a manager saves it as a custom trigger.
                                       </p>
                                     </div>
                                   )}
@@ -1939,6 +2014,7 @@ export default function CoachingPage() {
                                 const label = d.decision === 'approved' ? 'Approved' : d.decision === 'rejected' ? 'Rejected' : 'Dismissed'
                                 const canRestore = d.decision === 'dismissed' || d.decision === 'rejected'
                                 const name = d.source?.title || d.candidateId
+                                const hasMeta = typeof d.source?.seenCount === 'number' || typeof d.source?.confidence === 'number' || typeof d.source?.examplesCount === 'number'
                                 return (
                                   <div key={d.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2 space-y-1">
                                     <div className="flex items-center justify-between gap-2">
@@ -1951,6 +2027,13 @@ export default function CoachingPage() {
                                       <span className="text-neutral-600">{d.candidateId}</span>
                                       {d.updatedAt && <>{' · '}{new Date(d.updatedAt).toLocaleDateString('en-GB')}</>}
                                     </div>
+                                    {hasMeta && (
+                                      <div className="text-[10px] text-neutral-600">
+                                        {typeof d.source?.seenCount === 'number' && <>seen {d.source.seenCount}×</>}
+                                        {typeof d.source?.confidence === 'number' && <>{typeof d.source?.seenCount === 'number' ? ' · ' : ''}confidence {d.source.confidence}</>}
+                                        {typeof d.source?.examplesCount === 'number' && <>{(typeof d.source?.seenCount === 'number' || typeof d.source?.confidence === 'number') ? ' · ' : ''}{d.source.examplesCount} example{d.source.examplesCount === 1 ? '' : 's'}</>}
+                                      </div>
+                                    )}
                                     {d.note && <p className="text-[10px] text-neutral-500 italic">“{d.note}”</p>}
                                     <div className="flex items-center gap-2 pt-0.5">
                                       {canRestore ? (

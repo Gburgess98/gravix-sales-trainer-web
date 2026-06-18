@@ -120,10 +120,28 @@ from day one.
   restorable in this MVP (`Already approved`). Restore is audit-logged
   (`whisperer.candidate_decision_restore`).
 
+- **Day 137** — Day 136 history + restore **live-proofed** against the API and
+  live tenant DB (dismiss → history → suppressed → restore → eligible again;
+  non-manager `403`; restore touches no custom trigger). Tagged
+  `sprint-day-137-complete` (API `346b9cd`, WEB `9820503`).
+
+- **Day 138** — **candidate detail / review view** shipped (WEB-only, no
+  migration, no new backend write). The `/coaching` Suggested Trigger Candidates
+  **Review** expander now renders a structured detail panel: header (title /
+  type / confidence / seen count / Candidate badge), **Why Gravix suggested
+  this** (reason + description), **Suggested trigger setup** (name, phrases,
+  keywords, urgency), **Suggested response**, and **Examples** (up to 3 with
+  detected date + shortened session id). Manager controls (Use this candidate /
+  Dismiss / Reject) sit inside the panel; nothing activates until a manager
+  saves a custom trigger. The Reviewed candidates rows also surface the stored
+  source snapshot (seen count / confidence / examples count) when present.
+
 ### Future
 
-- Candidate **detail page** and a fuller **audit history** view (who actioned
-  what, when) beyond the lightweight reviewed-candidates list.
-- Track the **source candidate** into the Custom Trigger Library once the
-  library carries candidate meta/source, so an approved candidate links to the
-  trigger it created.
+- **Approved candidate → source custom trigger link** once the library carries
+  candidate meta/source, so an approved candidate links to the trigger it
+  created.
+- **Raw transcript blind-spot discovery** once raw segments are stored (today
+  discovery only mines stored trigger segment text).
+- A fuller **audit history** view (who actioned what, when) beyond the
+  lightweight reviewed-candidates list.
