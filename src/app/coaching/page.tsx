@@ -188,6 +188,10 @@ type CustomTrigger = {
   emoji: string | null
   enabled: boolean
   priority: number
+  // Day 139 — approved candidate → source link (null/{} when unmigrated)
+  sourceCandidateId?: string | null
+  sourceMeta?: { suggestedName?: string; title?: string; seenCount?: number; confidence?: number; examplesCount?: number; reason?: string; type?: string } | null
+  source?: string | null
 }
 
 // Tier 2B Day 130 — read-only AI Trigger Discovery candidate (no activation)
@@ -795,6 +799,9 @@ export default function CoachingPage() {
   // Day 131: remembers which candidate (if any) prefilled the form, for the
   // success notice. Cleared on save/cancel. Nothing activates until save.
   const [candidateSourceId, setCandidateSourceId] = useState<string | null>(null)
+  // Day 139: source snapshot of the candidate that prefilled the form, sent on
+  // save so the created custom trigger links back to its source candidate.
+  const [candidateSourceMeta, setCandidateSourceMeta] = useState<Record<string, unknown> | null>(null)
   // Day 132/133: hidden candidates. Local set hides immediately; Day 133 also
   // persists the decision server-side so it stays hidden across refreshes.
   const [dismissedCandidateIds, setDismissedCandidateIds] = useState<string[]>([])
@@ -1149,6 +1156,18 @@ export default function CoachingPage() {
       enabled: true,
     })
     setCandidateSourceId(c.id)
+    // Day 139: compact source snapshot (no full example text) for the link.
+    setCandidateSourceMeta({
+      source: 'trigger_candidate',
+      candidateId: c.id,
+      suggestedName: c.suggestedName,
+      title: c.title,
+      type: c.type,
+      seenCount: c.seenCount,
+      confidence: c.confidence,
+      examplesCount: c.examples.length,
+      reason: c.reason,
+    })
     setShowTriggerForm(true)
     setTriggerNotice('Candidate loaded into Custom Trigger form. Review and save to activate.')
     // Day 132: hide the loaded candidate locally to reduce clutter.
@@ -1191,6 +1210,8 @@ export default function CoachingPage() {
           suggestionResponse: triggerDraft.suggestionResponse.trim(),
           urgency: triggerDraft.urgency,
           enabled: triggerDraft.enabled,
+          // Day 139: link the created trigger back to its source candidate.
+          ...(candidateSourceId ? { sourceCandidateId: candidateSourceId, sourceMeta: candidateSourceMeta ?? { source: 'trigger_candidate', candidateId: candidateSourceId } } : {}),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -1206,6 +1227,7 @@ export default function CoachingPage() {
           })
         }
         setCandidateSourceId(null)
+        setCandidateSourceMeta(null)
         setTriggerDraft({ name: '', type: 'competitor', matchPhrases: '', matchKeywords: '', suggestionTitle: '', suggestionResponse: '', urgency: 'medium', enabled: true })
         loadCustomTriggers()
       } else if (data?.error === 'migration_required') {
@@ -1218,7 +1240,7 @@ export default function CoachingPage() {
     } finally {
       setSavingTrigger(false)
     }
-  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId, postCandidateDecision, loadTriggerCandidates, loadCandidateDecisions])
+  }, [triggerDraft, savingTrigger, loadCustomTriggers, candidateSourceId, candidateSourceMeta, postCandidateDecision, loadTriggerCandidates, loadCandidateDecisions])
 
   const [triggerActioningId, setTriggerActioningId] = useState<string | null>(null)
 
@@ -2084,6 +2106,19 @@ export default function CoachingPage() {
                                   </div>
                                 </div>
                                 <div className="text-[11px] text-neutral-500 truncate">{t.suggestionTitle}</div>
+                                {t.sourceCandidateId && (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-sky-500/30 bg-sky-500/10 text-sky-300">From AI candidate</span>
+                                    {(typeof t.sourceMeta?.seenCount === 'number' || typeof t.sourceMeta?.confidence === 'number') && (
+                                      <span className="text-[10px] text-neutral-600">
+                                        {typeof t.sourceMeta?.seenCount === 'number' && <>Seen {t.sourceMeta.seenCount}</>}
+                                        {typeof t.sourceMeta?.seenCount === 'number' && typeof t.sourceMeta?.confidence === 'number' && ' · '}
+                                        {typeof t.sourceMeta?.confidence === 'number' && <>{t.sourceMeta.confidence}% confidence</>}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] text-neutral-700">{t.sourceCandidateId.slice(0, 24)}</span>
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-2 pt-0.5">
                                   <button
                                     type="button"

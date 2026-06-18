@@ -136,12 +136,25 @@ from day one.
   saves a custom trigger. The Reviewed candidates rows also surface the stored
   source snapshot (seen count / confidence / examples count) when present.
 
+- **Day 139** — **approved candidate → source link** shipped. Migration
+  `sql/20260618_whisperer_trigger_library_source.sql` adds nullable
+  `source_candidate_id text` + `source_meta jsonb` (default `{}`) to
+  `whisperer_trigger_library` (indexed on `source_candidate_id`). When a manager
+  saves a custom trigger from a candidate, `POST /v1/manager/whisperer-trigger-library`
+  accepts optional `sourceCandidateId` + `sourceMeta` (a compact snapshot —
+  seenCount / confidence / examplesCount / reason / suggestedName / type /
+  capped phrases+keywords; **never** full example text) and stores them; the
+  library GET returns `sourceCandidateId`, `sourceMeta` and a `source` flag. The
+  `/coaching` Custom Triggers card shows a **From AI candidate** badge with
+  seen/confidence when present. Source fields are immutable after create (PATCH
+  unchanged). **No auto-create / no auto-enable** — a manual manager save is
+  still required. Fully fail-soft: when the columns are absent, GET/POST/PATCH
+  fall back to the base columns and the manual create still succeeds.
+
 ### Future
 
-- **Approved candidate → source custom trigger link** once the library carries
-  candidate meta/source, so an approved candidate links to the trigger it
-  created.
 - **Raw transcript blind-spot discovery** once raw segments are stored (today
   discovery only mines stored trigger segment text).
 - A fuller **audit history** view (who actioned what, when) beyond the
-  lightweight reviewed-candidates list.
+  lightweight reviewed-candidates list, and surfacing the created trigger id
+  back on the candidate decision row.
