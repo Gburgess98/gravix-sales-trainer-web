@@ -207,9 +207,14 @@ type TriggerCandidate = {
   suggestedUrgency: string
   confidence: number
   seenCount: number
-  examples: Array<{ text: string; sessionId: string | null; detectedAt: string | null }>
+  examples: Array<{ text: string; sessionId: string | null; detectedAt: string | null; segmentId?: string | null; source?: string }>
   reason: string
   status: string
+  // Day 144 — blind-spot provenance (optional; absent on older API responses)
+  source?: 'raw_segment' | 'trigger_segment' | 'mixed'
+  untriggered?: boolean
+  exampleSegmentIds?: string[]
+  sessionsCount?: number
 }
 
 // Tier 2B Day 136 — reviewed candidate decision (history / un-dismiss)
@@ -1869,7 +1874,12 @@ export default function CoachingPage() {
                                 <div key={c.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="text-sm font-medium text-white">{c.title}</span>
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 border-sky-500/30 bg-sky-500/10 text-sky-300">Candidate</span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {c.untriggered && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-amber-500/30 bg-amber-500/10 text-amber-300">Blind spot</span>
+                                      )}
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-sky-500/30 bg-sky-500/10 text-sky-300">Candidate</span>
+                                    </div>
                                   </div>
                                   <div className="text-[11px] text-neutral-500">
                                     <span className="text-neutral-300">{c.type}</span>
@@ -1877,6 +1887,12 @@ export default function CoachingPage() {
                                     {' · '}confidence {c.confidence}
                                     {' · '}{c.examples.length} example{c.examples.length === 1 ? '' : 's'}
                                   </div>
+                                  {c.untriggered && (
+                                    <div className="text-[10px] text-amber-300/80">Found in untriggered transcript segments</div>
+                                  )}
+                                  {c.source === 'raw_segment' && (
+                                    <div className="text-[10px] text-neutral-600">Source: raw transcript segment</div>
+                                  )}
                                   {(c.suggestedPhrases[0] || c.suggestedKeywords[0]) && (
                                     <div className="text-[11px] text-neutral-400">
                                       Suggested: <span className="text-neutral-300">{c.suggestedPhrases[0] || c.suggestedKeywords[0]}</span>

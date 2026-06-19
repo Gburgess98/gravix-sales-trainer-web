@@ -1,8 +1,38 @@
 # Whisperer Raw Segment Storage — Plan (Day 141)
 
-**Status:** Day 141 planning + **Day 142 storage layer implemented** (code
-complete, fail-soft proven). The `whisperer_segments` table now persists every
-final transcript segment, triggered or not.
+**Status:** Day 141 planning → Day 142 storage layer → **Day 144 raw-segment
+discovery implemented + live-proofed**. Every final transcript segment persists,
+and AI Trigger Discovery now mines raw segments first to surface blind-spot
+candidates from untriggered buyer language.
+
+## Day 144 — implemented (raw-segment discovery)
+
+- `GET /v1/manager/whisperer-trigger-candidates` now **mines raw
+  `whisperer_segments` first**: final, in-scope, recent, rep speech excluded,
+  prioritising blind spots (`triggers_count = 0`). These feed
+  `discoverTriggerCandidates`, producing candidates tagged `source: "raw_segment"`,
+  `untriggered: true`, with `exampleSegmentIds` + `sessionsCount`.
+- **Fallback preserved**: when the raw table is missing/empty it falls back to
+  the Day 130 `whisperer_triggers.segment_text` mining exactly as before
+  (`source: "trigger_segment"`). Detected via `whispererSegmentsTableMissing`.
+- Summary gains `source` (`raw_segments`|`trigger_segments`),
+  `rawSegmentsConsidered`, `untriggeredSegmentsConsidered`,
+  `triggerMomentsConsidered` (plus existing suppression counts).
+- Candidate-decision suppression + custom-trigger dedupe still run after raw
+  candidates are generated. **Manager approval still required** — no
+  auto-create/auto-enable. No LLM, no DB writes in discovery.
+- The shared semantic classifier gained **procurement / "has to approve|sign off"**
+  authority patterns (procurement sign-off is a classic authority blocker), so
+  procurement objections now both whisper live and cluster in discovery.
+- `/coaching` shows a **Blind spot** badge + "Found in untriggered transcript
+  segments" / "Source: raw transcript segment" on raw candidates.
+- Live-proofed (manager `b817133a-…`): repeated procurement segments → 2
+  untriggered rows → an `authority` blind-spot candidate (`source: raw_segment`,
+  `untriggered: true`, `seenCount 2`); `summary.source = raw_segments`.
+
+**Status (earlier days):** Day 141 planning + Day 142 storage layer (code
+complete, fail-soft proven). The `whisperer_segments` table persists every final
+transcript segment, triggered or not.
 
 ## Day 142 — implemented
 
