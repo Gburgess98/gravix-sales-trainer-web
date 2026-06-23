@@ -60,6 +60,7 @@
     "validate-tier-2b-day-142": "bash scripts/validate-tier-2b-day-142.sh",
     "validate-tier-2b-day-143": "bash scripts/validate-tier-2b-day-143.sh",
     "validate-tier-2b-day-144": "bash scripts/validate-tier-2b-day-144.sh",
+    "validate-tier-2b-day-145": "bash scripts/validate-tier-2b-day-145.sh",
     "validate-tier-2b-smoke": "bash scripts/validate-tier-2b-smoke.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",

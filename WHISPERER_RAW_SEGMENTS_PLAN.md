@@ -1,9 +1,37 @@
 # Whisperer Raw Segment Storage — Plan (Day 141)
 
-**Status:** Day 141 planning → Day 142 storage layer → **Day 144 raw-segment
-discovery implemented + live-proofed**. Every final transcript segment persists,
-and AI Trigger Discovery now mines raw segments first to surface blind-spot
-candidates from untriggered buyer language.
+**Status:** Day 141 planning → Day 142 storage layer → Day 144 raw-segment
+discovery → **Day 145 blended/ranked discovery implemented + live-proofed**.
+Every final transcript segment persists, and AI Trigger Discovery now blends raw
+blind spots with recurring triggered moments, ranking blind spots first.
+
+## Day 145 — implemented (blended / ranked discovery)
+
+- `GET /v1/manager/whisperer-trigger-candidates` now mines **both** sources every
+  time: raw `whisperer_segments` (untriggered blind spots) **and**
+  `whisperer_triggers.segment_text` (recurring triggered moments) — no more
+  raw-first hiding the triggered-moment candidates.
+- `blendTriggerCandidates(raw, trigger)` (in `discovery.ts`) merges by the stable
+  `candidate-<type>-<token>` id. A pattern present in **both** sources becomes a
+  single `source: "mixed"` candidate (`untriggered` true if any raw contributed,
+  `seenCount` summed, `confidence` max, examples capped at 3, `exampleSegmentIds`
+  unioned, `sessionsCount` summed). Raw-only stays `raw_segment`/untriggered;
+  trigger-only stays `trigger_segment`.
+- **Ranking:** untriggered blind spots first (raw + mixed-with-untriggered), then
+  the rest, each group by `seenCount` desc then `confidence` desc. Limit applied
+  after blending + suppression.
+- **Fallback preserved**: a missing/empty `whisperer_segments` table simply
+  contributes no raw candidates → trigger-only, exactly as before.
+- Summary gains `rawCandidateCount`, `triggerCandidateCount`, `mixedCandidateCount`;
+  `source` is `mixed` when both sources produce candidates.
+- Suppression (custom-trigger dedupe + persisted decisions) and the **manager
+  approval gate** still apply; no auto-create/auto-enable; no LLM, no DB writes.
+- `/coaching` adds a **Mixed evidence** badge + "Found in raw transcript segments
+  and triggered moments", and a "Source: triggered Whisperer moments" line;
+  Blind spot badge + raw-segment copy retained.
+- Live-proofed (manager `b817133a-…`): a procurement raw blind spot (`authority`,
+  untriggered, ranked first) surfaced alongside `trigger_segment` candidates;
+  `summary.source = mixed`, `rawCandidateCount`/`triggerCandidateCount` both ≥ 1.
 
 ## Day 144 — implemented (raw-segment discovery)
 

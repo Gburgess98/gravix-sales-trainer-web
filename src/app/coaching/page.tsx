@@ -1875,7 +1875,9 @@ export default function CoachingPage() {
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="text-sm font-medium text-white">{c.title}</span>
                                     <div className="flex items-center gap-1 shrink-0">
-                                      {c.untriggered && (
+                                      {c.source === 'mixed' ? (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-violet-500/30 bg-violet-500/10 text-violet-300">Mixed evidence</span>
+                                      ) : c.untriggered && (
                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-amber-500/30 bg-amber-500/10 text-amber-300">Blind spot</span>
                                       )}
                                       <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold border-sky-500/30 bg-sky-500/10 text-sky-300">Candidate</span>
@@ -1887,12 +1889,16 @@ export default function CoachingPage() {
                                     {' · '}confidence {c.confidence}
                                     {' · '}{c.examples.length} example{c.examples.length === 1 ? '' : 's'}
                                   </div>
-                                  {c.untriggered && (
-                                    <div className="text-[10px] text-amber-300/80">Found in untriggered transcript segments</div>
-                                  )}
-                                  {c.source === 'raw_segment' && (
-                                    <div className="text-[10px] text-neutral-600">Source: raw transcript segment</div>
-                                  )}
+                                  {c.source === 'mixed' ? (
+                                    <div className="text-[10px] text-violet-300/80">Found in raw transcript segments and triggered moments</div>
+                                  ) : c.source === 'raw_segment' ? (
+                                    <>
+                                      {c.untriggered && <div className="text-[10px] text-amber-300/80">Found in untriggered transcript segments</div>}
+                                      <div className="text-[10px] text-neutral-600">Source: raw transcript segment</div>
+                                    </>
+                                  ) : c.source === 'trigger_segment' ? (
+                                    <div className="text-[10px] text-neutral-600">Source: triggered Whisperer moments</div>
+                                  ) : null}
                                   {(c.suggestedPhrases[0] || c.suggestedKeywords[0]) && (
                                     <div className="text-[11px] text-neutral-400">
                                       Suggested: <span className="text-neutral-300">{c.suggestedPhrases[0] || c.suggestedKeywords[0]}</span>
