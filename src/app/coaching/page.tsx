@@ -217,6 +217,18 @@ type TriggerCandidate = {
   sessionsCount?: number
 }
 
+// Tier 2B Day 146 — discovery coverage counters (read-only summary). All fields
+// optional; older API responses omit them and the coverage row simply hides.
+type CandidateSummary = {
+  source?: 'raw_segments' | 'trigger_segments' | 'mixed'
+  rawSegmentsConsidered?: number
+  untriggeredSegmentsConsidered?: number
+  triggerMomentsConsidered?: number
+  rawCandidateCount?: number
+  triggerCandidateCount?: number
+  mixedCandidateCount?: number
+}
+
 // Tier 2B Day 136 — reviewed candidate decision (history / un-dismiss)
 type ReviewedCandidateDecision = {
   id: string
@@ -800,6 +812,8 @@ export default function CoachingPage() {
   const [triggerCandidates, setTriggerCandidates] = useState<TriggerCandidate[]>([])
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState(false)
+  // Day 146: discovery coverage counters from the candidates summary (read-only).
+  const [candidateSummary, setCandidateSummary] = useState<CandidateSummary | null>(null)
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null)
   // Day 131: remembers which candidate (if any) prefilled the form, for the
   // success notice. Cleared on save/cancel. Nothing activates until save.
@@ -1189,10 +1203,12 @@ export default function CoachingPage() {
     try {
       const res = await proxyFetch('/v1/manager/whisperer-trigger-candidates?days=30&limit=10', { cache: 'no-store' })
       const data = await res.json()
-      if (data?.ok && Array.isArray(data.items)) setTriggerCandidates(data.items)
-      else { setTriggerCandidates([]); setCandidatesError(true) }
+      if (data?.ok && Array.isArray(data.items)) {
+        setTriggerCandidates(data.items)
+        setCandidateSummary(data.summary && typeof data.summary === 'object' ? data.summary : null)
+      } else { setTriggerCandidates([]); setCandidateSummary(null); setCandidatesError(true) }
     } catch {
-      setTriggerCandidates([]); setCandidatesError(true)
+      setTriggerCandidates([]); setCandidateSummary(null); setCandidatesError(true)
     } finally {
       setCandidatesLoading(false)
     }
@@ -1855,6 +1871,32 @@ export default function CoachingPage() {
                         <p className="mb-2 text-[10px] text-neutral-600">
                           Dismissed candidates stay hidden for this manager scope.
                         </p>
+                        {/* Day 146 — discovery coverage counters (read-only). Hides when summary absent. */}
+                        {(() => {
+                          const s = candidateSummary
+                          if (!s) return null
+                          const parts: string[] = []
+                          if (typeof s.rawSegmentsConsidered === 'number') parts.push(`${s.rawSegmentsConsidered} raw segments`)
+                          if (typeof s.untriggeredSegmentsConsidered === 'number') parts.push(`${s.untriggeredSegmentsConsidered} untriggered`)
+                          if (typeof s.triggerMomentsConsidered === 'number') parts.push(`${s.triggerMomentsConsidered} triggered moments`)
+                          if (typeof s.mixedCandidateCount === 'number') parts.push(`${s.mixedCandidateCount} mixed candidates`)
+                          if (parts.length === 0) return null
+                          const sourceLabel = s.source === 'raw_segments'
+                            ? 'Raw segments'
+                            : s.source === 'trigger_segments'
+                              ? 'Triggered moments'
+                              : s.source === 'mixed'
+                                ? 'Mixed'
+                                : null
+                          return (
+                            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-neutral-500">
+                              <span>Discovery coverage: {parts.join(' · ')}</span>
+                              {sourceLabel && (
+                                <span className="text-neutral-600">Source mode: {sourceLabel}</span>
+                              )}
+                            </div>
+                          )
+                        })()}
                         {candidateNotice && <div className="mb-2 text-[11px] text-neutral-400">{candidateNotice}</div>}
                         {(() => {
                           const visibleCandidates = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id))
@@ -1947,6 +1989,22 @@ export default function CoachingPage() {
                                         <span className="text-neutral-300">{c.type}</span>
                                         {' · '}seen {c.seenCount}×
                                         {' · '}confidence {c.confidence}
+                                      </div>
+                                      {/* Day 146 — source provenance polish */}
+                                      <div className="text-[10px] text-neutral-600">
+                                        {c.source === 'raw_segment'
+                                          ? 'Raw transcript evidence'
+                                          : c.source === 'trigger_segment'
+                                            ? 'Triggered moment evidence'
+                                            : c.source === 'mixed'
+                                              ? 'Mixed evidence'
+                                              : null}
+                                        {typeof c.sessionsCount === 'number' && (
+                                          <span>{c.source ? ' · ' : ''}Seen across {c.sessionsCount} session{c.sessionsCount === 1 ? '' : 's'}</span>
+                                        )}
+                                        {Array.isArray(c.exampleSegmentIds) && c.exampleSegmentIds.length > 0 && (
+                                          <span> · {c.exampleSegmentIds.length} raw segment example{c.exampleSegmentIds.length === 1 ? '' : 's'}</span>
+                                        )}
                                       </div>
                                       <p className="text-[10px] text-neutral-500">
                                         Review this candidate before adding it to your Custom Trigger Library.

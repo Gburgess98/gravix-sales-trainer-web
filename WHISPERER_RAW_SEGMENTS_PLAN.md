@@ -1,9 +1,32 @@
 # Whisperer Raw Segment Storage — Plan (Day 141)
 
 **Status:** Day 141 planning → Day 142 storage layer → Day 144 raw-segment
-discovery → **Day 145 blended/ranked discovery implemented + live-proofed**.
-Every final transcript segment persists, and AI Trigger Discovery now blends raw
-blind spots with recurring triggered moments, ranking blind spots first.
+discovery → Day 145 blended/ranked discovery → **Day 146 discovery coverage
+counters (WEB-only polish)**. Every final transcript segment persists, AI Trigger
+Discovery blends raw blind spots with recurring triggered moments (blind spots
+ranked first), and managers can now see what discovery analysed.
+
+## Day 146 — implemented (discovery coverage counters, WEB-only)
+
+- `/coaching` Suggested Trigger Candidates card now shows a compact **Discovery
+  coverage** line near the intro, e.g. "Discovery coverage: 42 raw segments · 18
+  untriggered · 9 triggered moments · 2 mixed candidates", plus a **Source mode**
+  label (Raw segments / Triggered moments / Mixed).
+- Reads fields already returned by the candidates `summary` (Day 145):
+  `rawSegmentsConsidered`, `untriggeredSegmentsConsidered`,
+  `triggerMomentsConsidered`, `mixedCandidateCount`, `source`. A new
+  `CandidateSummary` type captures them client-side; `loadTriggerCandidates`
+  stores `data.summary` in state.
+- Candidate detail panel gains 1 small provenance line: source label (Raw
+  transcript evidence / Triggered moment evidence / Mixed evidence), plus "Seen
+  across N sessions" (`sessionsCount`) and "N raw segment examples"
+  (`exampleSegmentIds`) when present.
+- **No backend behaviour change** — no API change, no migration, no new endpoint.
+  When the summary is absent the coverage row simply hides; nothing crashes.
+- Managers can now see what AI Trigger Discovery analysed, increasing trust in
+  the feed without adding any new backend behaviour.
+- **Next recommended step:** return to the main sprint or close Tier 2B — the
+  read-only AI Trigger Discovery feature set is complete.
 
 ## Day 145 — implemented (blended / ranked discovery)
 
