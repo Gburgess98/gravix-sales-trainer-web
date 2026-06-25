@@ -1435,6 +1435,48 @@ export default function CoachingPage() {
 
               {commandCentre && (
                 <>
+                  {/* Day 148 — "What to do next" manager triage (already-loaded data; no new API) */}
+                  {(() => {
+                    const reviewCount = commandCentre.teamHealth.callsNeedingReview
+                    const overdueCount = commandCentre.teamHealth.overdueAssignments
+                    const atRiskCount = Number(headline?.reps_at_risk ?? 0)
+                    const candidateCount = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id)).length
+                    const actions: Array<{ key: string; label: string; onClick?: () => void }> = []
+                    if (reviewCount > 0) actions.push({ key: 'review', label: `${reviewCount} call${reviewCount === 1 ? '' : 's'} need review`, onClick: () => setTab('review') })
+                    if (overdueCount > 0) actions.push({ key: 'overdue', label: `${overdueCount} assignment${overdueCount === 1 ? '' : 's'} overdue`, onClick: () => setTab('assignments') })
+                    if (interventionCount > 0) actions.push({ key: 'intervene', label: `${interventionCount} rep intervention${interventionCount === 1 ? '' : 's'}`, onClick: () => setTab('interventions') })
+                    if (atRiskCount > 0) actions.push({ key: 'risk', label: `${atRiskCount} rep${atRiskCount === 1 ? '' : 's'} at risk` })
+                    if (candidateCount > 0) actions.push({ key: 'candidates', label: `${candidateCount} trigger candidate${candidateCount === 1 ? '' : 's'} to review` })
+                    return (
+                      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">What to do next</div>
+                        {actions.length === 0 ? (
+                          <p className="mt-1 text-sm text-neutral-300">You&rsquo;re all caught up — no calls, assignments or candidates need attention right now.</p>
+                        ) : (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {actions.map((a) => a.onClick ? (
+                              <button
+                                key={a.key}
+                                type="button"
+                                onClick={a.onClick}
+                                className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[12px] text-neutral-200 hover:bg-neutral-800 transition-colors"
+                              >
+                                {a.label}
+                              </button>
+                            ) : (
+                              <span
+                                key={a.key}
+                                className="rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[12px] text-neutral-300"
+                              >
+                                {a.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
                   {/* Team Health */}
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                     <StatCard
