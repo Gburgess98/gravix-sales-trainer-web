@@ -1785,11 +1785,20 @@ export default function CoachingPage() {
               )}
 
               {/* Day 157 — Demo flow strip: a clear manager workflow path through the
-                  command centre using existing tabs/anchors only (no new data). */}
+                  command centre using existing tabs/anchors only (no new data).
+                  Day 160 — marked as the demo starting point (copy only). */}
               <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo flow</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo flow</div>
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                    Start demo here
+                  </span>
+                </div>
                 <p className="mt-1 text-[12px] text-neutral-400">
                   Demo flow: Review calls → Assign sparring → Track follow-through → Review AI discoveries
+                </p>
+                <p className="mt-0.5 text-[11px] text-neutral-500">
+                  The manager stays in control — nothing is auto-created, auto-activated, or auto-completed.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {[
