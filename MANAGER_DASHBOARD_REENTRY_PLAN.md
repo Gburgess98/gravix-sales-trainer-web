@@ -548,3 +548,15 @@ Tier 2B + manager approval gates preserved. Adds
   glance whether assigned drills are lifting a struggling rep — still WEB-only from
   the proof rows, no backend. Alternatively, begin a lightweight **CSV/clipboard
   export** of the proof-backed scores for managers who want the numbers offline.
+
+---
+
+## Day 159 — Manager Dashboard lane closeout (checkpoint)
+
+Checkpoint/closeout day — no new features. Final validation sweep green
+(day-148→158 own-checks + tier-2b-smoke + build + typecheck WEB 186 / API 70; API
+whisperer + assignment-proof pass). Lane summary, sprint tracker and caveats moved
+to **`MANAGER_DASHBOARD_LANE_CLOSE.md`**. Tagged `sprint-day-159-complete`.
+
+Next lane: **Day 160 — Demo Readiness / Lighthouse Client Prep** (voice Tier 2C /
+audio Tier 2D stay paused).
