@@ -378,3 +378,47 @@ Implemented:
   backed by stored evidence rather than a live re-match, and surface average score
   per assigned drill in the Sparring Progress snapshot. Separately, demo polish:
   consolidate the `control-centre` / `recent-calls` stubs.
+
+---
+
+## Day 155 — Sparring completion proof metadata (shipped)
+
+Persists proof onto the assignment when a manager marks a queue-assigned sparring
+drill complete from a **direct** completed-session match — so completion is
+auditable and can later power score trends. **No migration** — the `assignments`
+table already has a `meta jsonb` column (`20260526_assignments_add_meta.sql`).
+
+API (`PATCH /v1/assignments/manager/:id`, extended safely):
+- Still manager-scoped (verifies `assignment.manager_id === x-user-id`).
+- Accepts an optional `completion_proof` object, honoured **only** when
+  `status === "completed"`.
+- Merges a **whitelisted** proof object into existing `meta` (never replaces it),
+  and only when `matched_sparring_session_id` is present:
+  - `meta.completed_via = "sparring_session_match"`
+  - `meta.matched_sparring_session_id`
+  - `meta.completion_score` (numeric only)
+  - `meta.completed_session_at`
+  - `meta.completed_from_dashboard = true`
+- Unknown proof keys are ignored. `completed_at` / `completed_by:"manager"`
+  behaviour is unchanged. No auto-completion — still requires the manager click.
+
+WEB:
+- `markSparringComplete(assignmentId, match)` sends `completion_proof` only when the
+  match is `confidence === "direct"` with a `sessionId` + `completedAt`.
+- Queue-assigned sparring shows persisted proof after refresh: **"Proof: sparring
+  session match"**, **"Proof score: NN%"**, and a **"Proof stored"** badge. Once
+  proof exists, **"Mark complete" is not re-offered**. Open + direct match (no proof
+  yet) still shows **"Ready to mark complete"**; the live matched-session display
+  (Day 153/154) is preserved.
+- Status summary gains a **"Proof stored"** count
+  (`meta.completed_via === "sparring_session_match"`).
+
+Manager click required; never auto-completes. Tier 2B + approval gates preserved.
+Adds `scripts/validate-manager-dashboard-day-155.sh` + package script.
+
+### Day 156 recommendation
+
+- Surface a per-rep / per-drill **sparring score trend** from the stored proof
+  (`meta.completion_score` over time) in the Sparring Progress snapshot, now that
+  completion evidence is persisted rather than re-derived. Separately, demo polish:
+  consolidate the `control-centre` / `recent-calls` stubs.

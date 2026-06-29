@@ -1257,15 +1257,26 @@ export default function CoachingPage() {
   // never auto-completes. No migration; no new endpoint.
   const [markingCompleteId, setMarkingCompleteId] = useState<string | null>(null)
 
-  const markSparringComplete = useCallback(async (assignmentId: string) => {
+  const markSparringComplete = useCallback(async (assignmentId: string, match?: SparringMatch) => {
     if (markingCompleteId) return
     setMarkingCompleteId(assignmentId)
     setReviewNotice(null)
     try {
+      // Day 155 — persist completion proof only for a direct, completed-session match.
+      const body: Record<string, any> = { status: 'completed' }
+      if (match && match.confidence === 'direct' && match.sessionId && match.completedAt) {
+        body.completion_proof = {
+          completed_via: 'sparring_session_match',
+          matched_sparring_session_id: match.sessionId,
+          completion_score: typeof match.overall === 'number' ? match.overall : undefined,
+          completed_session_at: match.completedAt,
+          completed_from_dashboard: true,
+        }
+      }
       const res = await proxyFetch(`/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' }),
+        body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
       if (data?.ok) {
@@ -1929,12 +1940,14 @@ export default function CoachingPage() {
                     const matches = new Map<string, SparringMatch>()
                     queueSparring.forEach((a) => matches.set(a.id, findRelatedSparringSession(a, recentSparring)))
                     const matchedCount = queueSparring.filter((a) => (matches.get(a.id)?.confidence ?? 'none') !== 'none').length
+                    // Day 155 — assignments with persisted completion proof metadata.
+                    const proofStoredCount = queueSparring.filter((a) => String(a.meta?.completed_via || '') === 'sparring_session_match').length
                     const recent = [...queueSparring]
                       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                       .slice(0, 3)
                     return (
                       <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
-                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                           <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                             <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
                             <div className="text-[11px] text-neutral-500">Open sparring drills</div>
@@ -1951,6 +1964,10 @@ export default function CoachingPage() {
                             <div className="text-base font-semibold text-cyan-300 tabular-nums">{matchedCount}</div>
                             <div className="text-[11px] text-neutral-500">Matched completed sparring</div>
                           </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{proofStoredCount}</div>
+                            <div className="text-[11px] text-neutral-500">Proof stored</div>
+                          </div>
                         </div>
                         {assignmentsLoading && queueSparring.length === 0 ? (
                           <LoadingText text="Loading sparring assignments…" />
@@ -1965,8 +1982,12 @@ export default function CoachingPage() {
                               const match = matches.get(a.id) ?? { confidence: 'none' as const }
                               const hasMatch = match.confidence !== 'none'
                               const completed = isCompleted(a)
+                              // Day 155 — persisted completion proof on the assignment meta.
+                              const hasProof = String(a.meta?.completed_via || '') === 'sparring_session_match'
+                              const proofScore = typeof a.meta?.completion_score === 'number' ? a.meta.completion_score : null
                               // Day 154 — only a direct, completed-session match enables Mark complete.
-                              const canMarkComplete = !completed && match.confidence === 'direct' && !!match.completedAt && !!match.sessionId
+                              // Day 155 — never re-offer once proof is stored.
+                              const canMarkComplete = !completed && !hasProof && match.confidence === 'direct' && !!match.completedAt && !!match.sessionId
                               return (
                                 <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
                                   <div className="flex items-center justify-between gap-2">
@@ -1999,15 +2020,24 @@ export default function CoachingPage() {
                                   ) : (
                                     <div className="text-[11px] text-neutral-500">No completed sparring found yet</div>
                                   )}
-                                  {/* Day 154 — completion sync (manager click; direct match only) */}
-                                  {completed && hasMatch ? (
+                                  {/* Day 155 — persisted completion proof metadata */}
+                                  {hasProof ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                                      <span className="font-medium text-emerald-300">Proof: sparring session match</span>
+                                      {proofScore !== null && (
+                                        <span className="text-neutral-400">Proof score: {proofScore}%</span>
+                                      )}
+                                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Proof stored</span>
+                                    </div>
+                                  ) : completed && hasMatch ? (
+                                    /* Day 154 — completed without stored proof (legacy / inferred) */
                                     <div className="text-[11px] font-medium text-emerald-300">Completed via sparring session</div>
                                   ) : canMarkComplete ? (
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                       <span className="text-[11px] font-medium text-cyan-300">Ready to mark complete</span>
                                       <button
                                         type="button"
-                                        onClick={() => markSparringComplete(a.id)}
+                                        onClick={() => markSparringComplete(a.id, match)}
                                         disabled={markingCompleteId === a.id}
                                         className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
                                       >
