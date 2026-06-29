@@ -585,6 +585,20 @@ function recommendAssignment(rep: RepRisk): string {
   return 'Review last 3 calls + feedback summary'
 }
 
+// Day 149 — Manager Command Centre: map a weak skill / section / risk reason to a
+// sparring drill label. Lightweight WEB-only mapping (no new API). Used to suggest
+// the next drill a manager should assign from already-loaded coaching data.
+function sparringDrillForText(text: string | null | undefined): string {
+  const t = String(text || '').toLowerCase()
+  if (/price/.test(t)) return 'Price objection sparring'
+  if (/objection|competitor|trust|authorit/.test(t)) return 'Objection handling sparring'
+  if (/clos|next step/.test(t)) return 'Closing confidence drill'
+  if (/discovery|qualif/.test(t)) return 'Discovery question drill'
+  if (/intro|open/.test(t)) return 'Opening structure drill'
+  if (/pitch/.test(t)) return 'Pitch clarity drill'
+  return 'Call review sparring'
+}
+
 function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
   const overdue = Number(rep.counts?.overdue ?? 0)
   if (overdue > 0 || critical > 0) return 'high'
@@ -1435,44 +1449,151 @@ export default function CoachingPage() {
 
               {commandCentre && (
                 <>
-                  {/* Day 148 — "What to do next" manager triage (already-loaded data; no new API) */}
+                  {/* Day 149 — Manager Command Centre: priority actions + team snapshot
+                      (all from already-loaded data; no new API). Builds on the Day 148
+                      triage panel and promotes it to the top manager action area. */}
                   {(() => {
                     const reviewCount = commandCentre.teamHealth.callsNeedingReview
                     const overdueCount = commandCentre.teamHealth.overdueAssignments
-                    const atRiskCount = Number(headline?.reps_at_risk ?? 0)
+                    const openCount = commandCentre.teamHealth.openAssignments
+                    const repsAtRisk = commandCentre.repsNeedingAttention.length
                     const candidateCount = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id)).length
-                    const actions: Array<{ key: string; label: string; onClick?: () => void }> = []
-                    if (reviewCount > 0) actions.push({ key: 'review', label: `${reviewCount} call${reviewCount === 1 ? '' : 's'} need review`, onClick: () => setTab('review') })
-                    if (overdueCount > 0) actions.push({ key: 'overdue', label: `${overdueCount} assignment${overdueCount === 1 ? '' : 's'} overdue`, onClick: () => setTab('assignments') })
-                    if (interventionCount > 0) actions.push({ key: 'intervene', label: `${interventionCount} rep intervention${interventionCount === 1 ? '' : 's'}`, onClick: () => setTab('interventions') })
-                    if (atRiskCount > 0) actions.push({ key: 'risk', label: `${atRiskCount} rep${atRiskCount === 1 ? '' : 's'} at risk` })
-                    if (candidateCount > 0) actions.push({ key: 'candidates', label: `${candidateCount} trigger candidate${candidateCount === 1 ? '' : 's'} to review` })
+                    const whispererSessions = whisperer?.summary.sessionCount ?? 0
+                    const topRep = commandCentre.repsNeedingAttention[0]
+                    const topSkill = commandCentre.weakestSkills[0]?.skill
+                    // Recommended next drill from the weakest team skill (or top rep's risk reason).
+                    const recommendedDrill = sparringDrillForText(topSkill || topRep?.riskReason || topRep?.recommendedAction)
+
+                    const goToDiscovery = () => {
+                      if (typeof document !== 'undefined') {
+                        document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }
+                    }
+
+                    const cards: Array<{ key: string; title: string; count: number; reason: string; cta: string; onClick: () => void; tone: 'red' | 'amber' | 'indigo' | 'neutral' }> = [
+                      {
+                        key: 'review',
+                        title: 'Review calls',
+                        count: reviewCount,
+                        reason: reviewCount > 0 ? 'Lowest-scoring calls waiting for manager review.' : 'No calls waiting for review.',
+                        cta: 'Review calls',
+                        onClick: () => setTab('review'),
+                        tone: reviewCount > 0 ? 'amber' : 'neutral',
+                      },
+                      {
+                        key: 'reps',
+                        title: 'Coach reps at risk',
+                        count: repsAtRisk,
+                        reason: repsAtRisk > 0 && topRep ? `${topRep.repName} — ${topRep.recommendedAction}` : 'No reps need urgent coaching.',
+                        cta: 'Coach reps at risk',
+                        onClick: () => setTab('interventions'),
+                        tone: repsAtRisk > 0 ? 'red' : 'neutral',
+                      },
+                      {
+                        key: 'sparring',
+                        title: 'Assign sparring',
+                        count: openCount,
+                        reason: topSkill || topRep ? `Recommended drill: ${recommendedDrill}` : 'No weak skills to drill yet.',
+                        cta: 'Assign sparring',
+                        onClick: () => setTab('assignments'),
+                        tone: 'indigo',
+                      },
+                      {
+                        key: 'discovery',
+                        title: 'Review AI discovery candidates',
+                        count: candidateCount,
+                        reason: candidateCount > 0 ? 'Manager-approval gated trigger suggestions.' : 'No new AI trigger candidates yet.',
+                        cta: 'Review AI discovery candidates',
+                        onClick: goToDiscovery,
+                        tone: candidateCount > 0 ? 'amber' : 'neutral',
+                      },
+                    ]
+
+                    const TONE_CLS: Record<'red' | 'amber' | 'indigo' | 'neutral', string> = {
+                      red: 'border-red-500/30 bg-red-500/10 text-red-300',
+                      amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+                      indigo: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200',
+                      neutral: 'border-neutral-700 bg-neutral-900 text-neutral-400',
+                    }
+
                     return (
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">What to do next</div>
-                        {actions.length === 0 ? (
-                          <p className="mt-1 text-sm text-neutral-300">You&rsquo;re all caught up — no calls, assignments or candidates need attention right now.</p>
-                        ) : (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {actions.map((a) => a.onClick ? (
+                      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-4">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Manager Command Centre</p>
+                          <h2 className="mt-0.5 text-lg font-semibold text-white">Your team coaching command centre</h2>
+                          <p className="mt-0.5 text-sm text-neutral-400">Review calls, assign drills, and act on the highest-priority coaching moments.</p>
+                        </div>
+
+                        {/* Priority actions / What to do next */}
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          {cards.map((c) => (
+                            <div key={c.key} className="flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3">
+                              <div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium text-white">{c.title}</span>
+                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLS[c.tone]}`}>{c.count}</span>
+                                </div>
+                                <p className="mt-1 text-[12px] leading-snug text-neutral-400">{c.reason}</p>
+                              </div>
                               <button
-                                key={a.key}
                                 type="button"
-                                onClick={a.onClick}
-                                className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[12px] text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                onClick={c.onClick}
+                                className="mt-3 w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-[12px] font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
                               >
-                                {a.label}
+                                {c.cta}
                               </button>
-                            ) : (
-                              <span
-                                key={a.key}
-                                className="rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[12px] text-neutral-300"
-                              >
-                                {a.label}
-                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Team coaching snapshot */}
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Team coaching snapshot</div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {[
+                              { label: 'Calls needing review', value: reviewCount },
+                              { label: 'Open assignments', value: openCount },
+                              { label: 'Reps needing attention', value: repsAtRisk },
+                              { label: candidateCount > 0 ? 'Trigger candidates' : 'Whisperer sessions', value: candidateCount > 0 ? candidateCount : whispererSessions },
+                            ].map((stat) => (
+                              <div key={stat.label} className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-white tabular-nums">{stat.value}</div>
+                                <div className="text-[11px] text-neutral-500">{stat.label}</div>
+                              </div>
                             ))}
                           </div>
-                        )}
+                        </div>
+
+                        {/* Sparring progress snapshot (Day 149 — from already-loaded sparring data) */}
+                        {(() => {
+                          const completed = recentSparring.filter((s) => s.completedAt).length
+                          const scored = recentSparring.filter((s) => typeof s.overall === 'number' && s.overall > 0)
+                          const avgScore = scored.length > 0 ? Math.round(scored.reduce((sum, s) => sum + s.overall, 0) / scored.length) : null
+                          const weakCounts = new Map<string, number>()
+                          recentSparring.forEach((s) => {
+                            if (s.weakestDimension && s.weakestDimension !== 'unknown') {
+                              weakCounts.set(s.weakestDimension, (weakCounts.get(s.weakestDimension) ?? 0) + 1)
+                            }
+                          })
+                          const weakest = [...weakCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+                          return (
+                            <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Sparring progress</div>
+                              {sparringLoading ? (
+                                <p className="mt-1 text-[12px] text-neutral-500">Loading sparring progress…</p>
+                              ) : recentSparring.length === 0 ? (
+                                <p className="mt-1 text-[12px] text-neutral-400">No sparring sessions completed yet.</p>
+                              ) : (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-neutral-400">
+                                  <span><span className="text-neutral-200 tabular-nums">{recentSparring.length}</span> recent</span>
+                                  <span><span className="text-neutral-200 tabular-nums">{completed}</span> completed</span>
+                                  {avgScore !== null && <span>Avg score <span className="text-neutral-200 tabular-nums">{avgScore}</span></span>}
+                                  {weakest && <span>Weakest area <span className="text-neutral-200 capitalize">{weakest}</span></span>}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )
                   })()}
@@ -1523,14 +1644,27 @@ export default function CoachingPage() {
                                 </div>
                               </div>
                               <div className="text-[11px] text-neutral-500">{rep.riskReason}</div>
+                              {/* Day 149 — recommended sparring drill from this rep's weak area */}
+                              <div className="text-[11px] text-neutral-400">
+                                Recommended drill: <span className="text-neutral-200">{sparringDrillForText(rep.riskReason || rep.recommendedAction)}</span>
+                              </div>
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-medium text-amber-300 truncate">{rep.recommendedAction}</span>
-                                <Link
-                                  href={`/crm/reps/${rep.repId}`}
-                                  className="shrink-0 rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
-                                >
-                                  Open Rep
-                                </Link>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setTab('assignments')}
+                                    className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                  >
+                                    Assign sparring
+                                  </button>
+                                  <Link
+                                    href={`/crm/reps/${rep.repId}`}
+                                    className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                  >
+                                    Open Rep
+                                  </Link>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1906,6 +2040,7 @@ export default function CoachingPage() {
                       </SectionCard>
 
                       {/* Tier 2B Day 130 — Suggested Trigger Candidates (read-only) */}
+                      <span id="ai-discovery" className="block scroll-mt-4" aria-hidden="true" />
                       <SectionCard variant="ai" title="Suggested Trigger Candidates" subtitle="Recurring sales moments mined from recent sessions.">
                         <p className="mb-1 text-[11px] text-neutral-500">
                           Gravix can spot repeated sales moments and suggest triggers. Managers approve before anything goes live.

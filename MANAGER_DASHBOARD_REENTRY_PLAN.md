@@ -122,3 +122,49 @@ built (team health, coaching queue, Whisperer Insights, AI Discovery, sparring),
 turning the existing data into a demo-ready manager surface with no new backend
 work. Day 148 lands the first slice: a compact "What to do next" triage panel on
 the Overview tab.
+
+---
+
+## Day 149 — Manager Command Centre header (shipped)
+
+WEB-only. No API change, no migration. Built entirely on data already loaded by
+the Overview tab (`/v1/manager/command-centre`, `/v1/manager/sparring-sessions`,
+`/v1/manager/whisperer-sessions`, `/v1/manager/whisperer-trigger-candidates`).
+
+Implemented on `/coaching` Overview tab:
+
+- **Command Centre header** — "Your team coaching command centre" headline +
+  "Review calls, assign drills, and act on the highest-priority coaching
+  moments." Promotes the Day 148 triage into a proper top manager action area.
+- **Priority action cards (4)** — Review calls · Coach reps at risk · Assign
+  sparring · Review AI discovery candidates. Each shows a count, a short reason,
+  and a CTA that jumps to the relevant tab/section (Review Queue, Interventions,
+  Assignments, and a smooth-scroll anchor to AI Discovery).
+- **Team coaching snapshot** — small stat row: calls needing review, open
+  assignments, reps needing attention, trigger candidates / Whisperer sessions.
+- **Sparring progress snapshot** — recent / completed counts, average score and
+  weakest area from the already-loaded sparring sessions.
+- **Recommended sparring drill mapping** (`sparringDrillForText`) — maps a weak
+  skill / section / risk reason to a drill label (e.g. "Price objection
+  sparring", "Closing confidence drill", "Discovery question drill", "Opening
+  structure drill"). Surfaced in the Assign-sparring action card and on each
+  Reps-Needing-Attention row as "Recommended drill: …" + an "Assign sparring"
+  CTA (jumps to the Assignments tab — no new endpoint, no auto-creation).
+- **Manager empty-states** — "No calls waiting for review.", "No reps need urgent
+  coaching.", "No new AI trigger candidates yet.", "No sparring sessions
+  completed yet."
+
+Manager approval gates preserved — nothing auto-creates or auto-activates. Tier
+2B behaviour unchanged.
+
+### What remains for Day 150+
+
+- **Day 150** — Coaching Queue consolidation (Review Queue + Calls Needing Review
+  + Reps Needing Attention into one triage flow).
+- **Day 151** — Whisperer Insights ↔ AI Discovery cross-linking + suggestion-used
+  rate surfaced up top.
+- **Day 152** — Fuller Sparring Progress panel (completion rate from
+  reporting-summary; link to `/reps/[id]/sparring`).
+- **Day 153** — Demo polish; consolidate `control-centre` / `recent-calls` stubs.
+- **Wire "Assign sparring" to a real assignment/drill create flow** once a safe
+  endpoint is confirmed (today it routes to the Assignments tab).
