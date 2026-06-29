@@ -422,3 +422,47 @@ Adds `scripts/validate-manager-dashboard-day-155.sh` + package script.
   (`meta.completion_score` over time) in the Sparring Progress snapshot, now that
   completion evidence is persisted rather than re-derived. Separately, demo polish:
   consolidate the `control-centre` / `recent-calls` stubs.
+
+---
+
+## Day 156 — Sparring score trend foundation (shipped)
+
+**WEB-only. No new backend, no migration.** Builds an early manager-facing
+Sparring Score Trend from the proof metadata persisted in Day 155
+(`assignments.meta.completion_score` etc.), which the existing
+`GET /v1/assignments/manager` already returns (`SELECT_FIELDS` includes `meta`).
+
+Data audit: assignment meta now carries `completion_score`,
+`matched_sparring_session_id`, `completed_session_at` and `completed_via`, so
+proof-backed completions are computable from assignments alone — no sparring
+sessions fallback and **no new endpoint** required.
+
+Implemented (pure helpers, no charting library):
+- `isQueueOriginSparring(a)` / `getProofScore(a)` — queue-origin sparring + valid
+  numeric score.
+- `getSparringProofRows(assignments, repNameById)` — queue-origin sparring with
+  `meta.completed_via === "sparring_session_match"` and a numeric
+  `completion_score`; rows carry rep, drill, score, completed date and matched
+  session id, newest first.
+- `computeSparringTrendSummary(rows)` — `proofCount`, `averageScore`, `bestScore`,
+  `latestScore`, `uniqueReps`, `uniqueDrills`.
+
+UI (Overview, under Queue-assigned sparring): **"Sparring score trend"** card —
+Proof-backed completions / Average proof score / Best proof score / Latest proof
+score, then up to 3 recent proof-backed completions (rep · drill · score ·
+completed date · shortened session link). Empty state **"No proof-backed sparring
+scores yet."** plus caveat **"Trend data becomes stronger as more assigned drills
+are completed."** The Sparring Progress snapshot also gains an **"Avg proof
+score"** figure.
+
+Limited until more drills are completed — the foundation grows with proof volume.
+Tier 2B + manager approval gates preserved. Adds
+`scripts/validate-manager-dashboard-day-156.sh` + package script.
+
+### Day 157 recommendation
+
+- Add a lightweight **per-rep / per-drill breakdown** (group proof rows by rep and
+  by drill with each group's average + completion count) and a simple
+  improving/declining indicator once a rep has ≥2 proof scores — still WEB-only
+  from `meta.completion_score`, no backend. Separately, demo polish: consolidate
+  the `control-centre` / `recent-calls` stubs.

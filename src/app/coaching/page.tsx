@@ -655,6 +655,79 @@ function findRelatedSparringSession(assignment: Assignment, sessions: RecentSpar
   return { confidence: 'inferred', sessionId: chosen.sessionId, overall: chosen.overall, completedAt: chosen.completedAt, weakest: chosen.weakestDimension }
 }
 
+// Day 156 — Sparring Score Trend foundation. Proof-backed completion scores
+// persisted on assignment.meta by Day 155 power an early manager-facing trend.
+// Pure helpers — no charting, no backend; assignment meta is the source.
+function isQueueOriginSparring(a: Assignment): boolean {
+  return (
+    String(a.type || '') === 'sparring' &&
+    (String(a.source || '') === 'manager_dashboard' || String(a.meta?.origin_label || '') === 'Coaching Queue')
+  )
+}
+
+function getProofScore(a: Assignment): number | null {
+  const v = a.meta?.completion_score
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+type SparringProofRow = {
+  assignmentId: string
+  repName: string | null
+  drill: string
+  score: number
+  completedAt: string | null
+  matchedSparringSessionId: string | null
+}
+
+// Queue-origin sparring assignments with a persisted proof score, newest first.
+function getSparringProofRows(assignments: Assignment[], repNameById: Map<string, string>): SparringProofRow[] {
+  return assignments
+    .filter(
+      (a) =>
+        isQueueOriginSparring(a) &&
+        String(a.meta?.completed_via || '') === 'sparring_session_match' &&
+        getProofScore(a) !== null
+    )
+    .map((a) => ({
+      assignmentId: a.id,
+      repName: (a.rep_id && repNameById.get(String(a.rep_id))) || null,
+      drill: String(a.meta?.recommended_drill || a.title || 'Sparring drill'),
+      score: getProofScore(a) as number,
+      completedAt: (a.meta?.completed_session_at as string) || a.completed_at || null,
+      matchedSparringSessionId: (a.meta?.matched_sparring_session_id as string) || null,
+    }))
+    .sort((a, b) => {
+      const at = a.completedAt ? new Date(a.completedAt).getTime() : 0
+      const bt = b.completedAt ? new Date(b.completedAt).getTime() : 0
+      return bt - at
+    })
+}
+
+type SparringTrendSummary = {
+  proofCount: number
+  averageScore: number | null
+  bestScore: number | null
+  latestScore: number | null
+  uniqueReps: number
+  uniqueDrills: number
+}
+
+function computeSparringTrendSummary(rows: SparringProofRow[]): SparringTrendSummary {
+  if (rows.length === 0) {
+    return { proofCount: 0, averageScore: null, bestScore: null, latestScore: null, uniqueReps: 0, uniqueDrills: 0 }
+  }
+  const scores = rows.map((r) => r.score)
+  // rows are already sorted newest-first by completedAt.
+  return {
+    proofCount: rows.length,
+    averageScore: Math.round(scores.reduce((s, n) => s + n, 0) / scores.length),
+    bestScore: Math.max(...scores),
+    latestScore: rows[0].score,
+    uniqueReps: new Set(rows.map((r) => r.repName || r.assignmentId)).size,
+    uniqueDrills: new Set(rows.map((r) => r.drill.toLowerCase())).size,
+  }
+}
+
 function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
   const overdue = Number(rep.counts?.overdue ?? 0)
   if (overdue > 0 || critical > 0) return 'high'
@@ -1746,6 +1819,8 @@ export default function CoachingPage() {
                             }
                           })
                           const weakest = [...weakCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+                          // Day 156 — proof-backed average from persisted assignment scores.
+                          const proofTrend = computeSparringTrendSummary(getSparringProofRows(assignments, repNameById))
                           return (
                             <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5">
                               <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Sparring progress</div>
@@ -1758,6 +1833,7 @@ export default function CoachingPage() {
                                   <span><span className="text-neutral-200 tabular-nums">{recentSparring.length}</span> recent</span>
                                   <span><span className="text-neutral-200 tabular-nums">{completed}</span> completed</span>
                                   {avgScore !== null && <span>Avg score <span className="text-neutral-200 tabular-nums">{avgScore}</span></span>}
+                                  {proofTrend.averageScore !== null && <span>Avg proof score <span className="text-neutral-200 tabular-nums">{proofTrend.averageScore}%</span></span>}
                                   {weakest && <span>Weakest area <span className="text-neutral-200 capitalize">{weakest}</span></span>}
                                 </div>
                               )}
@@ -2049,6 +2125,62 @@ export default function CoachingPage() {
                               )
                             })}
                           </div>
+                        )}
+                      </SectionCard>
+                    )
+                  })()}
+
+                  {/* Day 156 — Sparring score trend foundation (proof-backed scores) */}
+                  {(() => {
+                    const proofRows = getSparringProofRows(assignments, repNameById)
+                    const trend = computeSparringTrendSummary(proofRows)
+                    const recent = proofRows.slice(0, 3)
+                    return (
+                      <SectionCard variant="coaching" title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
+                        {proofRows.length === 0 ? (
+                          <div className="space-y-1">
+                            <EmptyRow message="No proof-backed sparring scores yet." />
+                            <p className="text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-white tabular-nums">{trend.proofCount}</div>
+                                <div className="text-[11px] text-neutral-500">Proof-backed completions</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-emerald-300 tabular-nums">{trend.averageScore !== null ? `${trend.averageScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Average proof score</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-cyan-300 tabular-nums">{trend.bestScore !== null ? `${trend.bestScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Best proof score</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-white tabular-nums">{trend.latestScore !== null ? `${trend.latestScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Latest proof score</div>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              {recent.map((r) => (
+                                <div key={r.assignmentId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{r.drill}</span>
+                                    <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.score}%</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                    {r.repName && <span>{r.repName}</span>}
+                                    {r.completedAt && <span>Completed {new Date(r.completedAt).toLocaleDateString('en-GB')}</span>}
+                                    {r.matchedSparringSessionId && (
+                                      <Link href={`/sparring/${r.matchedSparringSessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">Session {r.matchedSparringSessionId.slice(0, 8)}</Link>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
+                          </>
                         )}
                       </SectionCard>
                     )
