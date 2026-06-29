@@ -1598,6 +1598,136 @@ export default function CoachingPage() {
                     )
                   })()}
 
+                  {/* Day 150 — Coaching Queue: consolidates calls needing review, rep
+                      risk, open/overdue assignments and weak skills into one
+                      prioritised list (all from already-loaded command-centre data;
+                      no new API). Sits under the command-centre summary cards. */}
+                  {(() => {
+                    type QPriority = 'High' | 'Medium' | 'Low'
+                    type QType = 'Call review' | 'Rep risk' | 'Assignment' | 'Weak skill'
+                    type QAction = { label: string; onClick?: () => void; href?: string }
+                    type QItem = { key: string; priority: QPriority; type: QType; title: string; reason: string; drill?: string; actions: QAction[] }
+
+                    const goAssign = () => setTab('assignments')
+                    const items: QItem[] = []
+
+                    // 1. Calls needing review — High if very low score, else Medium.
+                    commandCentre.callsNeedingReview.forEach((c) => {
+                      items.push({
+                        key: `call-${c.callId}`,
+                        priority: c.overallScore < 50 ? 'High' : 'Medium',
+                        type: 'Call review',
+                        title: c.title,
+                        reason: `${c.repName} · score ${c.overallScore} · weakest ${c.weakestSkill}`,
+                        drill: sparringDrillForText(c.weakestSkill),
+                        actions: [
+                          { label: 'Review call', href: `/calls/${c.callId}` },
+                          { label: 'Assign sparring', onClick: goAssign },
+                        ],
+                      })
+                    })
+
+                    // 2. Reps needing attention — High if red risk, else Medium.
+                    commandCentre.repsNeedingAttention.forEach((r) => {
+                      items.push({
+                        key: `rep-${r.repId}`,
+                        priority: r.riskLevel === 'red' ? 'High' : 'Medium',
+                        type: 'Rep risk',
+                        title: r.repName,
+                        reason: r.riskReason,
+                        drill: sparringDrillForText(r.riskReason || r.recommendedAction),
+                        actions: [
+                          { label: 'Assign sparring', onClick: goAssign },
+                          { label: 'View rep', onClick: () => setTab('interventions') },
+                        ],
+                      })
+                    })
+
+                    // 3. Open / overdue assignments — overdue or high priority = High.
+                    commandCentre.openAssignments.forEach((a) => {
+                      const overdue = a.status === 'overdue'
+                      const priority: QPriority = overdue || a.priority === 'high' ? 'High' : a.priority === 'medium' ? 'Medium' : 'Low'
+                      items.push({
+                        key: `assign-${a.assignmentId}`,
+                        priority,
+                        type: 'Assignment',
+                        title: a.title,
+                        reason: `${a.repName}${overdue ? ' · overdue' : a.dueAt ? ` · due ${new Date(a.dueAt).toLocaleDateString('en-GB')}` : ''}`,
+                        actions: [{ label: 'View assignments', onClick: goAssign }],
+                      })
+                    })
+
+                    // 4. Weak skill signals — High if average score is very low.
+                    commandCentre.weakestSkills.forEach((s) => {
+                      items.push({
+                        key: `skill-${s.skill}`,
+                        priority: s.averageScore < 50 ? 'High' : 'Medium',
+                        type: 'Weak skill',
+                        title: `${s.skill} needs work`,
+                        reason: `${s.count} weak ${s.count === 1 ? 'call' : 'calls'} · team avg ${s.averageScore}`,
+                        drill: sparringDrillForText(s.skill),
+                        actions: [{ label: 'Assign sparring', onClick: goAssign }],
+                      })
+                    })
+
+                    const rank: Record<QPriority, number> = { High: 0, Medium: 1, Low: 2 }
+                    const queue = [...items].sort((a, b) => rank[a.priority] - rank[b.priority]).slice(0, 6)
+
+                    const PRIO_CLS: Record<QPriority, string> = {
+                      High: 'border-red-500/30 bg-red-500/10 text-red-300',
+                      Medium: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+                      Low: 'border-neutral-700 bg-neutral-900 text-neutral-400',
+                    }
+
+                    return (
+                      <SectionCard title="Coaching Queue" subtitle="Prioritised coaching moments from reviews, rep risk signals and open assignments.">
+                        {queue.length === 0 ? (
+                          <EmptyRow message="All clear — no urgent coaching actions right now." />
+                        ) : (
+                          <div className="space-y-2">
+                            {queue.map((q) => (
+                              <div key={q.key} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${PRIO_CLS[q.priority]}`}>{q.priority}</span>
+                                    <span className="shrink-0 rounded-full border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-400">{q.type}</span>
+                                    <span className="text-sm font-medium text-white truncate">{q.title}</span>
+                                  </div>
+                                </div>
+                                <div className="text-[11px] text-neutral-500">{q.reason}</div>
+                                {q.drill && (
+                                  <div className="text-[11px] text-neutral-400">
+                                    Recommended drill: <span className="text-neutral-200">{q.drill}</span>
+                                  </div>
+                                )}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {q.actions.map((act) => act.href ? (
+                                    <Link
+                                      key={act.label}
+                                      href={act.href}
+                                      className="rounded-md border border-indigo-500/30 bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                    >
+                                      {act.label}
+                                    </Link>
+                                  ) : (
+                                    <button
+                                      key={act.label}
+                                      type="button"
+                                      onClick={act.onClick}
+                                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                    >
+                                      {act.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </SectionCard>
+                    )
+                  })()}
+
                   {/* Team Health */}
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                     <StatCard

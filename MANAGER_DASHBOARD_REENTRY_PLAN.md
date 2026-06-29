@@ -168,3 +168,40 @@ Manager approval gates preserved — nothing auto-creates or auto-activates. Tie
 - **Day 153** — Demo polish; consolidate `control-centre` / `recent-calls` stubs.
 - **Wire "Assign sparring" to a real assignment/drill create flow** once a safe
   endpoint is confirmed (today it routes to the Assignments tab).
+
+---
+
+## Day 150 — Coaching Queue consolidation (shipped)
+
+WEB-only. No API change, no migration. Built entirely on data already loaded by
+the Overview tab (`/v1/manager/command-centre`).
+
+Implemented on `/coaching` Overview tab, directly below the Day 149 Manager
+Command Centre header:
+
+- **Coaching Queue panel** — "Prioritised coaching moments from reviews, rep risk
+  signals and open assignments." Consolidates four scattered signals into one
+  prioritised list of up to 6 items:
+  - **Call review** — calls needing review (High when score < 50, else Medium).
+  - **Rep risk** — reps needing attention (High when red risk, else Medium).
+  - **Assignment** — open / overdue assignments (overdue or high priority = High).
+  - **Weak skill** — weakest team skills (High when average score < 50).
+- Each item shows a **priority badge** (High / Medium / Low), a **type badge**, a
+  title, a reason, a **recommended drill** where relevant (`sparringDrillForText`)
+  and CTAs: Review call (→ call detail), View rep (→ Interventions), View
+  assignments / Assign sparring (→ Assignments tab).
+- **Recommended drill shown** for Call review, Rep risk and Weak skill items.
+- **Assign sparring still jumps to the Assignments tab** — no auto-creation, no
+  new endpoint. Manager approval gates and Tier 2B behaviour unchanged.
+- **Empty state** — "All clear — no urgent coaching actions right now." The
+  Day 149 command-centre cards stay as the high-level summary above the queue;
+  existing per-section empty-states are preserved (consolidation, not a redesign).
+
+### What remains for Day 151+
+
+- **Day 151** — Wire "Assign sparring" to a real assignment/drill creation flow
+  once a safe endpoint is confirmed (today it routes to the Assignments tab); plus
+  Whisperer Insights ↔ AI Discovery cross-linking.
+- **Day 152** — Fuller Sparring Progress panel (completion rate; link to
+  `/reps/[id]/sparring`).
+- **Day 153** — Demo polish; consolidate `control-centre` / `recent-calls` stubs.
