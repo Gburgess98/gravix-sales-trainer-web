@@ -1251,6 +1251,37 @@ export default function CoachingPage() {
     }
   }, [assigningSparringKey, loadOverview, loadAssignments])
 
+  // ── Day 154 — Mark a sparring assignment complete from a direct session match ──
+  // Reuses the existing manager-scoped PATCH /v1/assignments/manager/:id (sets
+  // status=completed + completed_at + completed_by="manager"). Manager click only;
+  // never auto-completes. No migration; no new endpoint.
+  const [markingCompleteId, setMarkingCompleteId] = useState<string | null>(null)
+
+  const markSparringComplete = useCallback(async (assignmentId: string) => {
+    if (markingCompleteId) return
+    setMarkingCompleteId(assignmentId)
+    setReviewNotice(null)
+    try {
+      const res = await proxyFetch(`/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok) {
+        setReviewNotice({ type: 'success', text: 'Sparring assignment marked complete.' })
+        loadOverview()
+        loadAssignments()
+      } else {
+        setReviewNotice({ type: 'error', text: 'Could not mark sparring assignment complete.' })
+      }
+    } catch {
+      setReviewNotice({ type: 'error', text: 'Could not mark sparring assignment complete.' })
+    } finally {
+      setMarkingCompleteId(null)
+    }
+  }, [markingCompleteId, loadOverview, loadAssignments])
+
   const loadRecentSparring = useCallback(async () => {
     setSparringLoading(true)
     setSparringError(null)
@@ -1933,6 +1964,9 @@ export default function CoachingPage() {
                               const drill = String(a.meta?.recommended_drill || '')
                               const match = matches.get(a.id) ?? { confidence: 'none' as const }
                               const hasMatch = match.confidence !== 'none'
+                              const completed = isCompleted(a)
+                              // Day 154 — only a direct, completed-session match enables Mark complete.
+                              const canMarkComplete = !completed && match.confidence === 'direct' && !!match.completedAt && !!match.sessionId
                               return (
                                 <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
                                   <div className="flex items-center justify-between gap-2">
@@ -1965,6 +1999,22 @@ export default function CoachingPage() {
                                   ) : (
                                     <div className="text-[11px] text-neutral-500">No completed sparring found yet</div>
                                   )}
+                                  {/* Day 154 — completion sync (manager click; direct match only) */}
+                                  {completed && hasMatch ? (
+                                    <div className="text-[11px] font-medium text-emerald-300">Completed via sparring session</div>
+                                  ) : canMarkComplete ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="text-[11px] font-medium text-cyan-300">Ready to mark complete</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => markSparringComplete(a.id)}
+                                        disabled={markingCompleteId === a.id}
+                                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                      >
+                                        {markingCompleteId === a.id ? 'Marking…' : 'Mark complete'}
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </div>
                               )
                             })}

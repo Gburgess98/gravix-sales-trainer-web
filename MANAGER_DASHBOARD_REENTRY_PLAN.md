@@ -337,3 +337,44 @@ Clarification / limitation:
   inferred — then surface average score per assigned drill in the Sparring Progress
   snapshot. Separately, demo polish: consolidate the `control-centre` /
   `recent-calls` stubs.
+
+---
+
+## Day 154 — Sparring assignment completion sync (shipped)
+
+WEB-only. **No API change, no migration** — reuses the existing manager-scoped
+`PATCH /v1/assignments/manager/:id`.
+
+Endpoint audit:
+- `PATCH /v1/assignments/manager/:id` is manager-scoped (verifies
+  `assignment.manager_id === x-user-id`; 403/404 otherwise). Accepts `status`; when
+  `status === "completed"` it auto-sets `completed_at` and `completed_by:"manager"`.
+  The Next proxy injects `x-user-id` server-side, so a proxyFetch PATCH carries the
+  manager identity.
+- `PATCH /:id/complete` exists but is **rep-only** (assignee), so unsuitable here.
+- The manager endpoint does **not** accept `meta`, so proof metadata
+  (`matched_sparring_session_id`, `completion_score`) is **not** persisted today.
+  "Completed via sparring session" is derived in the UI from the live direct match.
+
+Implemented:
+- `markSparringComplete(assignmentId)` → `PATCH /v1/assignments/manager/:id` with
+  `{ status: "completed" }`. Manager click only; never auto-completes.
+- In Queue-assigned sparring, **"Mark complete"** shows only when the assignment is
+  not completed **and** `findRelatedSparringSession` returns
+  `confidence === "direct"` with a `completedAt` + `sessionId`. Button → "Marking…"
+  while in flight.
+- Notices: success "Sparring assignment marked complete."; error "Could not mark
+  sparring assignment complete." Refreshes command-centre + assignments after.
+- Status display: completed + matched → "Completed via sparring session"; open +
+  direct match → "Ready to mark complete"; inferred matches stay display-only
+  ("Match: inferred") with no Mark-complete action.
+
+### Day 155 recommendation
+
+- Persist completion proof on the assignment (`meta.completed_via`,
+  `meta.matched_sparring_session_id`, `meta.completion_score`) — either by
+  extending `PATCH /v1/assignments/manager/:id` to accept a `meta` merge or a small
+  dedicated complete-with-proof endpoint — so "Completed via sparring session" is
+  backed by stored evidence rather than a live re-match, and surface average score
+  per assigned drill in the Sparring Progress snapshot. Separately, demo polish:
+  consolidate the `control-centre` / `recent-calls` stubs.
