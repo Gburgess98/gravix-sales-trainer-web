@@ -413,6 +413,16 @@ export async function finalizeSignedUpload(body: {
   return j;
 }
 
+/**
+ * Poll a job's status through the authenticated proxy. Day 164 — upload job
+ * polling previously used a raw fetch with no auth headers, so the proxy could
+ * not resolve the user and returned `missing_user`. Routing through jfetch
+ * carries the same Authorization / x-user-id context as init + finalize.
+ */
+export async function getJobStatus(jobId: string): Promise<{ ok: true; status?: string; job?: any }> {
+  return await jfetch<{ ok: true; status?: string; job?: any }>(`${PROXY}/v1/jobs/${encodeURIComponent(jobId)}`);
+}
+
 // -------------------------------
 // Day 162 — Upload Call linking: reps + accounts pickers (fail-soft)
 // -------------------------------

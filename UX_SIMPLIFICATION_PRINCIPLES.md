@@ -39,6 +39,15 @@ If the founder cannot find upload, an end user or lighthouse client will struggl
 - **If a dropdown can be empty, provide a create/add fallback** — a clear way to
   create the missing record, plus a temporary free-text label so the flow is never
   hard-blocked.
+- **Compact does not mean tiny.** Shrinking a form until it floats in the centre of
+  an empty desktop screen is not the goal — readability and rhythm matter.
+- **Desktop pages should use space intentionally** — use the available width
+  deliberately rather than leaving large dead empty space.
+- **Use side panels for guidance instead of stretching forms** — a calm right-hand
+  panel ("what happens next", tips, secondary actions) fills the width without
+  making inputs awkwardly wide.
+- **Error messages should explain what happened and what to do next** — say what
+  succeeded, what failed, the reason, and the recovery action (e.g. retry).
 
 ## 3. Manager navigation model
 

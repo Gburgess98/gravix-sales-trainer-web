@@ -185,7 +185,35 @@ WEB-only UX pass; no API change, no migration.
 `/upload` itself — managers create accounts on `/crm/accounts` in a separate tab,
 then return. Rep / call type / tag remain UI-only (no column), as in Day 162.
 
-**Day 164 recommendation:** either (a) inline a lightweight create-client action on
-`/upload` (modal calling `POST /v1/accounts`, then refresh the dropdown), or (b)
-proceed to the Day 162 backend data-model task (persist rep / call type / label).
-Pair whichever with the §5 demo-data checklist against a real demo org.
+**Next step (Day 164):** fix the `missing_user` processing failure seen in demo
+testing and use the desktop width better.
+
+---
+
+## 11. Day 164 — Fix upload user linking + better space usage (done)
+
+WEB-only fix + layout pass; no API change, no migration.
+
+- **`missing_user` fixed.** The job-status poll after upload used a raw `fetch`
+  with no auth headers, so the Next proxy (`/api/proxy`) could not resolve the
+  user and returned `missing_user` 401 — even though init + finalize (which go
+  through the authenticated `jfetch` helper) succeeded and the call row was
+  created with `user_id`. Polling now routes through a new authenticated
+  `getJobStatus()` helper, carrying the same `Authorization` / `x-user-id`
+  context. No API change; the authenticated uploader remains the call owner.
+- **Better desktop space usage.** `/upload` is now a two-column layout (form on
+  the left, calm guidance on the right) at `max-w-5xl`, stacking on mobile, so
+  the page fills the width instead of floating with dead space.
+- **Right guidance panel:** "What happens next" (upload → review queue → manager
+  reviews score / weak skills / coaching actions), a "Need a new client?" create
+  link (opens Accounts in a new tab), and a calm "Demo tip".
+- **Clearer error copy:** processing failures now read "Call uploaded, but
+  processing could not start." with a "Reason: …" line and the retry action kept.
+
+**Remaining metadata gap:** rep / call type / tag are still UI-only (no DB column;
+rep = uploader `user_id`), as in Day 162–163.
+
+**Day 165 recommendation:** proceed to the deferred backend data-model task —
+persist the selected rep / call type / label behind one small migration — or
+inline a create-client modal on `/upload`. Pair with the §5 demo-data checklist
+against a real demo org, now that upload processing completes cleanly.

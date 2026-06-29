@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   signedInitUpload,
   finalizeSignedUpload,
+  getJobStatus,
   listTeamUsers,
   listUploadAccounts,
   type UploadRepOption,
@@ -59,6 +60,7 @@ export default function UploadPage() {
   const [uploadStage, setUploadStage] = useState<"idle" | "init" | "put" | "finalize" | "processing" | "done" | "error">("idle");
   const [lastErrorStage, setLastErrorStage] = useState<null | "init" | "put" | "finalize" | "processing">(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
+  const [processingReason, setProcessingReason] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -98,11 +100,10 @@ export default function UploadPage() {
   async function waitForJob(jobId: string, maxMs = 20000) {
     const started = Date.now();
     while (Date.now() - started < maxMs) {
-      const r = await fetch(`/api/proxy/v1/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j?.ok === false) {
-        throw new Error(j?.error || `HTTP ${r.status}`);
-      }
+      // Day 164 — poll through the authenticated proxy helper so job polling
+      // carries the same user context as init/finalize (a raw fetch had no
+      // auth headers, so the proxy returned missing_user).
+      const j: any = await getJobStatus(jobId);
       const status = String(j?.status || j?.job?.status || "");
       setJobStatus(status);
       if (status === "succeeded") return j.job ?? j;
@@ -121,6 +122,7 @@ export default function UploadPage() {
     setProgress(0);
     setJobStatus(null);
     setLastErrorStage(null);
+    setProcessingReason(null);
     setUploadStage("init");
 
     try {
@@ -165,7 +167,8 @@ export default function UploadPage() {
         } catch (e: any) {
           setLastErrorStage("processing");
           setUploadStage("error");
-          setMsg(friendlyUploadError("processing", e));
+          setProcessingReason(String(e?.message || "unknown"));
+          setMsg(null);
           return;
         }
       }
@@ -210,12 +213,13 @@ export default function UploadPage() {
     setProgress(0);
     setUploadStage("idle");
     setJobStatus(null);
+    setProcessingReason(null);
   }
 
   const fieldClass = "w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600";
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-6 space-y-4">
+    <div className="mx-auto w-full max-w-5xl p-6 space-y-4">
       {/* Header */}
       <div>
         <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Calls</p>
@@ -225,6 +229,11 @@ export default function UploadPage() {
         </p>
       </div>
 
+      {/* Two-column on desktop: form on the left, calm guidance on the right so the
+          page uses the available width instead of floating in the centre. */}
+      <div className="grid gap-5 lg:grid-cols-3">
+        {/* Left column — form / success */}
+        <div className="lg:col-span-2">
       {/* Success state */}
       {uploadStage === "done" && result?.ok ? (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-3">
@@ -440,6 +449,13 @@ export default function UploadPage() {
             <div className="text-xs text-amber-300">Choose or type a rep before uploading.</div>
           )}
 
+          {uploadStage === "error" && lastErrorStage === "processing" && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
+              <div>Call uploaded, but processing could not start.</div>
+              <div className="mt-0.5 text-xs text-neutral-400">Reason: {processingReason || "unknown"}</div>
+            </div>
+          )}
+
           {msg && (
             <div
               className={`text-sm ${
@@ -455,6 +471,44 @@ export default function UploadPage() {
           )}
         </form>
       )}
+        </div>
+
+        {/* Right column — calm guidance, uses the desktop width instead of empty space */}
+        <aside className="space-y-4">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">What happens next</h2>
+            <ol className="mt-3 space-y-2.5">
+              {[
+                "We upload the recording",
+                "Gravix sends it to the review queue",
+                "The manager reviews score, weak skills and coaching actions",
+              ].map((step, i) => (
+                <li key={step} className="flex gap-2.5 text-neutral-300">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neutral-700 text-[11px] text-neutral-400">{i + 1}</span>
+                  <span className="text-[13px] leading-5">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Need a new client?</h2>
+            <Link
+              href="/crm/accounts"
+              target="_blank"
+              className="mt-2 inline-block rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
+            >
+              Create new client
+            </Link>
+            <p className="mt-2 text-[12px] text-neutral-500">Opens Accounts in a new tab so your upload stays here.</p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo tip</h2>
+            <p className="mt-2 text-[12px] text-neutral-400">Use a reviewed call with a weak skill to populate the Coaching Queue.</p>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
