@@ -66,6 +66,7 @@
     "validate-manager-dashboard-day-148": "bash scripts/validate-manager-dashboard-day-148.sh",
     "validate-manager-dashboard-day-149": "bash scripts/validate-manager-dashboard-day-149.sh",
     "validate-manager-dashboard-day-150": "bash scripts/validate-manager-dashboard-day-150.sh",
+    "validate-manager-dashboard-day-151": "bash scripts/validate-manager-dashboard-day-151.sh",
     "validate-tier-2b-smoke": "bash scripts/validate-tier-2b-smoke.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",

@@ -323,6 +323,19 @@ const SKILL_TO_SECTION: Record<string, string> = {
   Close: 'close',
 }
 
+// Day 151 — map a free-text skill / reason to an assignment flag_section. The API
+// derives drill_type + dedupe key from flag_section, so this keeps queue-driven
+// sparring assignments aligned with the existing assignment intelligence.
+function sectionForSkill(text: string | null | undefined): string {
+  const t = String(text || '').toLowerCase()
+  if (/objection|price|competitor|trust|authorit/.test(t)) return 'objection'
+  if (/clos|next step/.test(t)) return 'close'
+  if (/discovery|qualif/.test(t)) return 'discovery'
+  if (/intro|open/.test(t)) return 'intro'
+  if (/pitch/.test(t)) return 'pitch'
+  return 'general'
+}
+
 function coachingTitleFor(weakestSkill: string): string {
   return SKILL_TO_TITLE[weakestSkill] ?? 'Call Review Coaching'
 }
@@ -1128,6 +1141,70 @@ export default function CoachingPage() {
     }
   }, [assignDraft, assigning, loadOverview, loadAssignments])
 
+  // ── Day 151 — Assign a sparring drill from a Coaching Queue / weak-skill signal ──
+  // Reuses the existing manager-safe POST /v1/assignments (type: "sparring"). No
+  // migration, no auto-assignment — only fires on an explicit manager click.
+  const [assigningSparringKey, setAssigningSparringKey] = useState<string | null>(null)
+
+  const assignSparring = useCallback(async (opts: {
+    key: string
+    repId?: string | null
+    repName?: string | null
+    drill: string
+    reason: string
+    sectionText: string
+    priority?: 'High' | 'Medium' | 'Low'
+    callId?: string | null
+  }) => {
+    setReviewNotice(null)
+    // No rep context (e.g. team-wide weak skill) — send the manager to the
+    // Assignments tab to choose a rep rather than guessing one.
+    if (!opts.repId) {
+      setTab('assignments')
+      setReviewNotice({ type: 'error', text: 'Choose a rep to assign this drill.' })
+      return
+    }
+    if (assigningSparringKey) return
+    setAssigningSparringKey(opts.key)
+    try {
+      const res = await proxyFetch('/v1/assignments', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          rep_id: opts.repId,
+          type: 'sparring',
+          title: `Recommended drill: ${opts.drill}`,
+          due_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+          source: 'manager_dashboard',
+          notes: `Reason: ${opts.reason}`.slice(0, 4000),
+          meta: {
+            assignment_origin: 'manager_dashboard',
+            origin_label: 'Coaching Queue',
+            flag_section: sectionForSkill(opts.sectionText),
+            priority: (opts.priority ?? 'Medium').toLowerCase(),
+            recommended_drill: opts.drill,
+            ...(opts.callId ? { source_call_id: opts.callId } : {}),
+          },
+          ...(opts.callId ? { target_id: opts.callId } : {}),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.ok && data?.skipped) {
+        setReviewNotice({ type: 'error', text: 'Not assigned — this rep already has an active drill for this skill.' })
+      } else if (data?.ok) {
+        setReviewNotice({ type: 'success', text: 'Sparring drill assigned.' })
+        loadOverview()
+        loadAssignments()
+      } else {
+        setReviewNotice({ type: 'error', text: 'Could not assign sparring drill.' })
+      }
+    } catch {
+      setReviewNotice({ type: 'error', text: 'Could not assign sparring drill.' })
+    } finally {
+      setAssigningSparringKey(null)
+    }
+  }, [assigningSparringKey, loadOverview, loadAssignments])
+
   const loadRecentSparring = useCallback(async () => {
     setSparringLoading(true)
     setSparringError(null)
@@ -1605,7 +1682,7 @@ export default function CoachingPage() {
                   {(() => {
                     type QPriority = 'High' | 'Medium' | 'Low'
                     type QType = 'Call review' | 'Rep risk' | 'Assignment' | 'Weak skill'
-                    type QAction = { label: string; onClick?: () => void; href?: string }
+                    type QAction = { label: string; onClick?: () => void; href?: string; kind?: 'assignSparring' }
                     type QItem = { key: string; priority: QPriority; type: QType; title: string; reason: string; drill?: string; actions: QAction[] }
 
                     const goAssign = () => setTab('assignments')
@@ -1613,31 +1690,37 @@ export default function CoachingPage() {
 
                     // 1. Calls needing review — High if very low score, else Medium.
                     commandCentre.callsNeedingReview.forEach((c) => {
+                      const key = `call-${c.callId}`
+                      const drill = sparringDrillForText(c.weakestSkill)
+                      const reason = `${c.repName} · score ${c.overallScore} · weakest ${c.weakestSkill}`
                       items.push({
-                        key: `call-${c.callId}`,
+                        key,
                         priority: c.overallScore < 50 ? 'High' : 'Medium',
                         type: 'Call review',
                         title: c.title,
-                        reason: `${c.repName} · score ${c.overallScore} · weakest ${c.weakestSkill}`,
-                        drill: sparringDrillForText(c.weakestSkill),
+                        reason,
+                        drill,
                         actions: [
                           { label: 'Review call', href: `/calls/${c.callId}` },
-                          { label: 'Assign sparring', onClick: goAssign },
+                          { label: 'Assign sparring', kind: 'assignSparring', onClick: () => assignSparring({ key, repId: c.repId, repName: c.repName, drill, reason, sectionText: c.weakestSkill, priority: c.overallScore < 50 ? 'High' : 'Medium', callId: c.callId }) },
                         ],
                       })
                     })
 
                     // 2. Reps needing attention — High if red risk, else Medium.
                     commandCentre.repsNeedingAttention.forEach((r) => {
+                      const key = `rep-${r.repId}`
+                      const drill = sparringDrillForText(r.riskReason || r.recommendedAction)
+                      const priority: QPriority = r.riskLevel === 'red' ? 'High' : 'Medium'
                       items.push({
-                        key: `rep-${r.repId}`,
-                        priority: r.riskLevel === 'red' ? 'High' : 'Medium',
+                        key,
+                        priority,
                         type: 'Rep risk',
                         title: r.repName,
                         reason: r.riskReason,
-                        drill: sparringDrillForText(r.riskReason || r.recommendedAction),
+                        drill,
                         actions: [
-                          { label: 'Assign sparring', onClick: goAssign },
+                          { label: 'Assign sparring', kind: 'assignSparring', onClick: () => assignSparring({ key, repId: r.repId, repName: r.repName, drill, reason: r.riskReason, sectionText: r.riskReason || r.recommendedAction, priority }) },
                           { label: 'View rep', onClick: () => setTab('interventions') },
                         ],
                       })
@@ -1658,15 +1741,21 @@ export default function CoachingPage() {
                     })
 
                     // 4. Weak skill signals — High if average score is very low.
+                    // Team-wide (no rep context) — assigning routes to the Assignments
+                    // tab so the manager picks a rep.
                     commandCentre.weakestSkills.forEach((s) => {
+                      const key = `skill-${s.skill}`
+                      const drill = sparringDrillForText(s.skill)
+                      const reason = `${s.count} weak ${s.count === 1 ? 'call' : 'calls'} · team avg ${s.averageScore}`
+                      const priority: QPriority = s.averageScore < 50 ? 'High' : 'Medium'
                       items.push({
-                        key: `skill-${s.skill}`,
-                        priority: s.averageScore < 50 ? 'High' : 'Medium',
+                        key,
+                        priority,
                         type: 'Weak skill',
                         title: `${s.skill} needs work`,
-                        reason: `${s.count} weak ${s.count === 1 ? 'call' : 'calls'} · team avg ${s.averageScore}`,
-                        drill: sparringDrillForText(s.skill),
-                        actions: [{ label: 'Assign sparring', onClick: goAssign }],
+                        reason,
+                        drill,
+                        actions: [{ label: 'Assign sparring', kind: 'assignSparring', onClick: () => assignSparring({ key, repId: null, drill, reason, sectionText: s.skill, priority }) }],
                       })
                     })
 
@@ -1709,6 +1798,16 @@ export default function CoachingPage() {
                                     >
                                       {act.label}
                                     </Link>
+                                  ) : act.kind === 'assignSparring' ? (
+                                    <button
+                                      key={act.label}
+                                      type="button"
+                                      onClick={act.onClick}
+                                      disabled={assigningSparringKey === q.key}
+                                      className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                    >
+                                      {assigningSparringKey === q.key ? 'Assigning…' : act.label}
+                                    </button>
                                   ) : (
                                     <button
                                       key={act.label}
@@ -1783,10 +1882,11 @@ export default function CoachingPage() {
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => setTab('assignments')}
-                                    className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                    onClick={() => assignSparring({ key: `attn-${rep.repId}`, repId: rep.repId, repName: rep.repName, drill: sparringDrillForText(rep.riskReason || rep.recommendedAction), reason: rep.riskReason, sectionText: rep.riskReason || rep.recommendedAction, priority: rep.riskLevel === 'red' ? 'High' : 'Medium' })}
+                                    disabled={assigningSparringKey === `attn-${rep.repId}`}
+                                    className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
                                   >
-                                    Assign sparring
+                                    {assigningSparringKey === `attn-${rep.repId}` ? 'Assigning…' : 'Assign sparring'}
                                   </button>
                                   <Link
                                     href={`/crm/reps/${rep.repId}`}
@@ -1925,6 +2025,18 @@ export default function CoachingPage() {
                                   className={`h-full rounded-full ${s.averageScore < 55 ? 'bg-red-400/60' : s.averageScore < 70 ? 'bg-amber-400/60' : 'bg-emerald-400/60'}`}
                                   style={{ width: `${Math.min(100, Math.max(6, s.averageScore))}%` }}
                                 />
+                              </div>
+                              {/* Day 151 — team-wide weak skill: assigning routes to the
+                                  Assignments tab to choose a rep (no rep context here). */}
+                              <div className="flex items-center justify-between gap-2 pt-0.5">
+                                <span className="text-[11px] text-neutral-500 truncate">Recommended drill: <span className="text-neutral-300">{sparringDrillForText(s.skill)}</span></span>
+                                <button
+                                  type="button"
+                                  onClick={() => assignSparring({ key: `weak-${s.skill}`, repId: null, drill: sparringDrillForText(s.skill), reason: `Team weak skill: ${s.skill}`, sectionText: s.skill, priority: s.averageScore < 50 ? 'High' : 'Medium' })}
+                                  className="shrink-0 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                >
+                                  Assign sparring
+                                </button>
                               </div>
                             </div>
                           ))}

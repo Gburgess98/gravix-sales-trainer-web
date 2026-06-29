@@ -205,3 +205,46 @@ Command Centre header:
 - **Day 152** — Fuller Sparring Progress panel (completion rate; link to
   `/reps/[id]/sparring`).
 - **Day 153** — Demo polish; consolidate `control-centre` / `recent-calls` stubs.
+
+---
+
+## Day 151 — Assign sparring from the Coaching Queue (shipped)
+
+WEB-only. **No API change, no migration** — the existing manager-gated
+`POST /v1/assignments` already accepts `type: "sparring"`, so the CTA now creates
+a real assignment instead of only jumping to a tab.
+
+Audit result:
+- `POST /v1/assignments` (`requireManager`) — required: `rep_id`, `type` (one of
+  `call_review | sparring | custom | drill | replay`), `title` (≥3 chars).
+  Optional: `due_at`, `source`, `notes`, `meta`, `target_id`. It derives
+  `drill_type` + a uniqueness key from `meta.flag_section` and **dedupes active
+  drills** (returns `{ ok: true, skipped: true, reason: "duplicate_active_drill" }`).
+  Hierarchy/office/company scoped server-side. No new fields needed.
+
+Implemented:
+- `assignSparring()` posts `type: "sparring"`, `source: "manager_dashboard"`,
+  `title: "Recommended drill: <drill>"`, `notes: "Reason: <reason>"`,
+  `meta.origin_label: "Coaching Queue"`, `meta.flag_section` (via
+  `sectionForSkill`), `meta.priority`, `meta.recommended_drill`, plus
+  `target_id`/`meta.source_call_id` for call-review items. `due_at` defaults to
+  7 days out.
+- Wired into the Coaching Queue items (call review, rep risk), the Reps Needing
+  Attention card, and the Weakest Skills card.
+- Button states: "Assign sparring" → "Assigning…" (disabled while in flight).
+- Notices: success "Sparring drill assigned."; duplicate "Not assigned — this rep
+  already has an active drill for this skill."; error "Could not assign sparring
+  drill."
+- **No rep context** (team-wide weak skills): routes to the Assignments tab with
+  "Choose a rep to assign this drill." — no rep is guessed.
+- Manager click required; no auto-assignment, no bulk assignment. Manager
+  approval gates and Tier 2B behaviour unchanged.
+
+### Day 152 recommendation
+
+- Add an explicit rep-picker so team-wide weak-skill drills can be assigned in
+  place (instead of routing to the Assignments tab).
+- Surface assigned sparring drills in the Sparring Progress snapshot / Assignments
+  list with their `origin_label: "Coaching Queue"` so managers can track follow
+  through, and add a fuller Sparring Progress panel (completion rate; link to
+  `/reps/[id]/sparring`).
