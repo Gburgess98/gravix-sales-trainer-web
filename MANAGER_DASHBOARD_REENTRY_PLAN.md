@@ -510,3 +510,41 @@ package script.
   foundation — still WEB-only from `meta.completion_score`, no backend. Optionally
   add a one-line manager onboarding hint linking the demo flow to the relevant tab
   badges.
+
+---
+
+## Day 158 — Sparring score breakdown by rep / drill (shipped)
+
+**WEB-only. No new backend, no migration.** Extends the Day 156 Sparring Score
+Trend with proof-backed breakdowns grouped by rep and by drill, from the same
+`getSparringProofRows()` (assignment `meta.completion_score` etc.).
+
+Grouping helpers (pure, no chart library):
+- `groupProofScoresByRep(rows)` → per rep: `repName`, `proofCount`,
+  `averageScore`, `bestScore`, `latestScore`, `latestCompletedAt`, `trend`
+  (sorted by average desc).
+- `groupProofScoresByDrill(rows)` → per drill: `drill`, `proofCount`,
+  `averageScore`, `bestScore`, `latestScore`, `uniqueReps` (sorted by average desc).
+- `proofTrendOf(scoresOldestFirst)` — `<2` scores → `not_enough_data`; else compare
+  earliest vs latest: `latest ≥ earliest + 5` → improving, `latest ≤ earliest − 5`
+  → declining, otherwise steady. Labels: Improving / Declining / Steady / **Need
+  more scores**.
+
+UI (inside the Sparring score trend card): two compact subsections **"By rep"**
+(up to 3 reps — name, average, completion count, trend label) and **"By drill"**
+(up to 3 drills — drill, average, completions, best, reps). Both always render
+with honest empty states **"No rep-level sparring trend yet."** /
+**"No drill-level sparring trend yet."** and the caveat **"Trends need at least
+two proof-backed scores."** Top-level highlights add **Top drill** and (only when
+a rep genuinely trends improving) **Most improved rep**.
+
+Tier 2B + manager approval gates preserved. Adds
+`scripts/validate-manager-dashboard-day-158.sh` + package script.
+
+### Day 159 recommendation
+
+- Add a small **per-rep drill mix** (which drills each at-risk rep has completed +
+  their average) wired into Reps Needing Attention, so a manager can see at a
+  glance whether assigned drills are lifting a struggling rep — still WEB-only from
+  the proof rows, no backend. Alternatively, begin a lightweight **CSV/clipboard
+  export** of the proof-backed scores for managers who want the numbers offline.

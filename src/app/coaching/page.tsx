@@ -728,6 +728,100 @@ function computeSparringTrendSummary(rows: SparringProofRow[]): SparringTrendSum
   }
 }
 
+// Day 158 — proof-backed sparring performance grouped by rep / by drill.
+type ProofTrend = 'improving' | 'declining' | 'steady' | 'not_enough_data'
+
+const PROOF_TREND_LABELS: Record<ProofTrend, string> = {
+  improving: 'Improving',
+  declining: 'Declining',
+  steady: 'Steady',
+  not_enough_data: 'Need more scores',
+}
+
+const PROOF_TREND_CLASSES: Record<ProofTrend, string> = {
+  improving: 'text-emerald-300',
+  declining: 'text-red-300',
+  steady: 'text-neutral-300',
+  not_enough_data: 'text-neutral-500',
+}
+
+const completedMs = (s: string | null) => (s ? new Date(s).getTime() : 0)
+
+// Trend from a chronological (oldest-first) score series: ±5 points vs earliest.
+function proofTrendOf(scoresOldestFirst: number[]): ProofTrend {
+  if (scoresOldestFirst.length < 2) return 'not_enough_data'
+  const earliest = scoresOldestFirst[0]
+  const latest = scoresOldestFirst[scoresOldestFirst.length - 1]
+  if (latest >= earliest + 5) return 'improving'
+  if (latest <= earliest - 5) return 'declining'
+  return 'steady'
+}
+
+type SparringRepTrend = {
+  repName: string
+  proofCount: number
+  averageScore: number
+  bestScore: number
+  latestScore: number
+  latestCompletedAt: string | null
+  trend: ProofTrend
+}
+
+function groupProofScoresByRep(rows: SparringProofRow[]): SparringRepTrend[] {
+  const byRep = new Map<string, SparringProofRow[]>()
+  rows.forEach((r) => {
+    const key = r.repName || 'Unknown rep'
+    byRep.set(key, [...(byRep.get(key) ?? []), r])
+  })
+  return [...byRep.entries()]
+    .map(([repName, group]) => {
+      const oldestFirst = [...group].sort((a, b) => completedMs(a.completedAt) - completedMs(b.completedAt))
+      const latest = oldestFirst[oldestFirst.length - 1]
+      const scores = group.map((r) => r.score)
+      return {
+        repName,
+        proofCount: group.length,
+        averageScore: Math.round(scores.reduce((s, n) => s + n, 0) / scores.length),
+        bestScore: Math.max(...scores),
+        latestScore: latest.score,
+        latestCompletedAt: latest.completedAt,
+        trend: proofTrendOf(oldestFirst.map((r) => r.score)),
+      }
+    })
+    .sort((a, b) => b.averageScore - a.averageScore)
+}
+
+type SparringDrillTrend = {
+  drill: string
+  proofCount: number
+  averageScore: number
+  bestScore: number
+  latestScore: number
+  uniqueReps: number
+}
+
+function groupProofScoresByDrill(rows: SparringProofRow[]): SparringDrillTrend[] {
+  const byDrill = new Map<string, SparringProofRow[]>()
+  rows.forEach((r) => {
+    const key = r.drill || 'Sparring drill'
+    byDrill.set(key, [...(byDrill.get(key) ?? []), r])
+  })
+  return [...byDrill.entries()]
+    .map(([drill, group]) => {
+      const oldestFirst = [...group].sort((a, b) => completedMs(a.completedAt) - completedMs(b.completedAt))
+      const scores = group.map((r) => r.score)
+      return {
+        drill,
+        proofCount: group.length,
+        averageScore: Math.round(scores.reduce((s, n) => s + n, 0) / scores.length),
+        bestScore: Math.max(...scores),
+        latestScore: oldestFirst[oldestFirst.length - 1].score,
+        uniqueReps: new Set(group.map((r) => r.repName || r.assignmentId)).size,
+      }
+    })
+    .sort((a, b) => b.averageScore - a.averageScore)
+}
+
 function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
   const overdue = Number(rep.counts?.overdue ?? 0)
   if (overdue > 0 || critical > 0) return 'high'
@@ -2165,6 +2259,11 @@ export default function CoachingPage() {
                     const proofRows = getSparringProofRows(assignments, repNameById)
                     const trend = computeSparringTrendSummary(proofRows)
                     const recent = proofRows.slice(0, 3)
+                    // Day 158 — rep / drill breakdowns from the same proof rows.
+                    const byRep = groupProofScoresByRep(proofRows)
+                    const byDrill = groupProofScoresByDrill(proofRows)
+                    const topDrill = byDrill[0] ?? null
+                    const improvedRep = byRep.find((r) => r.trend === 'improving') ?? null
                     return (
                       <SectionCard variant="coaching" title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
                         {proofRows.length === 0 ? (
@@ -2192,6 +2291,13 @@ export default function CoachingPage() {
                                 <div className="text-[11px] text-neutral-500">Latest proof score</div>
                               </div>
                             </div>
+                            {/* Day 158 — top-level highlights (reliable only) */}
+                            {(topDrill || improvedRep) && (
+                              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-400">
+                                {topDrill && <span>Top drill: <span className="text-neutral-200">{topDrill.drill}</span> ({topDrill.averageScore}%)</span>}
+                                {improvedRep && <span>Most improved rep: <span className="text-neutral-200">{improvedRep.repName}</span></span>}
+                              </div>
+                            )}
                             <div className="space-y-2">
                               {recent.map((r) => (
                                 <div key={r.assignmentId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
@@ -2212,6 +2318,54 @@ export default function CoachingPage() {
                             <p className="mt-2 text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
                           </>
                         )}
+
+                        {/* Day 158 — proof-backed performance grouped by rep / drill */}
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By rep</div>
+                            {byRep.length === 0 ? (
+                              <p className="mt-1 text-[12px] text-neutral-400">No rep-level sparring trend yet.</p>
+                            ) : (
+                              <div className="mt-2 space-y-2">
+                                {byRep.slice(0, 3).map((r) => (
+                                  <div key={r.repName} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-sm font-medium text-white truncate">{r.repName}</span>
+                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.averageScore}%</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                      <span>{r.proofCount} {r.proofCount === 1 ? 'completion' : 'completions'}</span>
+                                      <span className={`font-medium ${PROOF_TREND_CLASSES[r.trend]}`}>{PROOF_TREND_LABELS[r.trend]}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By drill</div>
+                            {byDrill.length === 0 ? (
+                              <p className="mt-1 text-[12px] text-neutral-400">No drill-level sparring trend yet.</p>
+                            ) : (
+                              <div className="mt-2 space-y-2">
+                                {byDrill.slice(0, 3).map((d) => (
+                                  <div key={d.drill} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-sm font-medium text-white truncate">{d.drill}</span>
+                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{d.averageScore}%</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                      <span>{d.proofCount} {d.proofCount === 1 ? 'completion' : 'completions'}</span>
+                                      <span>Best {d.bestScore}%</span>
+                                      <span>{d.uniqueReps} {d.uniqueReps === 1 ? 'rep' : 'reps'}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] text-neutral-500">Trends need at least two proof-backed scores.</p>
                       </SectionCard>
                     )
                   })()}
