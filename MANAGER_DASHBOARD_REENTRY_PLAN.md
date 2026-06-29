@@ -292,3 +292,48 @@ Known limitation:
   can show average score per assigned drill).
 - Demo polish: consolidate the `control-centre` / `recent-calls` stubs and tidy
   manager empty-states.
+
+---
+
+## Day 153 — Sparring completion follow-through (shipped)
+
+WEB-only. **No API change, no migration.** Uses `GET /v1/manager/sparring-sessions`
+(now fetched with `limit=50` for matching) which already returns `assignmentId`,
+`repId`, `overall`, `completedAt` and `weakestDimension`.
+
+Data audit:
+- Assignments store `rep_id`, `created_at`, `type`, `status`, `completed_at`,
+  `meta.flag_section`, `meta.recommended_drill` — enough to anchor a match.
+- Sparring sessions carry a **direct `assignment_id`** (API returns it as
+  `assignmentId`), plus `overall`, `completedAt`, `weakestDimension`.
+- So a **direct** link is possible; where absent, a safe **inferred** match is used.
+- No endpoint was needed and no completion mutation was added (display-only).
+
+Implemented:
+- `findRelatedSparringSession(assignment, sessions)` →
+  `{ confidence: "direct" | "inferred" | "none", sessionId?, overall?, completedAt?, weakest? }`.
+  Direct = session `assignmentId` matches; inferred = same rep + completed at/after
+  the assignment's `created_at`, preferring a session whose weakest area matches the
+  assignment section; otherwise the latest completed session. Never fabricates
+  completion — returns `none` when nothing matches.
+- Queue-assigned sparring items now show follow-through: "Completed sparring: 82%",
+  "Completed on DD/MM/YYYY", a "Match: inferred" badge for inferred matches, a
+  "View session" link, or "No completed sparring found yet" when unmatched.
+- Status summary adds **"Matched completed sparring"** alongside Open / Completed /
+  Overdue sparring drills.
+
+Clarification / limitation:
+- Two notions of "completed" now coexist: **assignment-level** completion (the
+  assignment row marked completed) and **session-level** follow-through (a real
+  sparring session linked to the assignment). The "Matched completed sparring"
+  count reflects the latter. Inferred matches are best-effort and shown as such; no
+  assignment is auto-completed.
+
+### Day 154 recommendation
+
+- When a sparring session is launched from an assignment, persist its
+  `assignment_id` consistently (and consider auto-marking the assignment complete
+  on a verified direct match) so follow-through becomes "direct" rather than
+  inferred — then surface average score per assigned drill in the Sparring Progress
+  snapshot. Separately, demo polish: consolidate the `control-centre` /
+  `recent-calls` stubs.

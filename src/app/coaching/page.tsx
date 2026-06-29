@@ -612,6 +612,49 @@ function sparringDrillForText(text: string | null | undefined): string {
   return 'Call review sparring'
 }
 
+// Day 153 — link a sparring assignment to a completed sparring session.
+// "direct" when the session carries the assignment_id; otherwise a safe
+// "inferred" match (same rep, completed after the assignment was created,
+// preferring a session whose weakest area matches the assignment's section).
+// Never pretends completion — returns confidence "none" when nothing matches.
+type SparringMatch = {
+  confidence: 'direct' | 'inferred' | 'none'
+  sessionId?: string
+  overall?: number
+  completedAt?: string | null
+  weakest?: string | null
+}
+
+function findRelatedSparringSession(assignment: Assignment, sessions: RecentSparringItem[]): SparringMatch {
+  if (String(assignment.type || '') !== 'sparring') return { confidence: 'none' }
+
+  // Direct link — the session was recorded against this assignment.
+  const direct = sessions.find((s) => s.assignmentId && s.assignmentId === assignment.id && s.completedAt)
+  if (direct) {
+    return { confidence: 'direct', sessionId: direct.sessionId, overall: direct.overall, completedAt: direct.completedAt, weakest: direct.weakestDimension }
+  }
+
+  // Inferred — same rep, completed at/after the assignment was created.
+  const repId = String(assignment.rep_id || '')
+  if (!repId) return { confidence: 'none' }
+  const createdMs = new Date(assignment.created_at).getTime()
+  const candidates = sessions.filter((s) =>
+    s.repId === repId &&
+    !!s.completedAt &&
+    (!Number.isFinite(createdMs) || new Date(s.completedAt as string).getTime() >= createdMs)
+  )
+  if (candidates.length === 0) return { confidence: 'none' }
+
+  const section = String(assignment.meta?.flag_section || '').toLowerCase()
+  const sectionMatch = section
+    ? candidates.find((s) => String(s.weakestDimension || '').toLowerCase().includes(section))
+    : null
+  const chosen = sectionMatch ?? [...candidates].sort(
+    (a, b) => new Date(b.completedAt as string).getTime() - new Date(a.completedAt as string).getTime()
+  )[0]
+  return { confidence: 'inferred', sessionId: chosen.sessionId, overall: chosen.overall, completedAt: chosen.completedAt, weakest: chosen.weakestDimension }
+}
+
 function getConfidence(rep: RepRisk, critical: number): ConfidenceLevel {
   const overdue = Number(rep.counts?.overdue ?? 0)
   if (overdue > 0 || critical > 0) return 'high'
@@ -1212,7 +1255,9 @@ export default function CoachingPage() {
     setSparringLoading(true)
     setSparringError(null)
     try {
-      const res = await proxyFetch('/v1/manager/sparring-sessions?days=30&limit=5', { cache: 'no-store' })
+      // Day 153 — pull a wider window so completed sessions can be matched to
+      // assignments; the Recent Sparring card still renders only the latest few.
+      const res = await proxyFetch('/v1/manager/sparring-sessions?days=30&limit=50', { cache: 'no-store' })
       const data = await res.json()
       if (data?.ok) {
         setRecentSparring(data.items ?? [])
@@ -1833,10 +1878,11 @@ export default function CoachingPage() {
                     )
                   })()}
 
-                  {/* Day 152 — Queue-assigned sparring: surface sparring assignments
+                  {/* Day 152/153 — Queue-assigned sparring: surface sparring assignments
                       created from the Coaching Queue (manager_dashboard / origin
-                      "Coaching Queue"), with open/completed/overdue counts. All from
-                      the already-loaded manager assignments list (no new API). */}
+                      "Coaching Queue"), with open/completed/overdue counts and Day 153
+                      sparring-session follow-through (direct assignment_id link, else a
+                      safe inferred match). All from already-loaded data (no new API). */}
                   {(() => {
                     const now = Date.now()
                     const queueSparring = assignments.filter((a) =>
@@ -1848,12 +1894,16 @@ export default function CoachingPage() {
                     const completedCount = queueSparring.filter(isCompleted).length
                     const overdueCount = queueSparring.filter(isOverdue).length
                     const openCount = queueSparring.filter((a) => !isCompleted(a) && !isOverdue(a)).length
+                    // Day 153 — match each assignment to a completed sparring session.
+                    const matches = new Map<string, SparringMatch>()
+                    queueSparring.forEach((a) => matches.set(a.id, findRelatedSparringSession(a, recentSparring)))
+                    const matchedCount = queueSparring.filter((a) => (matches.get(a.id)?.confidence ?? 'none') !== 'none').length
                     const recent = [...queueSparring]
                       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                       .slice(0, 3)
                     return (
-                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue.">
-                        <div className="mb-3 grid grid-cols-3 gap-2">
+                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
+                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                             <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
                             <div className="text-[11px] text-neutral-500">Open sparring drills</div>
@@ -1866,6 +1916,10 @@ export default function CoachingPage() {
                             <div className={`text-base font-semibold tabular-nums ${overdueCount > 0 ? 'text-red-300' : 'text-white'}`}>{overdueCount}</div>
                             <div className="text-[11px] text-neutral-500">Overdue sparring drills</div>
                           </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-cyan-300 tabular-nums">{matchedCount}</div>
+                            <div className="text-[11px] text-neutral-500">Matched completed sparring</div>
+                          </div>
                         </div>
                         {assignmentsLoading && queueSparring.length === 0 ? (
                           <LoadingText text="Loading sparring assignments…" />
@@ -1877,6 +1931,8 @@ export default function CoachingPage() {
                               const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
                               const due = dueLabelOf(a)
                               const drill = String(a.meta?.recommended_drill || '')
+                              const match = matches.get(a.id) ?? { confidence: 'none' as const }
+                              const hasMatch = match.confidence !== 'none'
                               return (
                                 <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
                                   <div className="flex items-center justify-between gap-2">
@@ -1889,6 +1945,25 @@ export default function CoachingPage() {
                                   </div>
                                   {drill && (
                                     <div className="text-[11px] text-neutral-400">Recommended drill: <span className="text-neutral-200">{drill}</span></div>
+                                  )}
+                                  {/* Day 153 — sparring session follow-through */}
+                                  {hasMatch ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                                      <span className="font-medium text-emerald-300">
+                                        Completed sparring: {typeof match.overall === 'number' ? `${match.overall}%` : '—'}
+                                      </span>
+                                      {match.completedAt && (
+                                        <span className="text-neutral-500">Completed on {new Date(match.completedAt).toLocaleDateString('en-GB')}</span>
+                                      )}
+                                      {match.confidence === 'inferred' && (
+                                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-400">Match: inferred</span>
+                                      )}
+                                      {match.sessionId && (
+                                        <Link href={`/sparring/${match.sessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">View session</Link>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-neutral-500">No completed sparring found yet</div>
                                   )}
                                 </div>
                               )
@@ -2218,7 +2293,7 @@ export default function CoachingPage() {
                         )}
                         {!sparringLoading && !sparringError && recentSparring.length > 0 && (
                           <div className="space-y-2">
-                            {recentSparring.map((s) => (
+                            {recentSparring.slice(0, 5).map((s) => (
                               <div key={s.sessionId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="text-sm font-medium text-white truncate">{s.repName}</span>
