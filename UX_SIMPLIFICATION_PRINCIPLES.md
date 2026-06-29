@@ -25,6 +25,13 @@ If the founder cannot find upload, an end user or lighthouse client will struggl
   what do I do next?*
 - **The manager stays in control** — nothing is auto-created, auto-activated, or
   auto-completed. Gravix coaches; the manager decides.
+- **Core actions like Upload Call must be visible from primary manager routes** —
+  not buried behind tabs or deep links.
+- **Ask "who is this call for?" before technical file details.** Structure a flow
+  around the user's intent (rep + account) first, then context, then the file.
+- **Prefer structured linking over loose labels** — link to real reps and accounts
+  so calls land in the right review/coaching queues, with free text only as a
+  fallback.
 
 ## 3. Manager navigation model
 

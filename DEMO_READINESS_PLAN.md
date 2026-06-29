@@ -135,11 +135,30 @@ demo org and fix the first gap found.
 
 ---
 
-## 9. Day 162 recommendation
+## 9. Day 162 — Upload flow structured linking (done)
 
-Convert this plan into action: run the §5 demo data checklist against a real demo
-org and fix the first gap found (most likely a missing completed sparring proof
-row or an empty AI-discovery candidate). Do a single live click-through of the
-§2 narrative on `/coaching` and note any empty critical card or dead CTA, then
-land one tiny copy/empty-state polish per gap. Keep it demo-readiness only — no
-new feature lane, no migration.
+The Upload Call page was restructured for cleaner demo data and a calmer flow.
+
+- **Structured linking started.** `/upload` now asks "Who is this call for?" first,
+  with an **Account / Company** picker (CRM accounts via `GET /v1/accounts`) and a
+  **Rep** picker (team members via `GET /v1/team/users`).
+- **Account linking persists.** A small fail-soft API patch makes
+  `POST /v1/upload/finalize` accept an optional `accountId` and write it to the
+  existing `calls.account_id` column (no migration). If linking is rejected the
+  upload still succeeds without the link.
+- **Free-text fallback preserved.** When no CRM accounts/reps are available the
+  page falls back to free-text fields, and the rep name remains the required
+  field — quick demos still work.
+- **Calmer layout + copy:** three numbered steps (who → context → recording), a
+  primary "Upload and send to review queue" CTA, a "Back to Manager Command Centre"
+  secondary, and clearer post-upload success with Command Centre / View call /
+  Upload another call actions.
+
+**Remaining demo-data gap:** the `calls` table has no column for rep linkage
+(rep = uploader `user_id`), call type, or a free-text tag/label, so rep / call
+type / tag are UI-organisational only and do not yet persist server-side.
+
+**Day 163 recommendation:** add the small backend data model for upload metadata
+— an optional `rep_id` (or persist the chosen rep), plus a `call_type` / `label`
+column — behind a single small migration, then persist those fields from
+`/upload`. Pair with the §5 demo-data checklist run against a real demo org.

@@ -398,13 +398,48 @@ export async function finalizeSignedUpload(body: {
   mime?: string;
   size?: number;
   sha256?: string;
+  // Day 162 — optional structured metadata. accountId persists as calls.account_id
+  // (fail-soft server-side). profileLabel/companyTag remain for organisation/logging.
+  accountId?: string | null;
+  profileLabel?: string;
+  companyTag?: string | null;
+  callType?: string | null;
 }) {
-  const j = await jfetch<{ ok: true; callId: string; jobId: string }>(`${PROXY}/v1/upload/finalize`, {
+  const j = await jfetch<{ ok: true; callId: string; jobId: string; accountId?: string | null }>(`${PROXY}/v1/upload/finalize`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   return j;
+}
+
+// -------------------------------
+// Day 162 — Upload Call linking: reps + accounts pickers (fail-soft)
+// -------------------------------
+
+export type UploadRepOption = { id: string; name: string; email: string | null; role: string | null };
+export type UploadAccountOption = { id: string; name: string; domain: string | null };
+
+/** List team members for the Upload Call rep picker. Returns [] on any failure. */
+export async function listTeamUsers(): Promise<UploadRepOption[]> {
+  try {
+    const j = await jfetch<{ ok: true; items: UploadRepOption[] }>(`${PROXY}/v1/team/users?limit=200`);
+    return Array.isArray(j.items) ? j.items : [];
+  } catch {
+    return [];
+  }
+}
+
+/** List CRM accounts for the Upload Call account picker. Returns [] on any failure. */
+export async function listUploadAccounts(): Promise<UploadAccountOption[]> {
+  try {
+    const j = await jfetch<{ ok: true; accounts: Array<{ id: string; name: string; domain: string | null }> }>(`${PROXY}/v1/accounts`);
+    return Array.isArray(j.accounts)
+      ? j.accounts.map((a) => ({ id: a.id, name: a.name, domain: a.domain ?? null }))
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 // -------------------------------
