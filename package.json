@@ -77,6 +77,7 @@
     "validate-manager-dashboard-day-159": "bash scripts/validate-manager-dashboard-day-159.sh",
     "validate-tier-2b-smoke": "bash scripts/validate-tier-2b-smoke.sh",
     "validate-demo-readiness-day-160": "bash scripts/validate-demo-readiness-day-160.sh",
+    "validate-demo-readiness-day-161": "bash scripts/validate-demo-readiness-day-161.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",

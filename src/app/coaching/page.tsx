@@ -1735,11 +1735,29 @@ export default function CoachingPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
+      {/* Day 161 — UX simplification: one obvious primary action (Upload Call) and
+          one calm secondary action (Review Calls) in the header. The manager should
+          never have to hunt for upload. */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
           <h1 className="mt-0.5 text-xl font-semibold text-white">Command Centre</h1>
-          <p className="mt-0.5 text-sm text-neutral-400">Rep interventions · Assignment queue · Replay review</p>
+          <p className="mt-0.5 text-sm text-neutral-400">Start by uploading a recorded sales call. Gravix coaches the rep, scores the session, and trains the team.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/upload"
+            className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400"
+          >
+            Upload Call
+          </Link>
+          <button
+            type="button"
+            onClick={() => setTab('review')}
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
+          >
+            Review Calls
+          </button>
         </div>
       </div>
 
@@ -1784,39 +1802,43 @@ export default function CoachingPage() {
                 </div>
               )}
 
-              {/* Day 157 — Demo flow strip: a clear manager workflow path through the
-                  command centre using existing tabs/anchors only (no new data).
-                  Day 160 — marked as the demo starting point (copy only). */}
+              {/* Day 157 — workflow strip; Day 161 — refined into a calm "Manager workflow"
+                  navigation strip. Upload Call is the obvious first step; the rest jump to
+                  existing tabs/anchors (no new data, no auto-actions). */}
               <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo flow</div>
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
-                    Start demo here
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Manager workflow</div>
+                  <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                    Start here
                   </span>
                 </div>
                 <p className="mt-1 text-[12px] text-neutral-400">
-                  Demo flow: Review calls → Assign sparring → Track follow-through → Review AI discoveries
+                  Upload a call → review it → assign sparring → review AI discoveries.
                 </p>
                 <p className="mt-0.5 text-[11px] text-neutral-500">
                   The manager stays in control — nothing is auto-created, auto-activated, or auto-completed.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Link
+                    href="/upload"
+                    className="rounded-md border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-200 transition-colors hover:border-indigo-500/60 hover:text-white"
+                  >
+                    Upload Call
+                  </Link>
                   {[
-                    { label: 'Review calls', onClick: () => setTab('review') },
-                    { label: 'Assign sparring', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                    { label: 'Track follow-through', onClick: () => document.getElementById('queue-sparring')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                    { label: 'Review AI discoveries', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                  ].map((step, i) => (
-                    <div key={step.label} className="flex items-center gap-2">
-                      {i > 0 && <span className="text-neutral-600" aria-hidden="true">→</span>}
-                      <button
-                        type="button"
-                        onClick={step.onClick}
-                        className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-200 hover:border-indigo-500/40 hover:text-white transition-colors"
-                      >
-                        {step.label}
-                      </button>
-                    </div>
+                    { label: 'Review Calls', onClick: () => setTab('review') },
+                    { label: 'Coaching Queue', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                    { label: 'Sparring', onClick: () => document.getElementById('queue-sparring')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                    { label: 'AI Discovery', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                  ].map((step) => (
+                    <button
+                      key={step.label}
+                      type="button"
+                      onClick={step.onClick}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-200 hover:border-neutral-600 hover:text-white transition-colors"
+                    >
+                      {step.label}
+                    </button>
                   ))}
                 </div>
               </div>

@@ -115,7 +115,27 @@ Minimum seeded data for a clean run:
 
 ---
 
-## 8. Day 161 recommendation
+## 8. Day 161 — UX simplification (done)
+
+UX simplification started ahead of demo data work. On `/coaching`:
+
+- **Upload Call is now visible from `/coaching`** — a primary CTA in the Command
+  Centre header (and the first step of the workflow strip).
+- The "Demo flow" strip was refined into a calmer **Manager workflow** navigation
+  strip: Upload Call → Review Calls → Coaching Queue → Sparring → AI Discovery.
+- Upload Call was also promoted into the sidebar so managers never hunt for it.
+- Shouty "Start demo here" badge softened to a calm "Start here"; header copy now
+  leads with "Start by uploading a recorded sales call."
+
+See [UX_SIMPLIFICATION_PRINCIPLES.md](UX_SIMPLIFICATION_PRINCIPLES.md) for the
+principles future days must follow.
+
+**Next step:** demo data readiness check — run the §5 checklist against a real
+demo org and fix the first gap found.
+
+---
+
+## 9. Day 162 recommendation
 
 Convert this plan into action: run the §5 demo data checklist against a real demo
 org and fix the first gap found (most likely a missing completed sparring proof

@@ -12,6 +12,7 @@ import {
   Handshake,
   ShieldCheck,
   UserCircle,
+  Upload,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -60,6 +61,8 @@ export const navigation: NavSection[] = [
     title: 'Workspace',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      // Day 161 — Upload Call promoted to the sidebar so managers never have to hunt for it.
+      { label: 'Upload Call', href: '/upload', icon: Upload },
       { label: 'Calls', href: '/call-library', icon: Phone },
       { label: 'Accounts', href: '/crm/accounts', icon: Building2 },
       // Contacts: manager-only until a rep-facing contacts page exists
