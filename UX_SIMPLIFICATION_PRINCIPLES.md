@@ -32,6 +32,13 @@ If the founder cannot find upload, an end user or lighthouse client will struggl
 - **Prefer structured linking over loose labels** — link to real reps and accounts
   so calls land in the right review/coaching queues, with free text only as a
   fallback.
+- **Forms should fit on a normal laptop screen where possible** — core workflows
+  should not require zooming out to see the whole form.
+- **Avoid stacking too many large cards for simple workflows** — group related
+  fields inside one card rather than one bordered card per step.
+- **If a dropdown can be empty, provide a create/add fallback** — a clear way to
+  create the missing record, plus a temporary free-text label so the flow is never
+  hard-blocked.
 
 ## 3. Manager navigation model
 

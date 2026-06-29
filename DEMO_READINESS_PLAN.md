@@ -158,7 +158,34 @@ The Upload Call page was restructured for cleaner demo data and a calmer flow.
 (rep = uploader `user_id`), call type, or a free-text tag/label, so rep / call
 type / tag are UI-organisational only and do not yet persist server-side.
 
-**Day 163 recommendation:** add the small backend data model for upload metadata
-— an optional `rep_id` (or persist the chosen rep), plus a `call_type` / `label`
-column — behind a single small migration, then persist those fields from
-`/upload`. Pair with the §5 demo-data checklist run against a real demo org.
+**Next step (Day 163):** compact the layout — the structured form was correct but
+too tall — and add a clear "create new client" path.
+
+---
+
+## 10. Day 163 — Upload layout compacted + create client CTA (done)
+
+WEB-only UX pass; no API change, no migration.
+
+- **Layout compacted.** The three separately-bordered step cards collapsed into a
+  single card with small labelled groups (**Call ownership**, **Call context**,
+  **Recording**); narrower max width, smaller paddings, tighter dropzone and helper
+  text. The form now fits on a normal laptop screen without zooming out.
+- **Create new client CTA.** A calm "Create new client" link sits beside the
+  Account / Company field and opens the existing `/crm/accounts` management page
+  (which already has an account-create modal backed by `POST /v1/accounts`).
+- **Temporary fallback preserved.** "Client not listed? Add a temporary label" —
+  a free-text company label remains available whenever no account is selected, and
+  the rep free-text fallback / required rep field are unchanged.
+- **Calmer copy:** subtitle "Link the recording to the right client, rep and review
+  queue"; success "Call uploaded. We'll add it to the review queue once processing
+  finishes." with Open Command Centre / View call / Upload another.
+
+**Remaining account-creation gap:** there is still no inline create-client flow on
+`/upload` itself — managers create accounts on `/crm/accounts` in a separate tab,
+then return. Rep / call type / tag remain UI-only (no column), as in Day 162.
+
+**Day 164 recommendation:** either (a) inline a lightweight create-client action on
+`/upload` (modal calling `POST /v1/accounts`, then refresh the dropdown), or (b)
+proceed to the Day 162 backend data-model task (persist rep / call type / label).
+Pair whichever with the §5 demo-data checklist against a real demo org.

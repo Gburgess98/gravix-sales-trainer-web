@@ -171,7 +171,7 @@ export default function UploadPage() {
       }
 
       setUploadStage("done");
-      setMsg("Call uploaded. It will appear in the review queue once processed.");
+      setMsg("Call uploaded. We'll add it to the review queue once processing finishes.");
     } catch (e: any) {
       const stage =
         uploadStage === "put"
@@ -215,23 +215,23 @@ export default function UploadPage() {
   const fieldClass = "w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600";
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-8 space-y-6">
+    <div className="mx-auto w-full max-w-2xl p-6 space-y-4">
       {/* Header */}
       <div>
         <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Calls</p>
-        <h1 className="mt-0.5 text-2xl font-semibold text-white">Upload a sales call</h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Link the call to a rep and account so it appears in the right review and coaching queues.
+        <h1 className="mt-0.5 text-xl font-semibold text-white">Upload a sales call</h1>
+        <p className="mt-0.5 text-sm text-neutral-400">
+          Link the recording to the right client, rep and review queue.
         </p>
       </div>
 
       {/* Success state */}
       {uploadStage === "done" && result?.ok ? (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 space-y-4">
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-3">
           <div>
-            <h2 className="text-lg font-semibold text-emerald-200">Call uploaded</h2>
-            <p className="mt-1 text-sm text-neutral-300">
-              Call uploaded. It will appear in the review queue once processed.
+            <h2 className="text-base font-semibold text-emerald-200">Call uploaded.</h2>
+            <p className="mt-0.5 text-sm text-neutral-300">
+              We&apos;ll add it to the review queue once processing finishes.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +239,7 @@ export default function UploadPage() {
               href="/coaching"
               className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
             >
-              Open Manager Command Centre
+              Open Command Centre
             </Link>
             {result.callId && (
               <Link
@@ -254,138 +254,146 @@ export default function UploadPage() {
               onClick={resetForAnother}
               className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
             >
-              Upload another call
+              Upload another
             </button>
           </div>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="space-y-5">
-          {/* Section 1 — who is this call for? */}
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-white">1. Who is this call for?</h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Account / Company */}
-              <label className="space-y-2">
-                <div className="text-sm font-medium text-neutral-200">Account / Company</div>
-                {accounts.length > 0 ? (
-                  <select
-                    value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
-                    className={fieldClass}
-                  >
-                    <option value="">Select an account…</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                ) : (
+        <form onSubmit={onSubmit} className="space-y-4">
+          {/* Single compact card holds all three groups so the form fits without zooming out. */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-5">
+            {/* Group — call ownership */}
+            <div className="space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Call ownership</div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Account / Company */}
+                <label className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-neutral-200">Account / Company</span>
+                    <Link
+                      href="/crm/accounts"
+                      target="_blank"
+                      className="text-[11px] font-medium text-indigo-300 hover:text-indigo-200"
+                    >
+                      Create new client
+                    </Link>
+                  </div>
+                  {accounts.length > 0 && (
+                    <select
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                      className={fieldClass}
+                    >
+                      <option value="">Select an account…</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {(accounts.length === 0 || !accountId) && (
+                    <input
+                      type="text"
+                      value={companyText}
+                      onChange={(e) => setCompanyText(e.target.value)}
+                      placeholder="e.g. Nike, Barclays, Demo Batch 1"
+                      className={fieldClass}
+                    />
+                  )}
+                  <div className="text-[11px] text-neutral-500">Client not listed? Add a temporary label{accounts.length > 0 ? " below" : ""}.</div>
+                </label>
+
+                {/* Rep */}
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-neutral-200">Rep <span className="text-red-300">*</span></span>
+                  {reps.length > 0 && (
+                    <select
+                      value={repId}
+                      onChange={(e) => onSelectRep(e.target.value)}
+                      className={fieldClass}
+                    >
+                      <option value="">Choose a rep…</option>
+                      {reps.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     type="text"
-                    value={companyText}
-                    onChange={(e) => setCompanyText(e.target.value)}
-                    placeholder="e.g. Nike, Barclays, Demo Batch 1"
+                    value={profileLabel}
+                    onChange={(e) => setProfileLabel(e.target.value)}
+                    placeholder="Rep or client name"
                     className={fieldClass}
                   />
-                )}
-                <div className="text-xs text-neutral-500">
-                  {accounts.length > 0
-                    ? "Links the call to a CRM account."
-                    : "Structured account linking coming next — this label keeps demo calls grouped."}
-                </div>
-              </label>
+                  <div className="text-[11px] text-neutral-500">Free text still works for quick demos.</div>
+                </label>
+              </div>
+            </div>
 
-              {/* Rep */}
-              <label className="space-y-2">
-                <div className="text-sm font-medium text-neutral-200">Rep <span className="text-red-300">*</span></div>
-                {reps.length > 0 && (
+            {/* Group — call context */}
+            <div className="space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Call context</div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-neutral-200">Call type</span>
                   <select
-                    value={repId}
-                    onChange={(e) => onSelectRep(e.target.value)}
+                    value={callType}
+                    onChange={(e) => setCallType(e.target.value)}
                     className={fieldClass}
                   >
-                    <option value="">Choose a rep…</option>
-                    {reps.map((r) => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
+                    <option value="">Optional</option>
+                    {CALL_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
-                )}
-                <input
-                  type="text"
-                  value={profileLabel}
-                  onChange={(e) => setProfileLabel(e.target.value)}
-                  placeholder="Rep or client name"
-                  className={fieldClass}
-                />
-                <div className="text-xs text-neutral-500">Choose a rep when available. Free text still works for quick demos.</div>
-              </label>
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-neutral-200">Tag / Campaign</span>
+                  <input
+                    type="text"
+                    value={companyTag}
+                    onChange={(e) => setCompanyTag(e.target.value)}
+                    placeholder="e.g. Q3 outbound"
+                    className={fieldClass}
+                  />
+                </label>
+              </div>
             </div>
-          </section>
 
-          {/* Section 2 — call context */}
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-white">2. Add call context</h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <div className="text-sm font-medium text-neutral-200">Call type</div>
-                <select
-                  value={callType}
-                  onChange={(e) => setCallType(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">Select a call type (optional)</option>
-                  {CALL_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                <div className="text-xs text-neutral-500">Optional. Helps group calls by stage.</div>
-              </label>
-
-              <label className="space-y-2">
-                <div className="text-sm font-medium text-neutral-200">Tag / Campaign</div>
-                <input
-                  type="text"
-                  value={companyTag}
-                  onChange={(e) => setCompanyTag(e.target.value)}
-                  placeholder="e.g. Q3 outbound, Demo Batch 1"
-                  className={fieldClass}
-                />
-                <div className="text-xs text-neutral-500">Optional. Use for campaign or batch labelling.</div>
-              </label>
-            </div>
-          </section>
-
-          {/* Section 3 — upload recording */}
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-white">3. Upload recording</h2>
-            <div
-              className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 p-6 text-sm"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f) { setFile(f); setLastFile(f); }
-              }}
-            >
-              <div className="text-sm text-neutral-300">Drag &amp; drop an audio file here, or choose one below.</div>
-              <input
-                type="file"
-                accept="audio/*,.wav,.mp3,.m4a,.webm,.json"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setFile(f);
-                  if (f) setLastFile(f);
+            {/* Group — recording */}
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Recording</div>
+              <div
+                className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 px-4 py-3 text-sm"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) { setFile(f); setLastFile(f); }
                 }}
-                className="mt-3 block text-sm"
-              />
-              <div className="mt-2 text-[11px] text-neutral-600">Audio or transcript JSON · max 100MB.</div>
-              {file && (
-                <div className="mt-2 text-xs text-neutral-400">
-                  Selected: <span className="font-mono">{file.name}</span> ({formatMB(file.size)})
-                  {fileTooLarge && <span className="ml-2 text-red-300">(too large, max 100MB)</span>}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    accept="audio/*,.wav,.mp3,.m4a,.webm,.json"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setFile(f);
+                      if (f) setLastFile(f);
+                    }}
+                    className="block text-sm"
+                  />
+                  <span className="text-[11px] text-neutral-600">or drag &amp; drop · audio or JSON · max 100MB</span>
                 </div>
-              )}
+                {file && (
+                  <div className="mt-1.5 text-xs text-neutral-400">
+                    Selected: <span className="font-mono">{file.name}</span> ({formatMB(file.size)})
+                    {fileTooLarge && <span className="ml-2 text-red-300">(too large, max 100MB)</span>}
+                  </div>
+                )}
+              </div>
             </div>
-          </section>
+          </div>
 
           {/* Progress */}
           {busy && (
@@ -415,7 +423,7 @@ export default function UploadPage() {
               href="/coaching"
               className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
             >
-              Back to Manager Command Centre
+              Back to Command Centre
             </Link>
             {lastFile && !busy && lastErrorStage && cleanProfileLabel && (
               <button
