@@ -466,3 +466,47 @@ Tier 2B + manager approval gates preserved. Adds
   improving/declining indicator once a rep has ≥2 proof scores — still WEB-only
   from `meta.completion_score`, no backend. Separately, demo polish: consolidate
   the `control-centre` / `recent-calls` stubs.
+
+---
+
+## Day 157 — Manager demo polish / route consolidation (shipped)
+
+**WEB-only. No new data, no AI, no migration.** Polish day to make the manager
+demo path clear.
+
+Route audit:
+- **`/coaching` is the primary Manager Command Centre.** Default `overview` tab;
+  tabs Overview · Interventions · Assignments · Replay Queue · Review Queue.
+- `/dashboard` is **rep-focused** — kept as-is, not a manager home, no redirect.
+- `/crm/manager/control-centre` is a stub that already **hard-redirects to
+  `/coaching`** (server-side `redirect()`), so the old "control centre" route never
+  shows a confusing page — consolidation already in place, left as-is.
+- `/recent-calls` is a stub that already **hard-redirects to `/call-library`** —
+  left as-is (clean, not confusing).
+- `/call-library` and `/calls/[id]` remain the call surfaces.
+
+Implemented:
+- **Demo flow strip** at the top of the `/coaching` overview:
+  "Demo flow: Review calls → Assign sparring → Track follow-through → Review AI
+  discoveries", with four buttons wired to existing tabs/anchors only —
+  **Review calls** (`review` tab), **Assign sparring** (scrolls to
+  `#coaching-queue`), **Track follow-through** (scrolls to `#queue-sparring`),
+  **Review AI discoveries** (scrolls to `#ai-discovery`). New `#coaching-queue` /
+  `#queue-sparring` scroll anchors added.
+- Empty-state polish for consistency/premium tone: AI candidates → "No new AI
+  trigger candidates yet."; Review Queue tab → "No calls waiting for review." The
+  existing premium empty states (Coaching Queue "All clear — no urgent coaching
+  actions right now.", "No queue-assigned sparring drills yet.", "No proof-backed
+  sparring scores yet.") are preserved.
+
+No risky Next redirects added — the stub routes already redirect. Tier 2B +
+approval gates preserved. Adds `scripts/validate-manager-dashboard-day-157.sh` +
+package script.
+
+### Day 158 recommendation
+
+- Now that the demo path is clear, pick up the deferred **per-rep / per-drill
+  sparring score breakdown** (Day 157 recommendation) on top of the Day 156 trend
+  foundation — still WEB-only from `meta.completion_score`, no backend. Optionally
+  add a one-line manager onboarding hint linking the demo flow to the relevant tab
+  badges.

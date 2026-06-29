@@ -1690,6 +1690,34 @@ export default function CoachingPage() {
                 </div>
               )}
 
+              {/* Day 157 — Demo flow strip: a clear manager workflow path through the
+                  command centre using existing tabs/anchors only (no new data). */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo flow</div>
+                <p className="mt-1 text-[12px] text-neutral-400">
+                  Demo flow: Review calls → Assign sparring → Track follow-through → Review AI discoveries
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {[
+                    { label: 'Review calls', onClick: () => setTab('review') },
+                    { label: 'Assign sparring', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                    { label: 'Track follow-through', onClick: () => document.getElementById('queue-sparring')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                    { label: 'Review AI discoveries', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                  ].map((step, i) => (
+                    <div key={step.label} className="flex items-center gap-2">
+                      {i > 0 && <span className="text-neutral-600" aria-hidden="true">→</span>}
+                      <button
+                        type="button"
+                        onClick={step.onClick}
+                        className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-200 hover:border-indigo-500/40 hover:text-white transition-colors"
+                      >
+                        {step.label}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {commandCentre && (
                 <>
                   {/* Day 149 — Manager Command Centre: priority actions + team snapshot
@@ -1848,6 +1876,7 @@ export default function CoachingPage() {
                       risk, open/overdue assignments and weak skills into one
                       prioritised list (all from already-loaded command-centre data;
                       no new API). Sits under the command-centre summary cards. */}
+                  <span id="coaching-queue" className="block scroll-mt-4" aria-hidden="true" />
                   {(() => {
                     type QPriority = 'High' | 'Medium' | 'Low'
                     type QType = 'Call review' | 'Rep risk' | 'Assignment' | 'Weak skill'
@@ -2001,6 +2030,7 @@ export default function CoachingPage() {
                       "Coaching Queue"), with open/completed/overdue counts and Day 153
                       sparring-session follow-through (direct assignment_id link, else a
                       safe inferred match). All from already-loaded data (no new API). */}
+                  <span id="queue-sparring" className="block scroll-mt-4" aria-hidden="true" />
                   {(() => {
                     const now = Date.now()
                     const queueSparring = assignments.filter((a) =>
@@ -2742,7 +2772,7 @@ export default function CoachingPage() {
                         ) : candidatesError ? (
                           <div className="text-xs text-red-400 py-2">Could not load trigger candidates.</div>
                         ) : triggerCandidates.length === 0 ? (
-                          <div className="text-xs text-neutral-500 py-2">No trigger candidates yet.</div>
+                          <div className="text-xs text-neutral-500 py-2">No new AI trigger candidates yet.</div>
                         ) : visibleCandidates.length === 0 ? (
                           <div className="text-xs text-neutral-500 py-2">No visible trigger candidates. Refresh to review hidden suggestions again.</div>
                         ) : (
@@ -3709,7 +3739,7 @@ export default function CoachingPage() {
 
           {!reviewQueueLoading && !reviewQueueError && reviewQueue.length === 0 && (
             <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
-              No calls need manager review.
+              No calls waiting for review.
             </div>
           )}
 
