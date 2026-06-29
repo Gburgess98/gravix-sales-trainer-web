@@ -248,3 +248,47 @@ Implemented:
   list with their `origin_label: "Coaching Queue"` so managers can track follow
   through, and add a fuller Sparring Progress panel (completion rate; link to
   `/reps/[id]/sparring`).
+
+---
+
+## Day 152 — Sparring assignment tracking + rep picker (shipped)
+
+WEB-only. **No API change, no migration.** Uses the manager assignments list
+(`GET /v1/assignments/manager`, now loaded on mount) which already returns
+`type, status, due_at, completed_at, source, meta` — enough to identify and track
+queue-assigned sparring.
+
+Data audit:
+- `openAssignments` (command-centre) carries `type`, `status`, `source`,
+  `originLabel` but **not** `meta`; the manager assignments list carries full
+  `meta` + `completed_at`, so the new visibility uses that list.
+- Queue-assigned sparring is identified by `type === "sparring"` **and**
+  (`source === "manager_dashboard"` **or** `meta.origin_label === "Coaching Queue"`)
+  — both written by the Day 151 `assignSparring()`.
+- Completion is read directly from the assignment (`status === "completed"` /
+  `completed_at`), **not** inferred from sparring sessions — so the link is
+  reliable.
+
+Implemented:
+- **Inline rep picker** on Weakest Skills items (no rep context): "Choose rep" →
+  select → "Assign" / "Cancel", calling the Day 151 `assignSparring()` with the
+  chosen rep. Falls back to "Choose a rep from the Assignments tab." when no reps
+  are available.
+- **Queue-assigned sparring** section: status summary (Open / Completed / Overdue
+  sparring drills) + up to 3 recent items (title, rep, status badge, due date,
+  recommended drill). Empty state: "No queue-assigned sparring drills yet."
+- Manager click required throughout; no auto-assignment; Tier 2B + approval gates
+  unchanged.
+
+Known limitation:
+- Completion is tracked at the **assignment** level (assignment marked completed),
+  not yet linked to an actual completed sparring **session** score. Linking a
+  sparring session result back to its originating assignment is a Day 153+ item.
+
+### Day 153 recommendation
+
+- Link completed sparring **sessions** to their originating assignment (so
+  "Completed" reflects a real session + score, and the Sparring Progress snapshot
+  can show average score per assigned drill).
+- Demo polish: consolidate the `control-centre` / `recent-calls` stubs and tidy
+  manager empty-states.

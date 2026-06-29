@@ -1145,6 +1145,9 @@ export default function CoachingPage() {
   // Reuses the existing manager-safe POST /v1/assignments (type: "sparring"). No
   // migration, no auto-assignment — only fires on an explicit manager click.
   const [assigningSparringKey, setAssigningSparringKey] = useState<string | null>(null)
+  // Day 152 — inline rep picker for team-wide weak-skill drills (no rep context).
+  const [skillPickerKey, setSkillPickerKey] = useState<string | null>(null)
+  const [skillPickerRepId, setSkillPickerRepId] = useState<string>('')
 
   const assignSparring = useCallback(async (opts: {
     key: string
@@ -1400,6 +1403,9 @@ export default function CoachingPage() {
   }, [loadCustomTriggers])
 
   useEffect(() => { loadOverview() }, [loadOverview])
+  // Day 152 — load manager assignments on mount so the Overview tab can surface
+  // queue-assigned sparring + status counts (the assignments tab still reuses it).
+  useEffect(() => { loadAssignments() }, [loadAssignments])
   useEffect(() => { loadRecentSparring() }, [loadRecentSparring])
   useEffect(() => { loadWhisperer() }, [loadWhisperer])
   useEffect(() => { loadCustomTriggers() }, [loadCustomTriggers])
@@ -1827,6 +1833,72 @@ export default function CoachingPage() {
                     )
                   })()}
 
+                  {/* Day 152 — Queue-assigned sparring: surface sparring assignments
+                      created from the Coaching Queue (manager_dashboard / origin
+                      "Coaching Queue"), with open/completed/overdue counts. All from
+                      the already-loaded manager assignments list (no new API). */}
+                  {(() => {
+                    const now = Date.now()
+                    const queueSparring = assignments.filter((a) =>
+                      String(a.type || '') === 'sparring' &&
+                      (String(a.source || '') === 'manager_dashboard' || String(a.meta?.origin_label || '') === 'Coaching Queue')
+                    )
+                    const isCompleted = (a: Assignment) => String(a.status || '') === 'completed' || !!a.completed_at
+                    const isOverdue = (a: Assignment) => !isCompleted(a) && !!a.due_at && new Date(a.due_at as string).getTime() < now
+                    const completedCount = queueSparring.filter(isCompleted).length
+                    const overdueCount = queueSparring.filter(isOverdue).length
+                    const openCount = queueSparring.filter((a) => !isCompleted(a) && !isOverdue(a)).length
+                    const recent = [...queueSparring]
+                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .slice(0, 3)
+                    return (
+                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue.">
+                        <div className="mb-3 grid grid-cols-3 gap-2">
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
+                            <div className="text-[11px] text-neutral-500">Open sparring drills</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{completedCount}</div>
+                            <div className="text-[11px] text-neutral-500">Completed sparring drills</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className={`text-base font-semibold tabular-nums ${overdueCount > 0 ? 'text-red-300' : 'text-white'}`}>{overdueCount}</div>
+                            <div className="text-[11px] text-neutral-500">Overdue sparring drills</div>
+                          </div>
+                        </div>
+                        {assignmentsLoading && queueSparring.length === 0 ? (
+                          <LoadingText text="Loading sparring assignments…" />
+                        ) : recent.length === 0 ? (
+                          <EmptyRow message="No queue-assigned sparring drills yet." />
+                        ) : (
+                          <div className="space-y-2">
+                            {recent.map((a) => {
+                              const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
+                              const due = dueLabelOf(a)
+                              const drill = String(a.meta?.recommended_drill || '')
+                              return (
+                                <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{a.title || 'Sparring drill'}</span>
+                                    <StatusBadge status={a.status || 'assigned'} />
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                    {repName && <span>{repName}</span>}
+                                    {due && <span className={due.cls}>{due.text}</span>}
+                                  </div>
+                                  {drill && (
+                                    <div className="text-[11px] text-neutral-400">Recommended drill: <span className="text-neutral-200">{drill}</span></div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </SectionCard>
+                    )
+                  })()}
+
                   {/* Team Health */}
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                     <StatCard
@@ -2026,18 +2098,77 @@ export default function CoachingPage() {
                                   style={{ width: `${Math.min(100, Math.max(6, s.averageScore))}%` }}
                                 />
                               </div>
-                              {/* Day 151 — team-wide weak skill: assigning routes to the
-                                  Assignments tab to choose a rep (no rep context here). */}
-                              <div className="flex items-center justify-between gap-2 pt-0.5">
-                                <span className="text-[11px] text-neutral-500 truncate">Recommended drill: <span className="text-neutral-300">{sparringDrillForText(s.skill)}</span></span>
-                                <button
-                                  type="button"
-                                  onClick={() => assignSparring({ key: `weak-${s.skill}`, repId: null, drill: sparringDrillForText(s.skill), reason: `Team weak skill: ${s.skill}`, sectionText: s.skill, priority: s.averageScore < 50 ? 'High' : 'Medium' })}
-                                  className="shrink-0 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
-                                >
-                                  Assign sparring
-                                </button>
-                              </div>
+                              {/* Day 152 — team-wide weak skill: inline rep picker so the
+                                  manager can assign the drill to a rep without leaving the
+                                  card. Falls back to the Assignments tab if no reps exist. */}
+                              {(() => {
+                                const pickerKey = `weak-${s.skill}`
+                                const drill = sparringDrillForText(s.skill)
+                                const repOptions = commandCentre.repsNeedingAttention
+                                const open = skillPickerKey === pickerKey
+                                return (
+                                  <div className="pt-0.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[11px] text-neutral-500 truncate">Recommended drill: <span className="text-neutral-300">{drill}</span></span>
+                                      {!open && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (repOptions.length === 0) {
+                                              assignSparring({ key: pickerKey, repId: null, drill, reason: `Team weak skill: ${s.skill}`, sectionText: s.skill, priority: s.averageScore < 50 ? 'High' : 'Medium' })
+                                              return
+                                            }
+                                            setSkillPickerRepId('')
+                                            setSkillPickerKey(pickerKey)
+                                          }}
+                                          className="shrink-0 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
+                                        >
+                                          Assign sparring
+                                        </button>
+                                      )}
+                                    </div>
+                                    {open && (
+                                      repOptions.length === 0 ? (
+                                        <div className="mt-1 text-[11px] text-neutral-500">Choose a rep from the Assignments tab.</div>
+                                      ) : (
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                          <span className="text-[11px] text-neutral-400">Choose rep</span>
+                                          <select
+                                            value={skillPickerRepId}
+                                            onChange={(e) => setSkillPickerRepId(e.target.value)}
+                                            className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-200"
+                                          >
+                                            <option value="">Select a rep…</option>
+                                            {repOptions.map((r) => (
+                                              <option key={r.repId} value={r.repId}>{r.repName}</option>
+                                            ))}
+                                          </select>
+                                          <button
+                                            type="button"
+                                            disabled={!skillPickerRepId || assigningSparringKey === pickerKey}
+                                            onClick={() => {
+                                              const rep = repOptions.find((r) => r.repId === skillPickerRepId)
+                                              if (!rep) return
+                                              assignSparring({ key: pickerKey, repId: rep.repId, repName: rep.repName, drill, reason: `Team weak skill: ${s.skill}`, sectionText: s.skill, priority: s.averageScore < 50 ? 'High' : 'Medium' })
+                                              setSkillPickerKey(null)
+                                            }}
+                                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                          >
+                                            {assigningSparringKey === pickerKey ? 'Assigning…' : 'Assign'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setSkillPickerKey(null)}
+                                            className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 transition-colors"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </div>
                           ))}
                         </div>
