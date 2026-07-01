@@ -81,6 +81,7 @@
     "validate-demo-readiness-day-162": "bash scripts/validate-demo-readiness-day-162.sh",
     "validate-demo-readiness-day-163": "bash scripts/validate-demo-readiness-day-163.sh",
     "validate-demo-readiness-day-164": "bash scripts/validate-demo-readiness-day-164.sh",
+    "validate-demo-readiness-day-165": "bash scripts/validate-demo-readiness-day-165.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",

@@ -213,7 +213,48 @@ WEB-only fix + layout pass; no API change, no migration.
 **Remaining metadata gap:** rep / call type / tag are still UI-only (no DB column;
 rep = uploader `user_id`), as in Day 162–163.
 
-**Day 165 recommendation:** proceed to the deferred backend data-model task —
-persist the selected rep / call type / label behind one small migration — or
-inline a create-client modal on `/upload`. Pair with the §5 demo-data checklist
-against a real demo org, now that upload processing completes cleanly.
+**Next step (Day 165):** prove the uploaded call actually reaches the manager
+Review Queue.
+
+---
+
+## 12. Day 165 — Upload → Review Queue pipeline proof (done)
+
+Traced the full path Upload → transcribe → score → Review Queue.
+
+**Pipeline (happy path):** `finalize` inserts `calls` (`status: queued`) + a
+`transcribe` job → the worker sets `status: processed` and enqueues a `score`
+job → the score worker sets `status: scored` + `score_overall`. The manager
+Review Queue (`GET /v1/manager/review-queue`) and Command Centre only surface
+calls with `status = "scored"`, scoped by the manager's hierarchy
+(`applyHierarchyFilters` → `office_id` / `company_id`), and the Review Queue
+additionally keeps only calls with a review reason (score < 70 or a stage < 50).
+
+**Root cause (ownership/scope mismatch):** `finalize` created the call **without
+`office_id` / `company_id`**. For a company/office manager, the queue filters
+`.eq("office_id", …)` / `.eq("company_id", …)`, so the manager's own upload
+(null office/company) was filtered out and never appeared — even after scoring.
+
+**Fix (smallest correct layer):** `finalize` now stamps the uploader's
+`office_id` / `company_id` from their `users` row (fail-soft; no migration,
+columns already exist). Uploader remains the call owner.
+
+**Secondary (by design, documented):** a well-scored call has no review reason,
+so it correctly does not appear in the *Review Queue*; it is still in the Calls
+list / Command Centre. Scoring is also async — right after upload the call is
+`processed`, becoming `scored` a few seconds later.
+
+**Expected post-upload UX:** the success screen now polls the call status and
+shows "Call uploaded. Processing has started." → "Call ready for review." once
+scored, with an **Open Review Queue** CTA that deep-links to
+`/coaching?tab=review`, plus Command Centre / View call / Upload another. Failures
+read "Call uploaded, but processing could not start." + "Reason: …".
+
+**Remaining demo-data checklist item:** confirm on a real demo org that the
+uploader has a `users` row with `office_id` / `company_id` set (otherwise the
+call is stamped null and stays out of a manager's scoped queue), and seed at
+least one low-scored call so the Review Queue is non-empty.
+
+**Day 166 recommendation:** run the §5 demo-data checklist live end-to-end, then
+either persist rep / call type / label (small migration) or inline a create-client
+modal on `/upload`.

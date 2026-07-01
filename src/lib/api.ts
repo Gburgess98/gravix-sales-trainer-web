@@ -423,6 +423,21 @@ export async function getJobStatus(jobId: string): Promise<{ ok: true; status?: 
   return await jfetch<{ ok: true; status?: string; job?: any }>(`${PROXY}/v1/jobs/${encodeURIComponent(jobId)}`);
 }
 
+/**
+ * Read a call's current status/score through the authenticated proxy. Day 165 —
+ * after the transcribe job finishes, scoring runs asynchronously and only then
+ * does the call reach status "scored" and appear in the manager Review Queue.
+ * Polling this lets the upload page honestly say "ready for review" vs "processing".
+ */
+export async function getCallStatus(callId: string): Promise<{ status: string | null; scoreOverall: number | null }> {
+  const j = await jfetch<{ ok: true; call?: any }>(`${PROXY}/v1/calls/${encodeURIComponent(callId)}`);
+  const call = (j as any).call ?? j;
+  const status = call?.status ? String(call.status) : null;
+  const rawScore = call?.score_overall ?? call?.scoreOverall ?? null;
+  const scoreOverall = Number.isFinite(Number(rawScore)) ? Number(rawScore) : null;
+  return { status, scoreOverall };
+}
+
 // -------------------------------
 // Day 162 — Upload Call linking: reps + accounts pickers (fail-soft)
 // -------------------------------

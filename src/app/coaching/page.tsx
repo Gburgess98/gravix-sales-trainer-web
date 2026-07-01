@@ -1008,6 +1008,16 @@ export default function CoachingPage() {
   const [tab, setTab] = useState<CoachingTab>('overview')
   const [repFilter, setRepFilter] = useState<RepFilter>('all')
 
+  // Day 165 — allow deep-linking to a tab (e.g. /coaching?tab=review from the
+  // upload success screen) so managers land straight on the Review Queue.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const wanted = (params.get('tab') || window.location.hash.replace('#', '')) as CoachingTab
+    const valid: CoachingTab[] = ['overview', 'interventions', 'assignments', 'replay', 'review']
+    if (valid.includes(wanted)) setTab(wanted)
+  }, [])
+
   const [reps, setReps] = useState<RepRisk[]>([])
   const [headline, setHeadline] = useState<Headline | null>(null)
   const [reporting, setReporting] = useState<Reporting | null>(null)

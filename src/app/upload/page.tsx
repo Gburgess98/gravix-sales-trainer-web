@@ -6,6 +6,7 @@ import {
   signedInitUpload,
   finalizeSignedUpload,
   getJobStatus,
+  getCallStatus,
   listTeamUsers,
   listUploadAccounts,
   type UploadRepOption,
@@ -61,6 +62,7 @@ export default function UploadPage() {
   const [lastErrorStage, setLastErrorStage] = useState<null | "init" | "put" | "finalize" | "processing">(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [processingReason, setProcessingReason] = useState<string | null>(null);
+  const [reviewReady, setReviewReady] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -115,6 +117,25 @@ export default function UploadPage() {
     return null;
   }
 
+  // Day 165 — after transcription the call is "processed"; scoring runs next and
+  // only when the call reaches "scored" does it enter the manager Review Queue.
+  // Poll the call status so we can honestly say "ready for review" vs "processing".
+  async function waitForScored(callId: string, maxMs = 20000) {
+    const started = Date.now();
+    while (Date.now() - started < maxMs) {
+      try {
+        const { status } = await getCallStatus(callId);
+        if (status) setJobStatus(status);
+        if (status === "scored") return true;
+        if (status === "failed" || status === "error") return false;
+      } catch {
+        // transient — the row may still be settling; keep polling
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    return false;
+  }
+
   async function doUpload(f: File) {
     setBusy(true);
     setMsg(null);
@@ -123,6 +144,7 @@ export default function UploadPage() {
     setJobStatus(null);
     setLastErrorStage(null);
     setProcessingReason(null);
+    setReviewReady(false);
     setUploadStage("init");
 
     try {
@@ -174,7 +196,14 @@ export default function UploadPage() {
       }
 
       setUploadStage("done");
-      setMsg("Call uploaded. We'll add it to the review queue once processing finishes.");
+      setMsg(null);
+
+      // Processing continues (scoring) after the transcribe job — poll the call
+      // so the success screen can flip to "ready for review" once it is scored.
+      if (fin?.callId) {
+        const scored = await waitForScored(fin.callId, 20000);
+        setReviewReady(scored);
+      }
     } catch (e: any) {
       const stage =
         uploadStage === "put"
@@ -214,6 +243,7 @@ export default function UploadPage() {
     setUploadStage("idle");
     setJobStatus(null);
     setProcessingReason(null);
+    setReviewReady(false);
   }
 
   const fieldClass = "w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600";
@@ -238,17 +268,34 @@ export default function UploadPage() {
       {uploadStage === "done" && result?.ok ? (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-3">
           <div>
-            <h2 className="text-base font-semibold text-emerald-200">Call uploaded.</h2>
-            <p className="mt-0.5 text-sm text-neutral-300">
-              We&apos;ll add it to the review queue once processing finishes.
-            </p>
+            {reviewReady ? (
+              <>
+                <h2 className="text-base font-semibold text-emerald-200">Call ready for review.</h2>
+                <p className="mt-0.5 text-sm text-neutral-300">
+                  Scoring finished — open the Review Queue to score, spot weak skills and assign coaching.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-semibold text-emerald-200">Call uploaded. Processing has started.</h2>
+                <p className="mt-0.5 text-sm text-neutral-300">
+                  It will appear in the Review Queue once scoring finishes. This can take a few minutes{jobStatus ? ` — currently ${jobStatus}` : ""}.
+                </p>
+              </>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/coaching"
+              href="/coaching?tab=review"
               className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
             >
-              Open Command Centre
+              Open Review Queue
+            </Link>
+            <Link
+              href="/coaching"
+              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
+            >
+              Open Manager Command Centre
             </Link>
             {result.callId && (
               <Link
