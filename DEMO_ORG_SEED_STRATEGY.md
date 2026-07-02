@@ -92,8 +92,44 @@ seed script can now rely on scoped assignments and team pickers:
   `npx tsx scripts/backfill-assignment-tenant-stamps.ts` (idempotent,
   dry-run verified; run before the demo so the 14 open assignments surface).
 
+## Day 169 — UFC demo story seeded (done)
+
+**Script:** API `scripts/seed-ufc-demo-story.ts` — deterministic ids
+(`uid("UFC_STORY", key)`), upsert on id, all meta tagged
+`demo_seed: "ufc-story"`. **Re-run:** `npx tsx scripts/seed-ufc-demo-story.ts`
+(supports `--dry-run`); idempotent, refreshes the same rows with fresh
+relative dates. Run `seed:demo` first on a fresh environment (personas/calls
+must exist).
+
+**Rows seeded (13):**
+
+| Table | Rows | Ids |
+| --- | --- | --- |
+| whisperer_sessions | 1 (ended, linked to Nate's 45/100 call `3d26a918…`) | `181671a3…` |
+| whisperer_triggers | 3 (price used / authority / send_info) | `205f0e5c…`, `70a6ea14…`, `ff74eef7…` |
+| whisperer_segments | 3 (untriggered "send over some information" stalls) | `8c73d4d5…`, `f2b3cc49…`, `3fd5556b…` |
+| whisperer_trigger_library | 1 ("Partner approval", created_by Dana) | `3d50ef49…` |
+| assignments | 3 (1 open queue-assigned + 2 completed with proof 62/78) | `ff4e7e5c…`, `f731fff5…`, `74c4bdc6…` |
+| sparring_sessions | 2 (completed, linked by assignment_id) | `7bd43164…`, `48c94573…` |
+
+The AI candidate ("Send-me-info brush-off", seen 3) is **not seeded** — it is
+mined live by discovery from the raw segments, so the manager approval gate
+stays real.
+
+**Demo chapters now available as dana.white (no login switch):** Review Queue
+→ call detail with Whisperer replay moments → Whisperer Insights (1 session,
+3 moments, 100% used rate) → AI Discovery candidate → custom trigger library
+→ queue-assigned sparring (1 open, 2 completed, 2 proof stored) → sparring
+score trend (avg 70%, best 78%, most improved Nate Diaz).
+
+**Remaining weak:** seeded calls still have no transcript ("Weakest:
+Unknown"); demo data ages out of 30-day windows (~7 July for the calls;
+re-run `seed:demo` + `seed-ufc-demo-story` before demos after that); pins
+stay ownership-gated; upload account picker still needs a UFC CRM account
+seeded if a fresh live upload is part of the run.
+
 ## Next action
 
-Day 169: run the assignment-stamp backfill, then build the seed extension
-(Whisperer session + moments + sparring proof for UFC Elite) and re-run the
-Day 167 audit checklist.
+Day 170: full end-to-end demo dress rehearsal as Dana against the demo
+narrative in `DEMO_READINESS_PLAN.md`, plus transcript/label polish if time
+allows.

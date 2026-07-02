@@ -390,3 +390,22 @@ no auth → empty. Response shape unchanged, no WEB code change.
 build the UFC seed extension (Whisperer session, trigger moments, replay
 link, sparring drill + proof rows) per `DEMO_ORG_SEED_STRATEGY.md`, and
 re-run the audit checklist as Dana end-to-end.
+
+## 19. Day 169 — UFC demo story seed complete (done)
+
+Backfill confirmed (Dana: 25 assignments, Command Centre 15 open). New
+idempotent seeder `scripts/seed-ufc-demo-story.ts` (API) seeded the full
+Whisperer / AI Discovery / sparring-proof story into the UFC org: session +
+3 moments linked to Nate's 45/100 call, 3 raw stall segments (AI candidate
+"Send-me-info brush-off" mined live, approval gate intact), "Partner
+approval" custom trigger, 1 open + 2 proof-backed queue-assigned sparring
+drills (62 → 78 trend). Proven end-to-end via API as Dana **and** a live
+browser login: /coaching shows every chapter populated, no console errors.
+Verdict: **all lighthouse chapters demo-ready from the single dana.white
+login.** Details in `DEMO_ORG_SEED_STRATEGY.md` + audit doc Day 169.
+
+**Day 170 recommendation:** full dress rehearsal against the §2 demo
+narrative as Dana (time it, note stumbles), then optional polish: seed a
+transcript for the featured call (kills "Weakest: Unknown"), seed one UFC
+CRM account for the upload picker, and diarise re-seeding before any demo
+after ~7 July.

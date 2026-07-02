@@ -232,3 +232,44 @@ Live proof:
   `forbidden_not_manager` from `requireManager` (no users row) — dev-side
   only, does not affect the UFC demo.
 - Pins remain ownership-gated (deferred, not needed for demo).
+
+## Day 169 — Backfill proof + UFC demo story seeded
+
+### Post-backfill assignment proof — CONFIRMED
+
+George ran `backfill-assignment-tenant-stamps.ts`; 0 rows remain with
+`company_id` NULL. As Dana: `/v1/assignments/manager` returns **25
+assignments** (11 open, 14 completed), Command Centre `openAssignments` is
+now populated (15 after seeding). The Day 168 "shows 0" issue is closed.
+
+### UFC seed results
+
+`scripts/seed-ufc-demo-story.ts` (idempotent, re-run verified) seeded 13
+rows: 1 ended Whisperer session linked to Nate Diaz's 45/100 call, 3 trigger
+moments (price/authority/send_info), 3 raw stall segments, the "Partner
+approval" custom trigger (created_by Dana), 1 open queue-assigned sparring
+drill and 2 completed drills with Day 155 proof meta matched to 2 seeded
+sparring sessions (62 → 78). Full id table in `DEMO_ORG_SEED_STRATEGY.md`.
+
+**API proof as Dana (all 200):** whisperer-sessions 1/3 triggers, 100% used
+rate · call replay 3 moments on `3d26a918…` · trigger-candidates 1
+("Send-me-info brush-off", seen 3, mined live — not seeded) ·
+trigger-library 1 · sparring-sessions 2 (source assignment) ·
+assignments/manager 4 sparring (1 open + 2 proof-backed) · command-centre
+openAssignments 15.
+
+**Browser proof as Dana (live login):** /coaching shows Whisperer Insights
+(1 session · 3 triggers · 347ms · Used rate 100%), AI Discovery candidate,
+Partner approval trigger, Queue-assigned sparring 1 open / 2 completed / 2
+proof stored, Sparring score trend (avg 70%, best 78%, most improved Nate
+Diaz), Review Queue 8. No console errors. First weak point: the open drill
+row honestly says "No completed sparring found yet" (correct copy for an
+open drill — not a blocker).
+
+### Ready to demo? (Day 169 verdict)
+
+**Yes — all lighthouse chapters now run from the single dana.white login:**
+core manager path (Day 167) + Whisperer replay, AI Discovery, custom
+triggers, queue-assigned sparring, completion proof and score trend (today).
+Remaining polish: no transcripts on seeded calls ("Weakest: Unknown"),
+30-day window ages out ~7 July (re-run both seeders before later demos).
