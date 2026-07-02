@@ -258,3 +258,41 @@ least one low-scored call so the Review Queue is non-empty.
 **Day 166 recommendation:** run the §5 demo-data checklist live end-to-end, then
 either persist rep / call type / label (small migration) or inline a create-client
 modal on `/upload`.
+
+---
+
+## 15. Day 166 — Live upload → Review Queue proof (done)
+
+**Live proof PASSED end-to-end** against the running local stack (API `tsx watch`
+at 791c8a5 + Day 166 patch): signed init → storage PUT → finalize → transcribe
+job (`gpt-4o-mini-transcribe`, real transcript) → score job → `status: scored`
+(score 45) → the call appeared in `GET /v1/manager/review-queue` with reasons
+("Score below 70", Discovery/Objection/Close below 50). No `missing_user` at any
+step. The Day 165 stamping fix is proven live: the call row carried the
+uploader's `office_id`, `company_id` and the selected `account_id`.
+
+**Demo user/org linkage confirmed:** the primary manager login
+(george@gravixbots.com, `office_manager`) has both `office_id` and `company_id`
+on its `users` row, so its uploads land in its own scoped Review Queue.
+(Note: uploads made *before* Day 165 — e.g. call_16/call_19 — have null
+office/company stamps and stay out of scoped queues; re-upload if they are
+needed in a demo.)
+
+**Blocker found + fixed (API):** the seeded demo-org managers
+(dana.white@ufcelite.demo, hunter.campbell@ufcelite.demo) are `office_manager`
+with **no `office_id`**. `applyHierarchyFilters` emitted `.eq("office_id", null)`
+— a Postgres uuid error — so every hierarchy-scoped manager endpoint (Review
+Queue included) returned 500 for those personas. Fix: guard the filter — office
+managers without an office fall back to company scope (then unscoped, matching
+the existing null-context behaviour). Verified live: dana.white now sees the 8
+low-scored demo calls; tenant isolation preserved in both directions (demo org
+does not see the gravixbots upload and vice versa).
+
+**Empty-queue copy check:** `/coaching` already explains the behaviour — empty
+state "No calls need review right now." under the card subtitle "Lowest scores
+first · score below 70 or a critical section." No copy patch needed.
+
+**Day 167 recommendation:** finish the §5 demo-data checklist against the demo
+org (assignments, sparring proof, AI trigger candidate, Whisperer session), then
+persist rep / call type / label on upload (small migration) or inline a
+create-client modal on `/upload`.
