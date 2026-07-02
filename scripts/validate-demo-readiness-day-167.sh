@@ -69,6 +69,47 @@ else
   echo "SKIP  API repo not found next to WEB (calls.ts fallback check)"
 fi
 
+# ── Day 167 official build day: seed strategy documented ──
+STRATEGY="$WEB_ROOT/DEMO_ORG_SEED_STRATEGY.md"
+
+test -f "$STRATEGY"
+check "DEMO_ORG_SEED_STRATEGY.md exists" $?
+
+grep -q "UFC Elite" "$STRATEGY" 2>/dev/null
+check "seed strategy targets UFC Elite" $?
+
+grep -qi "Whisperer session" "$STRATEGY" 2>/dev/null
+check "seed strategy includes Whisperer session" $?
+
+grep -qi "AI trigger candidate" "$STRATEGY" 2>/dev/null
+check "seed strategy includes AI trigger candidate" $?
+
+grep -qi "custom trigger" "$STRATEGY" 2>/dev/null
+check "seed strategy includes custom trigger" $?
+
+grep -qi "queue-assigned sparring" "$STRATEGY" 2>/dev/null
+check "seed strategy includes queue-assigned sparring" $?
+
+grep -qi "completed sparring proof" "$STRATEGY" 2>/dev/null
+check "seed strategy includes completed sparring proof" $?
+
+grep -q "Day 167" "$AUDIT" 2>/dev/null
+check "DEMO_DATA_READINESS_AUDIT.md includes Day 167" $?
+
+# ── Day 167 null-office patch: applyLibraryScope guards office_id ──
+if [[ -f "$API_ROOT/src/routes/manager.ts" ]]; then
+  grep -q "Day 167" "$API_ROOT/src/routes/manager.ts" 2>/dev/null && \
+    grep -A8 "function applyLibraryScope" "$API_ROOT/src/routes/manager.ts" 2>/dev/null | \
+    grep -q 'if (ctx.office_id) return query.eq("office_id", ctx.office_id);'
+  check "API applyLibraryScope has Day 167 null-office company fallback" $?
+else
+  echo "SKIP  API repo not found next to WEB (applyLibraryScope check)"
+fi
+
+# ── no LLM on the live hot path in WEB src ──
+! grep -riqE "chat\.completions|responses\.create" "$WEB_ROOT/src" --include="*.ts" --include="*.tsx" 2>/dev/null
+check "no LLM on live hot path in WEB src" $?
+
 # ── smoke baseline still present ──
 test -f "$SMOKE"
 check "validate-tier-2b-smoke.sh still exists" $?

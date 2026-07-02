@@ -340,3 +340,30 @@ Mark Reviewed / Assign Coaching) straight from the queue.
 trigger-library/decision endpoints (same guard as Day 166's
 `applyHierarchyFilters` fix), then decide whether to seed demo-org Whisperer +
 sparring-proof data or demo those features from the dev company login.
+
+## 17. Day 167 — Demo org blocker patch + seed strategy (done)
+
+**Demo org blocker patch (API):** the null-office uuid 500s in
+`GET /v1/manager/whisperer-trigger-library` and
+`GET /v1/manager/whisperer-trigger-candidate-decisions` are fixed —
+`applyLibraryScope` now uses the Day 166 rule (office scope if present, else
+company scope). Demo managers with `office_id` null no longer 500 on the
+Custom Trigger Library or reviewed-candidate history; tenant isolation
+unchanged. Pins (ownership-gated, not needed for demo) and the wrong-company
+upload rep picker (`/v1/team/users` is fully unscoped — real fix is Day 168)
+were audited and deferred with root causes documented in
+`DEMO_DATA_READINESS_AUDIT.md`.
+
+**Seed strategy chosen:** single-org demo — **seed the UFC Elite org and run
+the entire lighthouse demo as dana.white**; never switch to the dev-company
+login mid-demo. Seed list (Whisperer session, 2–3 trigger moments, replay
+link, AI trigger candidate, custom trigger, queue-assigned sparring drill,
+completed sparring proof + second trend row, optional fresh upload) and the
+copy-vs-script trade-off are in `DEMO_ORG_SEED_STRATEGY.md`. Recommendation:
+extend `npm run seed:demo` so re-seeding stays one repeatable command.
+
+**Day 168 recommendation:** build the seed-script extension for the UFC org
+Whisperer/sparring chapters, fix the five unguarded
+`.eq("office_id", …)` filters in `assignments.ts` (likely cause of the
+"14 open assignments but Command Centre shows 0" finding), and add tenant
+scoping to `/v1/team/users`.

@@ -107,3 +107,73 @@ panel. Flow feels calm and understandable end-to-end.
 → coaching actions) after today's fix. **Not yet** for the Whisperer / AI
 Discovery / sparring-proof chapters of the story — demo those from the
 gravixbots dev login or seed the demo org first.
+
+## Day 167 — Official build day results
+
+The sections above are the preflight checkpoint. This section records the
+official Day 167 build work.
+
+### Null-office endpoint patch (API) — FIXED
+
+`applyLibraryScope` in `src/routes/manager.ts` filtered office managers with
+`.eq("office_id", ctx.office_id)` with no null guard — for demo managers with
+`office_id` null this emitted `.eq("office_id", null)`, a Postgres uuid error
+(`invalid input syntax for type uuid: "null"`), 500-ing:
+
+- `GET /v1/manager/whisperer-trigger-library`
+- `GET /v1/manager/whisperer-trigger-candidate-decisions`
+- `PATCH`/`DELETE /v1/manager/whisperer-trigger-library/:id`
+- (silently skipping candidate suppression inside
+  `GET /v1/manager/whisperer-trigger-candidates`, which is fail-soft)
+
+Patched with the same rule as Day 166's `applyHierarchyFilters` fix: office
+scope if `office_id` present, else company scope, else unscoped. The decision
+POST/DELETE handlers already null-guarded correctly (`.is("office_id", null)`)
+and were untouched. Tenant isolation preserved — the fallback never crosses
+the company boundary for a manager who has a company.
+
+**Related finding (deferred to Day 168):** `src/routes/assignments.ts` has the
+same unguarded `.eq("office_id", managerContext.office_id)` in five places —
+the most likely cause of "14 open assignments in DB but Command Centre shows
+0" for demo managers.
+
+### Pins audit — deferred, not needed for demo
+
+`src/routes/pins.ts` enforces strict call *ownership* on GET/POST/DELETE
+(`call.user_id !== requester` → 403), so a manager can never list or add pins
+on a rep's call — this is why call detail shows "No pins yet" via the UI's
+fail-soft. **Mark Reviewed + Assign Coaching are sufficient for the demo
+path; pins are not required for the lighthouse demo.** A safe manager-pin fix
+would replace the ownership check with the org-visibility rule used by
+`canAccessCall` in `src/routes/calls.ts` (Day 167 reps fallback included) —
+a behaviour change, not a tiny patch, so deferred.
+
+### Upload picker audit — root cause found, deferred
+
+- **Rep picker** (`GET /v1/team/users`, `src/routes/team.ts`): queries the
+  `profiles` table with **no tenant scoping at all** — every profile in the
+  DB is returned to any caller. This is the wrong-company rep leak, and it is
+  also a tenant-isolation gap beyond the demo. Fix needs requester-derived
+  company scoping on a schema-agnostic legacy endpoint → **Day 168**, not
+  tiny.
+- **Account picker** (`GET /v1/accounts`): code-side it IS company-scoped
+  (`org_id = requester.company_id`, users → reps fallback). The wrong-company
+  "Cage Warriors" result needs a live DB check of that account's `org_id`
+  stamp — likely stamped to the dev company during earlier testing.
+- Free-text rep + temporary account label fallbacks keep `/upload` usable for
+  the demo today, so this is acceptable to defer.
+
+### Seed strategy decision
+
+**Seed the UFC Elite org; run the whole demo as dana.white.** Full strategy,
+gap table and seed list in `DEMO_ORG_SEED_STRATEGY.md`. Key points: extend
+`npm run seed:demo` (repeatable, fresh dates) rather than hand-copying
+dev-company rows; keep manager approval gates intact (seed raw Whisperer
+material, let discovery mine candidates; never auto-enable triggers or
+auto-complete assignments).
+
+### Next action
+
+Day 168: seed-script extension for UFC Whisperer/sparring-proof data, fix the
+five unguarded office filters in `assignments.ts`, and scope
+`/v1/team/users`.
