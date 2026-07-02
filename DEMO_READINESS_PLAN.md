@@ -296,3 +296,47 @@ first · score below 70 or a critical section." No copy patch needed.
 org (assignments, sparring proof, AI trigger candidate, Whisperer session), then
 persist rep / call type / label on upload (small migration) or inline a
 create-client modal on `/upload`.
+
+---
+
+## 16. Day 167 — Demo data checklist + live walkthrough (done)
+
+**Checklist run against the seeded demo org** (UFC Elite Sales Team, manager
+login dana.white@ufcelite.demo) via read-only DB audit + a full live browser
+walkthrough of the Manager Command Centre path. Full results in
+`DEMO_DATA_READINESS_AUDIT.md`.
+
+**Result summary:** the core manager story (open `/coaching` → Command Centre →
+Review Queue (8 calls) → Coaching Queue (15 flags) → reps at risk → recommended
+drills) is **Ready**. Sparring proof/score trend, AI Discovery, Whisperer replay
+and custom triggers are **empty in the demo org** (all live Whisperer/proof data
+sits in the gravixbots dev company) — the UI shows calm, honest empty states for
+each, so these are documented gaps, not broken pages.
+
+**Top blocker found + fixed (API, priority 3 — call detail broken):** opening
+any rep call from the Review Queue as a seeded demo manager returned **403
+forbidden** and rendered an empty "Queued" call page. Root cause:
+`getRequesterOrgId` (calls route) derived the requester's org from *their own
+most recent call* — a manager who has never uploaded a call resolved to no org
+and failed `canAccessCall`. Fix: fail-soft fallback to the requester's
+`reps.org_id` (org visibility rules unchanged, default "everyone" still
+applies). Verified live: dana.white now opens demo-call-9 (45/100, summary,
+Mark Reviewed / Assign Coaching) straight from the queue.
+
+**Deferred (documented, not fixed today):**
+- `/v1/manager/whisperer-trigger-library` + `whisperer-trigger-candidate-decisions`
+  return 500 for the demo managers (`invalid input syntax for type uuid: "null"`
+  — same null-office class as Day 166, different endpoints). Panels still show
+  calm empty states.
+- Pins endpoint returns "forbidden" for managers on rep calls (list shows
+  "No pins yet", non-blocking).
+- Upload pickers for dana show 1 account / 1 rep (scoped to the wrong company);
+  free-text rep + temporary label fallbacks keep the flow usable.
+- Seeded calls have no transcript and "Weakest: Unknown" stage labels.
+- Seeded calls are dated 2–8 June; the 30-day Review Queue window empties
+  around 8 July — re-run `npm run seed:demo` before a demo after that.
+
+**Day 168 recommendation:** patch the null-office uuid bug in the two
+trigger-library/decision endpoints (same guard as Day 166's
+`applyHierarchyFilters` fix), then decide whether to seed demo-org Whisperer +
+sparring-proof data or demo those features from the dev company login.
