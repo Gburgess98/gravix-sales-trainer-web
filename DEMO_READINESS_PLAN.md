@@ -409,3 +409,28 @@ narrative as Dana (time it, note stumbles), then optional polish: seed a
 transcript for the featured call (kills "Weakest: Unknown"), seed one UFC
 CRM account for the upload picker, and diarise re-seeding before any demo
 after ~7 July.
+
+## 20. Day 170 — Lighthouse dress rehearsal (done)
+
+Full timed rehearsal as dana.white@ufcelite.demo against the §2 narrative:
+~6-minute walkthrough, all 8 chapters render from the single login, no
+console errors. Step-by-step results in `LIGHTHOUSE_DEMO_REHEARSAL.md`.
+
+**Verdict: Almost ready.** **Top friction point (patched):** opening the
+hero Nate Diaz 45/100 call as Dana, `GET/POST /v1/calls/:id/manager-review`
+returned 403 — Mark Reviewed would have failed live. Root cause: the
+manager-review scope check in API `calls.ts` compared null office ids as
+`"" !== "x"`, always rejecting null-office managers (same class as the
+Day 166/167 fixes). Patched with `managerReviewScopeAllows()` mirroring
+`applyHierarchyFilters` (office scope → company fallback), used by both
+handlers; browser-verified 200 as Dana.
+
+Remaining (not patched today, per one-patch rule): Pins card renders a raw
+"forbidden" string for managers (owner-only route — separate root cause),
+call titles are raw filenames/UUIDs, "Weakest: Unknown" on queue rows,
+legacy `gravix.com` dev users appear in UFC dropdowns.
+
+**Day 171 recommendation:** fix the Pins card 403 for managers (scoped
+manager read on `/v1/pins` or hide the card gracefully on 403) — the last
+visible error string on the demo path. Secondary: human-friendly seeded
+call titles and re-home legacy dev users out of the UFC company.
