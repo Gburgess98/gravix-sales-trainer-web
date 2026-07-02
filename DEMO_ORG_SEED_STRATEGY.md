@@ -77,8 +77,23 @@ company:
 **Recommendation: seed the UFC Elite org and run the entire demo as
 dana.white. Use the dev company only as an internal fallback, never live.**
 
+## Day 168 update — visibility/scoping blockers fixed before seeding
+
+The data-visibility blockers are fixed ahead of the seed build, so the UFC
+seed script can now rely on scoped assignments and team pickers:
+
+- Assignment queries use `applyOrgScope` (office → company fallback) and
+  assignment creation stamps tenancy via the reps identity bridge — seeded
+  assignments will be visible to Dana as long as reps carry UFC
+  company/office stamps (they do).
+- `/v1/team/users` is company-scoped — the upload rep picker shows only UFC
+  members for Dana (15 live-proofed), so seeded reps appear correctly.
+- One-off repair for the existing null-stamped rows:
+  `npx tsx scripts/backfill-assignment-tenant-stamps.ts` (idempotent,
+  dry-run verified; run before the demo so the 14 open assignments surface).
+
 ## Next action
 
-Day 168: build the seed extension (Whisperer session + moments + sparring
-proof for UFC Elite), re-run the Day 167 audit checklist, and fix the
-unscoped `/v1/team/users` rep picker.
+Day 169: run the assignment-stamp backfill, then build the seed extension
+(Whisperer session + moments + sparring proof for UFC Elite) and re-run the
+Day 167 audit checklist.

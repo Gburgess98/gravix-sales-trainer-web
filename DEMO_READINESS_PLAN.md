@@ -367,3 +367,26 @@ Whisperer/sparring chapters, fix the five unguarded
 `.eq("office_id", …)` filters in `assignments.ts` (likely cause of the
 "14 open assignments but Command Centre shows 0" finding), and add tenant
 scoping to `/v1/team/users`.
+
+## 18. Day 168 — Demo org data visibility fixes (done)
+
+**Assignment scoping (API):** the five unguarded office filters in
+`assignments.ts` are consolidated into a shared `applyOrgScope` helper
+(office scope when assigned, else company, never broader). Deeper root cause
+of the "0 open assignments": all 32 non-dev assignment rows carry NULL
+tenant stamps because creation only read the rep's `users` row — seeded UFC
+reps are auth-first (reps-table identities). Creation now bridges to `reps`;
+`scripts/backfill-assignment-tenant-stamps.ts` repairs existing rows
+(dry-run verified: 30 → UFC, 2 → dev). **Backfill awaits George's
+go-ahead** — until it runs Dana's assignment count stays 0.
+
+**Team picker scoping (API):** `/v1/team/users` no longer returns the
+(1-row) `profiles` table to everyone — it resolves the requester's company
+and returns company members from `reps` + `users`. Live-proofed: Dana sees
+15 UFC members, dev sees 5 dev members, no cross-company leak either way,
+no auth → empty. Response shape unchanged, no WEB code change.
+
+**Day 169 recommendation:** run the assignment backfill (one command), then
+build the UFC seed extension (Whisperer session, trigger moments, replay
+link, sparring drill + proof rows) per `DEMO_ORG_SEED_STRATEGY.md`, and
+re-run the audit checklist as Dana end-to-end.

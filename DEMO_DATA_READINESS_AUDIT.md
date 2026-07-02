@@ -177,3 +177,58 @@ auto-complete assignments).
 Day 168: seed-script extension for UFC Whisperer/sparring-proof data, fix the
 five unguarded office filters in `assignments.ts`, and scope
 `/v1/team/users`.
+
+## Day 168 — Demo org data visibility fixes
+
+### Assignment scoping — FIXED (code) + backfill script ready
+
+All five unguarded `.eq("office_id", managerContext.office_id)` sites in API
+`src/routes/assignments.ts` (`GET /by-target`, `GET /`, `GET /summary`,
+`GET /manager`, `GET /reporting`) now go through a shared `applyOrgScope`
+helper with the Day 166/167 rule: office scope when assigned, else company
+scope, never beyond company. Live as Dana: `/v1/assignments/manager` and
+`/summary` return 200 (previously the null uuid filter errored).
+
+**Deeper root cause found:** the "14 open assignments but Command Centre
+shows 0" was only half scoping — **all 32 non-dev assignment rows have
+`company_id`/`office_id` NULL**. Assignment creation stamped tenancy from the
+rep's `users` row only; seeded UFC reps are auth-first (reps-table
+identities, no users row), so their assignments were stamped null — the same
+identity-bridge gap fixed in accounts.ts/calls.ts previously.
+
+Fixes:
+- `getUserHierarchy` (creation path) now falls back to `reps`
+  office/company, so newly created assignments are stamped correctly.
+- `scripts/backfill-assignment-tenant-stamps.ts` repairs the existing rows
+  (idempotent, only `company_id IS NULL`, resolves users → reps, dry-run
+  verified: 32 rows resolve — 30 → UFC, 2 → dev, 0 skipped). **Not yet run**
+  — bulk update of shared demo data needs George's go-ahead:
+  `npx tsx scripts/backfill-assignment-tenant-stamps.ts` (supports
+  `--dry-run`). Until it runs, Dana's assignment count stays 0.
+
+### /v1/team/users scoping — FIXED
+
+The endpoint listed the `profiles` table with no tenant filter — and
+`profiles` has exactly **1 row in the whole DB** (George), which is why every
+picker showed "1 rep (George)". Rewritten: resolve the requester's company
+(users first, reps identity bridge second, same as accounts.ts), then return
+company members from `reps` (named) plus `users`-only members (email
+display). No requester/company → empty list. Response shape unchanged
+(`{ ok, items: [{ id, name, email, role, manager_id }] }`) → no WEB change.
+
+Live proof:
+- **Dana:** 15 UFC members (Conor McGregor, Nate Diaz, … + 2 seeded
+  UFC-company `@gravix.com` users — in-tenant rows, not a leak).
+- **Dev George:** 5 dev-company members, zero UFC leak.
+- **No auth:** empty list.
+
+### Remaining demo-data gaps
+
+- Run the assignment-stamp backfill (one command, above) → Dana's open
+  assignments surface.
+- UFC Whisperer/sparring seed chapters per `DEMO_ORG_SEED_STRATEGY.md`
+  (unchanged, still Day 169).
+- Pre-existing, out of scope today: the auth-first dev identity gets
+  `forbidden_not_manager` from `requireManager` (no users row) — dev-side
+  only, does not affect the UFC demo.
+- Pins remain ownership-gated (deferred, not needed for demo).
