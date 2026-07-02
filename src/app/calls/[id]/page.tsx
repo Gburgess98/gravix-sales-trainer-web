@@ -822,9 +822,12 @@ export default function CallPage() {
     let alive = true;
     setLoadingPins(true);
     refreshPins()
-      .catch((e) => {
+      .catch(() => {
+        // Load failures (including 403 on calls the viewer can't pin) fall
+        // back to the calm empty state — never surface raw API error strings.
         if (!alive) return;
-        setPinsErr(e?.message ?? 'Failed to load pins');
+        setPins([]);
+        setPinsErr(null);
       })
       .finally(() => alive && setLoadingPins(false));
     return () => { alive = false; };
@@ -946,8 +949,8 @@ export default function CallPage() {
       await createPin({ callId, t: Math.floor(t), note: note || null });
       setNote('');
       await refreshPins();
-    } catch (e: any) {
-      setPinsErr(e?.message ?? 'Failed to create pin');
+    } catch {
+      setPinsErr('Could not add a pinned note to this call.');
     } finally {
       setCreating(false);
     }
@@ -957,8 +960,8 @@ export default function CallPage() {
     try {
       await deletePin(id);
       setPins((p) => p.filter((x) => x.id !== id));
-    } catch (e: any) {
-      setPinsErr(e?.message ?? 'Failed to delete pin');
+    } catch {
+      setPinsErr('Could not remove that pinned note.');
     }
   }
 
@@ -1867,7 +1870,7 @@ export default function CallPage() {
           {loadingPins ? (
             <p className="text-sm opacity-70">Loading pins…</p>
           ) : pins.length === 0 ? (
-            <p className="text-sm opacity-70">No pins yet.</p>
+            <p className="text-sm opacity-70">No pinned coaching notes yet.</p>
           ) : (
             <ul className="divide-y border rounded">
               {pins.map((p) => (

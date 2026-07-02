@@ -434,3 +434,22 @@ legacy `gravix.com` dev users appear in UFC dropdowns.
 manager read on `/v1/pins` or hide the card gracefully on 403) — the last
 visible error string on the demo path. Secondary: human-friendly seeded
 call titles and re-home legacy dev users out of the UFC company.
+
+## 21. Day 171 — Pins card demo polish (done)
+
+The last visible error string on the demo path is gone. API: pin reads on
+`GET /v1/pins` now use the shared org-scoped call visibility rule
+(`canAccessCall`, extracted from `routes/calls.ts` to `lib/callAccess.ts`
+so pins.ts can import it — stale compiled `.js` siblings shadow
+route-to-route imports). Pin create/delete remain owner-only; out-of-org
+reads still 403 (proofed with a random user id). WEB: the Pins card never
+renders raw error strings — calm empty state "No pinned coaching notes
+yet.", fixed human copy for create/delete failures. Browser-proofed as
+Dana via Review Queue → Nate Diaz 45/100: no "forbidden", pins 200,
+manager-review actions unchanged, console clean.
+
+**Day 172 recommendation:** call identity polish for the demo — seed
+human-friendly call titles (rep + topic instead of `demo-call-9.mp3`) and
+fall back to rep name instead of the raw UUID in the call page header —
+then a final timed re-rehearsal to confirm Ready. Re-seed the UFC story
+before any demo after ~7 July.

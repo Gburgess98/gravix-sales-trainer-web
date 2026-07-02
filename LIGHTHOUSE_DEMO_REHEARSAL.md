@@ -53,6 +53,28 @@ API `src/routes/calls.ts`: added `managerReviewScopeAllows(ctx, call)` — a sin
 
 **Almost ready.** Every chapter of the story renders from one login and the walkthrough fits the time box. With the manager-review 403 patched, the primary flow (Command Centre → Review Queue → review → assign → proof → Whisperer → Discovery → Upload) is clean; remaining issues are presentational (pins "forbidden" text, filename/UUID call titles) and avoidable by the presenter.
 
+## Day 171 update — pins "forbidden" fixed
+
+The raw "forbidden" string on the call detail Pins card is gone. Two-part fix:
+
+- **API:** pin *reads* now use the same org-scoped call visibility rule as
+  signed-audio/transcript (`canAccessCall`, extracted to `lib/callAccess.ts`),
+  so managers who can open a call can read its pins. Pin create/delete stay
+  strictly owner-only. Out-of-org access still 403s (proofed with a random
+  user id).
+- **WEB:** the Pins card never renders raw API error strings — load failures
+  fall back to the calm empty state "No pinned coaching notes yet.", and
+  create/delete failures show fixed human copy.
+
+Browser-proofed as Dana via Review Queue → Nate Diaz 45/100: no "forbidden"
+text anywhere, pins request 200, score/summary/Mark Reviewed/Assign Coaching
+and Whisperer Moments unchanged, console clean.
+
+**Remaining caveats:** call title still shows the raw filename/UUID header;
+"Weakest: Unknown" on queue rows; legacy `gravix.com` dev users in UFC
+dropdowns; signed-audio 500 network noise on seeded calls (UI degrades
+gracefully). None render error text on the demo path.
+
 ## Recommended Day 171 action
 
 Fix the Pins card 403 for managers (either grant hierarchy-scoped manager read access on `/v1/pins` mirroring the review-queue rules, or hide the Pins card gracefully when the response is 403) — it is the last visible error string on the demo path. Secondary (if time): human-friendly call titles in the seed (rep + topic instead of `demo-call-9.mp3`) and re-home the legacy `gravix.com` dev users out of the UFC company.
