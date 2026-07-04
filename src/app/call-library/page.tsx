@@ -187,6 +187,17 @@ function difficultyLabel(value?: string | null) {
 
 export default function CallLibraryPage() {
   const [tab, setTab] = useState<Tab>("live");
+
+  // Day 178 — allow deep-linking a tab (e.g. /call-library?tab=sparring from the
+  // sidebar) so Sparring and Calls are distinct destinations. Read on mount only;
+  // window.location avoids the useSearchParams suspense requirement.
+  useEffect(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t === "live" || t === "sparring" || t === "upload") setTab(t);
+    } catch {}
+  }, []);
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>("all");
   const [sortBy, setSortBy] = useState<SortBy>("newest");

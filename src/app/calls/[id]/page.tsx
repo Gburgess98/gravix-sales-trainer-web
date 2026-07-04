@@ -1666,21 +1666,21 @@ export default function CallPage() {
 
             <div className="mt-3 grid gap-2 text-sm">
               <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">🎯 Strongest area today</div>
+                <div className="text-neutral-400">Strongest area today</div>
                 <div className="mt-1 font-semibold text-neutral-100">
                   {postAction.strongest}
                 </div>
               </div>
 
               <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">⚠️ One thing to improve</div>
+                <div className="text-neutral-400">One thing to improve</div>
                 <div className="mt-1 font-semibold text-neutral-100">
                   {postAction.improve}
                 </div>
               </div>
 
               <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">🔥 XP gained</div>
+                <div className="text-neutral-400">XP gained</div>
                 <div className="mt-1 font-semibold text-neutral-100">
                   +{postAction.xpGained}
                 </div>
@@ -1695,7 +1695,9 @@ export default function CallPage() {
                     const params = new URLSearchParams();
                     params.set("focus", momentumNext.focus);
                     params.set("source", "call-review");
-                    window.location.href = `/sparring/new?${params.toString()}`;
+                    // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
+                    // is the launch shortcut that creates a session and redirects into it.
+                    window.location.href = `/sparring/default?${params.toString()}`;
                   }}
                 >
                   Practice this now →

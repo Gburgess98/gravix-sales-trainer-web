@@ -64,9 +64,7 @@ export function AppShell({ children }: AppShellProps) {
     proxyFetch('/v1/reps/me', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
-        console.log('reps/me response', d)
         const tier = d?.tier ?? d?.rep?.tier ?? d?.me?.tier
-        console.log('userTier state', tier)
         if (d?.ok && tier) setUserTier(tier)
       })
       .catch(() => {})

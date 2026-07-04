@@ -74,8 +74,9 @@ export const navigation: NavSection[] = [
     title: 'Coaching',
     items: [
       { label: 'Assignments', href: '/assignments', icon: ClipboardList },
-      // Sparring sessions live in the Call Library (sparring tab)
-      { label: 'Sparring', href: '/call-library', icon: Swords },
+      // Day 178 — deep-link the sparring tab so Sparring and Calls are distinct
+      // destinations (Calls lands on Live Calls, Sparring lands on AI Sparring).
+      { label: 'Sparring', href: '/call-library?tab=sparring', icon: Swords },
       { label: 'Command Centre', href: '/coaching', icon: Brain },
     ],
   },

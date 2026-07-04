@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Menu, Bell, LogOut } from 'lucide-react'
+import { Menu, LogOut } from 'lucide-react'
 import { clsx } from 'clsx'
 import { supabase } from '@/lib/supabase-browser'
 import { useSession } from '@/lib/useSession'
@@ -75,15 +75,6 @@ export function Topbar({ onMobileMenuOpen }: TopbarProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-3">
-        {/* Notifications placeholder */}
-        <button
-          type="button"
-          className="text-neutral-500 hover:text-neutral-300 transition-colors"
-          title="Notifications"
-        >
-          <Bell size={16} />
-        </button>
-
         {/* User email */}
         {session?.user?.email && (
           <span className="hidden md:block text-xs text-neutral-500 max-w-[180px] truncate">

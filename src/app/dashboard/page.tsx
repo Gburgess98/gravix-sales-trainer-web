@@ -355,19 +355,16 @@ export default function DashboardPage() {
             content="Your AI coaching dashboard is ready. Upload a call, complete an assignment, or run a sparring session to activate your personalised insights below."
           />
           <div className="grid gap-3 md:grid-cols-3">
-            <Link href="/upload" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-cyan-500/40 hover:bg-neutral-900/70">
-              <div className="text-xl mb-2">🎙️</div>
-              <div className="text-sm font-semibold text-white group-hover:text-cyan-200 transition-colors">Upload Your First Call</div>
+            <Link href="/upload" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
+              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Upload Your First Call</div>
               <div className="mt-0.5 text-xs text-neutral-500">Get AI-scored feedback on your technique.</div>
             </Link>
-            <Link href="/sparring" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-fuchsia-500/40 hover:bg-neutral-900/70">
-              <div className="text-xl mb-2">⚔️</div>
-              <div className="text-sm font-semibold text-white group-hover:text-fuchsia-200 transition-colors">Run a Sparring Session</div>
+            <Link href="/call-library?tab=sparring" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
+              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Run a Sparring Session</div>
               <div className="mt-0.5 text-xs text-neutral-500">Practice objection handling with AI personas.</div>
             </Link>
-            <Link href="/assignments" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-emerald-500/40 hover:bg-neutral-900/70">
-              <div className="text-xl mb-2">📋</div>
-              <div className="text-sm font-semibold text-white group-hover:text-emerald-200 transition-colors">Complete an Assignment</div>
+            <Link href="/assignments" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
+              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Complete an Assignment</div>
               <div className="mt-0.5 text-xs text-neutral-500">Work through your coach's recommended drills.</div>
             </Link>
           </div>
@@ -383,7 +380,6 @@ export default function DashboardPage() {
             {!hasAnyData && (
               <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-500">Awaiting first scored call</span>
             )}
-            {hasAnyData && <span className="text-[10px] text-neutral-600">· updated just now</span>}
           </div>
           <div className="flex items-center gap-2">
             {briefing.urgency === 'high' && (
@@ -677,7 +673,7 @@ export default function DashboardPage() {
               {streak > 0 && (
                 <div className="text-right space-y-0.5">
                   <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Streak</div>
-                  <div className="text-lg font-semibold text-amber-300">{streak}🔥</div>
+                  <div className="text-lg font-semibold text-amber-300">{streak}</div>
                 </div>
               )}
             </div>
@@ -720,7 +716,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-center gap-2 pb-2">
         <Link href="/assignments" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Assignments</Link>
         <Link href="/call-library" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Call Library</Link>
-        <Link href="/sparring" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Sparring</Link>
+        <Link href="/call-library?tab=sparring" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Sparring</Link>
         <Link href="/upload" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Upload Call</Link>
       </div>
 

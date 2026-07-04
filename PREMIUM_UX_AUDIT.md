@@ -300,5 +300,54 @@ each patch, and `npm run build` before commit.
 
 ---
 
-*Day 177 — audit only. No code changed. Companion validator:
-`scripts/validate-premium-ux-day-177.sh`.*
+## 10. Day 178 — implemented (navigation + trust cleanup)
+
+First implementation slice, patch mode, WEB-only. Details in
+`PREMIUM_NAVIGATION_CLEANUP.md`; validator `scripts/validate-premium-ux-day-178.sh`.
+
+**Links fixed**
+- New tiny index route `/sparring` → redirects to `/call-library?tab=sparring`
+  (same pattern as `/recent-calls`), so every historical `/sparring` link now works.
+- `/call-library` accepts `?tab=live|sparring|upload` deep links (read on mount).
+- Sidebar "Sparring" now points at `/call-library?tab=sparring` — no longer the same
+  unqualified destination as "Calls".
+- The two `/sparring/new` launches (call detail + sparring post-action) now use the
+  supported `/sparring/default` shortcut.
+- Dashboard onboarding card + quick link point directly at the sparring tab.
+
+**Trust cleanup done**
+- Removed `console.log` debug output from the app shell.
+- Removed the dead notifications bell from the topbar.
+- Removed the static "updated just now" label from the AI Daily Briefing.
+- Removed the internal "Demo tip" panel from `/upload`.
+- Removed the completion confetti on `/assignments` and the broken
+  `triggerConfetti` import on sparring (it referenced a non-existent export and
+  would have thrown on scores ≥ 80 — latent bug, now gone).
+- Calmed score toast copy ("Hard mode smashed." → "strong round. Keep this
+  standard.") and de-emojied the post-action summaries, streak pill and dashboard
+  streak/onboarding tiles.
+- Onboarding card hover accents standardised to the indigo primary.
+
+**What remains (unchanged today, by design)**
+- `/coaching` Overview diet — planned separately (§9.7).
+- Global CTA colour unification beyond touched surfaces (assignments/sparring
+  white-on-black, accounts/profile cyan).
+- `PageContainer`/`PageHeader` adoption beyond `/dashboard`.
+- Orphan routes (`/rewards`, `/whisperer`, `/crm/*` sub-app, `/crm/Leaderboard`).
+- Remaining emoji in secondary surfaces (assignments pills, call status banners,
+  rewards page); hard-coded Skill Momentum bar widths; empty-state pass.
+- Sidebar "Sparring" doesn't show an active state (query-string hrefs aren't
+  matched by the pathname-only active check) — cosmetic, revisit with the nav pass.
+
+**Day 179 recommendation**
+Trust pass part 2 + layout consistency: remove the hard-coded Skill Momentum bar
+widths (keep the status arrows), adopt `PageContainer`/`PageHeader` on
+`/call-library`, `/assignments` and `/settings/profile`, and convert the cyan and
+white-on-black primary CTAs on those touched pages to the indigo standard.
+Still no coaching-overview redesign.
+
+---
+
+*Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup
+implemented as above. Companion validators: `scripts/validate-premium-ux-day-177.sh`,
+`scripts/validate-premium-ux-day-178.sh`.*

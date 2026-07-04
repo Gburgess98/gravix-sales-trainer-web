@@ -515,7 +515,6 @@ export default function AssignmentsClient() {
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const [confettiOn, setConfettiOn] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const lastCompletedIdRef = useRef<string | null>(null);
   const [snoozes, setSnoozes] = useState<Record<string, number>>({});
@@ -725,10 +724,6 @@ export default function AssignmentsClient() {
 
   function showToast(type: "success" | "error", msg: string) {
     setToast({ type, msg });
-    if (type === "success") {
-      setConfettiOn(true);
-      window.setTimeout(() => setConfettiOn(false), 900);
-    }
     window.setTimeout(() => setToast(null), 2600);
   }
 
@@ -971,12 +966,6 @@ export default function AssignmentsClient() {
             }`}
         >
           {toast.msg}
-
-          {confettiOn && toast.type === "success" ? (
-            <div className="pointer-events-none absolute -top-2 right-2 select-none text-lg">
-              ✨ 🎉 ✨
-            </div>
-          ) : null}
         </div>
       )}
 

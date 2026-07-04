@@ -550,10 +550,6 @@ export default function UploadPage() {
             <p className="mt-2 text-[12px] text-neutral-500">Opens Accounts in a new tab so your upload stays here.</p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Demo tip</h2>
-            <p className="mt-2 text-[12px] text-neutral-400">Use a reviewed call with a weak skill to populate the Coaching Queue.</p>
-          </div>
         </aside>
       </div>
     </div>

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import ErrorBox from "@/components/ErrorBox";
 import { useToast } from "@/components/Toast";
-import { triggerConfetti } from "@/lib/confetti";
 import { proxyFetch } from "@/lib/api";
 
 type ScoreBreakdown = {
@@ -376,7 +375,7 @@ function deriveOutcomeFromScore(score?: number | null): SparringOutcome | null {
   if (typeof score !== "number" || Number.isNaN(score)) return null;
 
   // Simple thresholds aligned with our scoring toasts
-  if (score >= 80) return "win";   // smashed it
+  if (score >= 80) return "win";
   if (score < 60) return "loss";   // needs work
 
   // Anything in between is a neutral / solid round
@@ -1184,8 +1183,7 @@ export default function SparringSessionPage() {
 
       if (numericTotal != null) {
         if (numericTotal >= 80) {
-          triggerConfetti();
-          toast(`🔥 ${numericTotal}/100 — ${difficultyPrefix} smashed.`);
+          toast(`${numericTotal}/100 — strong ${difficultyPrefix}. Keep this standard.`);
         } else if (numericTotal >= 60) {
           toast(
             `${numericTotal}/100 — solid ${difficultyPrefix}. Tighten a few parts and run it again.`,
@@ -1609,17 +1607,17 @@ export default function SparringSessionPage() {
 
                     <div className="mt-3 grid gap-2 text-sm">
                       <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                        <div className="text-neutral-400">🎯 Strongest area today</div>
+                        <div className="text-neutral-400">Strongest area today</div>
                         <div className="mt-1 font-semibold text-neutral-100">{postAction.strongest}</div>
                       </div>
 
                       <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                        <div className="text-neutral-400">⚠️ One thing to improve</div>
+                        <div className="text-neutral-400">One thing to improve</div>
                         <div className="mt-1 font-semibold text-neutral-100">{postAction.improve}</div>
                       </div>
 
                       <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                        <div className="text-neutral-400">🔥 XP gained</div>
+                        <div className="text-neutral-400">XP gained</div>
                         <div className="mt-1 font-semibold text-neutral-100">+{postAction.xpGained}</div>
                       </div>
                     </div>
@@ -1633,7 +1631,9 @@ export default function SparringSessionPage() {
                             if (momentumNext.personaId) params.set("persona", momentumNext.personaId);
                             if (momentumNext.difficulty) params.set("difficulty", momentumNext.difficulty);
                             if (momentumNext.focus) params.set("focus", momentumNext.focus);
-                            window.location.href = `/sparring/new?${params.toString()}`;
+                            // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
+                            // creates a session and redirects into it.
+                            window.location.href = `/sparring/default?${params.toString()}`;
                           }}
                         >
                           Practice this now →
@@ -1901,7 +1901,7 @@ export default function SparringSessionPage() {
 
                   {streakFlash === "up" && (
                     <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold text-emerald-300">
-                      🔥 Streak +1
+                      Streak +1
                     </span>
                   )}
 
