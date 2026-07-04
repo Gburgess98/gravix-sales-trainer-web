@@ -129,3 +129,19 @@ migration (existing columns only):
 header or "Weakest: Unknown" anywhere on the demo path. Re-seed
 (`seed:demo` then `seed:ufc-story`, in that order) before any demo after
 ~7 July to keep dates fresh.
+
+## Day 173 update — final script + runbook, lane closed
+
+- `LIGHTHOUSE_DEMO_SCRIPT.md`: 5–7 minute founder talk track with exact
+  click path (Command Centre → Review Queue → Nate Diaz — Price Objection
+  Call → manager action → Coaching Queue/sparring → proof/trend →
+  Whisperer Insights + AI Discovery → Upload Call → close), objection
+  answers and a what-not-to-show list.
+- `PRE_DEMO_RUNBOOK.md`: pre-demo steps, re-seed order
+  (`seed:demo` → `seed:ufc-story`), when to re-seed, validation commands,
+  Dana visual checklist and section-by-section fallback plan.
+- Light sanity check as Dana passed (hero call, Whisperer Insights, AI
+  Discovery, sparring proof, Upload Call, console clean).
+
+**Verdict: Ready.** Demo Readiness / Lighthouse Client Prep lane closed —
+see `DEMO_READINESS_CLOSEOUT.md`.

@@ -480,3 +480,22 @@ re-seed runbook (`seed:demo` → `seed:ufc-story`, in that order — the org
 seed refreshes filenames, the story seed re-stamps the hero title).
 Optional tidy-up if time: re-home legacy `gravix.com` dev users out of
 the UFC company.
+
+## 23. Day 173 — Demo script + runbook, lane closed (done)
+
+Final demo operating pack created: `LIGHTHOUSE_DEMO_SCRIPT.md` (founder
+talk track, exact click path, objection handling, what not to show),
+`PRE_DEMO_RUNBOOK.md` (re-seed order, when to re-seed, validation
+commands, visual checklist, fallback plan) and
+`DEMO_READINESS_CLOSEOUT.md` (lane status, caveats, final SHAs). Light
+browser sanity check as Dana passed: /coaching loads, hero call visible,
+Whisperer Insights / AI Discovery / sparring proof / Upload Call all
+present, console clean.
+
+**Demo Readiness / Lighthouse Client Prep lane is CLOSED.** Verdict:
+Ready for controlled lighthouse demo.
+
+**Next sprint recommendation:** rep workspace / rep-facing coaching loop
+(rep home for assigned drills, sparring history, score trend), reusing
+existing assignments/proof data, no migrations. Return to Tier 2C/2D
+voice/audio only after lighthouse feedback proves demo value.
