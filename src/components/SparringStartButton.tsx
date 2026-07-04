@@ -126,9 +126,9 @@ export default function SparringStartButton({
           type="button"
           onClick={onClick}
           disabled={busy}
-          className={`inline-flex items-center justify-center rounded-full border border-emerald-500 px-4 py-1.5 text-xs font-medium ${busy
-            ? "bg-emerald-700/60 text-black/70"
-            : "bg-emerald-600 text-black hover:bg-emerald-500"
+          className={`inline-flex items-center justify-center rounded-full border border-indigo-500/30 px-4 py-1.5 text-xs font-medium ${busy
+            ? "bg-indigo-600/10 text-indigo-300/60"
+            : "bg-indigo-600/20 text-indigo-200 hover:bg-indigo-600/30"
             } disabled:opacity-50 ${className}`}
         >
           {busy ? "Starting…" : label}

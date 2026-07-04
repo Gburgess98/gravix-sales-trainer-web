@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 import { ScorePill } from "@/components/ui/status-badge";
 import { formatCallDisplayTitle } from "@/lib/callDisplay";
 
@@ -661,25 +663,21 @@ export default function CallLibraryPage() {
   });
 
   return (
-    <div className="p-6 space-y-4">
+    <PageContainer>
       {/* Header + search */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Call Library</h1>
-          <p className="mt-0.5 text-sm text-neutral-400">
-            Live recordings, AI sparring sessions, and uploaded conversations.
-          </p>
-        </div>
-        <div className="w-full md:w-80">
+      <PageHeader
+        title="Call Library"
+        subtitle="Live recordings, AI sparring sessions, and uploaded conversations."
+        actions={
           <input
             type="search"
             placeholder="Search past conversations and training sessions…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+            className="w-56 md:w-80 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
           />
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="border-b border-neutral-800 flex gap-6 text-sm">
@@ -1275,6 +1273,6 @@ export default function CallLibraryPage() {
             ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

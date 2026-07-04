@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { proxyFetch } from "@/lib/api";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 
 type Assignment = {
   id: string;
@@ -791,11 +793,13 @@ export default function AssignmentsClient() {
   }
 
   return (
-    <div className="p-6">
+    <PageContainer>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white">My Assignments</h1>
-          <p className="text-sm text-neutral-400">Clear tasks, fast wins. Keep your streak alive.</p>
+          <PageHeader
+            title="My Assignments"
+            subtitle="Clear tasks, fast wins. Keep your streak alive."
+          />
 
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1257,6 +1261,6 @@ export default function AssignmentsClient() {
           </section>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

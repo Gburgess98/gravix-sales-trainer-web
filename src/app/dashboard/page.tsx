@@ -166,13 +166,6 @@ function skillStatus(key: string, feed: DailyFeed | null): 'improving' | 'stable
   return 'stable'
 }
 
-// ── Skill bar fill level per status ──────────────────────────────────────────
-function skillBarPct(status: 'improving' | 'stable' | 'attention'): number {
-  if (status === 'improving') return 82
-  if (status === 'attention') return 32
-  return 58
-}
-
 function computeBriefingData(
   me: RepMe | null,
   summary: AssignmentSummary | null,
@@ -551,36 +544,26 @@ export default function DashboardPage() {
             {SKILL_CATEGORIES.map(({ key, label }) => {
               const noData = !feed && trend.length === 0
               const status = noData ? 'stable' : skillStatus(key, feed)
-              const pct = noData ? 0 : skillBarPct(status)
               const isAttention = status === 'attention'
               const isImproving = status === 'improving'
-              const barColor = noData ? 'bg-neutral-700/30' : isAttention ? 'bg-amber-400/60' : isImproving ? 'bg-emerald-400/60' : 'bg-neutral-600/60'
               const arrow = noData ? '—' : isAttention ? '↓' : isImproving ? '↑' : '→'
               const arrowCls = noData ? 'text-neutral-700' : isAttention ? 'text-amber-400' : isImproving ? 'text-emerald-400' : 'text-neutral-500'
               const statusLabel = noData ? 'Awaiting data' : isAttention ? 'Needs attention' : isImproving ? 'Improving' : 'Stable'
               const statusCls = noData ? 'text-neutral-600' : isAttention ? 'text-amber-400' : isImproving ? 'text-emerald-400' : 'text-neutral-500'
 
               return (
-                <div key={key} className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm ${noData ? 'text-neutral-500' : 'text-neutral-200'}`}>{label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-sm font-semibold leading-none ${arrowCls}`}>{arrow}</span>
-                      <span className={`text-xs font-medium ${statusCls}`}>{statusLabel}</span>
-                    </div>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                      style={{ width: noData ? '100%' : `${pct}%` }}
-                    />
+                <div key={key} className="flex items-center justify-between gap-2 border-b border-neutral-800/50 pb-2.5 last:border-b-0 last:pb-0">
+                  <span className={`text-sm ${noData ? 'text-neutral-500' : 'text-neutral-200'}`}>{label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-sm font-semibold leading-none ${arrowCls}`}>{arrow}</span>
+                    <span className={`text-xs font-medium ${statusCls}`}>{statusLabel}</span>
                   </div>
                 </div>
               )
             })}
             {!feed && trend.length === 0 && (
               <p className="text-[11px] text-neutral-600 border-t border-neutral-800/50 pt-3">
-                Upload a call to activate skill coaching signals.
+                Trend data appears after more scored calls.
               </p>
             )}
             {feed?.momentum_insight && (

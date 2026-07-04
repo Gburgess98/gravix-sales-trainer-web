@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { proxyFetch } from '@/lib/api'
 import { LoadingText } from '@/components/ui/loading-skeleton'
+import { PageContainer } from '@/components/layout/page-container'
+import { PageHeader } from '@/components/layout/page-header'
 
 type Profile = {
   id: string
@@ -71,16 +73,15 @@ export default function ProfilePage() {
   }
 
   if (loading) return (
-    <div className="mx-auto max-w-2xl px-6 py-8"><LoadingText text="Loading profile…" /></div>
+    <PageContainer className="mx-auto max-w-2xl"><LoadingText text="Loading profile…" /></PageContainer>
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-6">
-      <div>
-        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Settings</p>
-        <h1 className="mt-0.5 text-xl font-semibold text-white">My Profile</h1>
-        <p className="mt-0.5 text-sm text-neutral-400">Update your display name, phone number and timezone.</p>
-      </div>
+    <PageContainer className="mx-auto w-full max-w-2xl">
+      <PageHeader
+        title="My Profile"
+        subtitle="Update your display name, phone number and timezone."
+      />
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-300">{error}</div>
@@ -124,7 +125,7 @@ export default function ProfilePage() {
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               maxLength={120}
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40 placeholder:text-neutral-600"
               placeholder="Your display name"
             />
           </div>
@@ -139,7 +140,7 @@ export default function ProfilePage() {
               onChange={e => setPhone(e.target.value)}
               maxLength={30}
               required
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40 placeholder:text-neutral-600"
               placeholder="+44 7700 900000"
             />
           </div>
@@ -149,7 +150,7 @@ export default function ProfilePage() {
             <select
               value={timezone}
               onChange={e => setTimezone(e.target.value)}
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-cyan-500/40"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40"
             >
               {TIMEZONES.map(tz => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -162,12 +163,12 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-xl border border-indigo-500/20 bg-indigo-600/20 px-5 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save Profile'}
           </button>
         </div>
       </form>
-    </div>
+    </PageContainer>
   )
 }

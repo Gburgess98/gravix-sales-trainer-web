@@ -348,6 +348,63 @@ Still no coaching-overview redesign.
 
 ---
 
-*Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup
-implemented as above. Companion validators: `scripts/validate-premium-ux-day-177.sh`,
-`scripts/validate-premium-ux-day-178.sh`.*
+## 11. Day 179 — implemented (layout consistency + trust pass 2)
+
+Second implementation slice, patch mode, WEB-only. Validator
+`scripts/validate-premium-ux-day-179.sh`.
+
+**Pages touched**
+`/call-library`, `/assignments`, `/settings/profile`, `/dashboard` (Skill Momentum
+section only), shared `SparringStartButton`.
+
+**Layout consistency**
+- `/call-library` now uses `PageContainer` + `PageHeader` (search input moved into
+  the header `actions` slot) instead of a hand-rolled `p-6` wrapper.
+- `/assignments` (`AssignmentsClient`) outer wrapper is now `PageContainer`, and
+  the hand-rolled `h1`/subtitle became `PageHeader`. Streak chips, momentum bar
+  and Daily Win panel are unchanged.
+- `/settings/profile` (incl. loading state) now uses `PageContainer` (with its
+  `max-w-2xl` centring preserved) + `PageHeader`; the redundant "Settings"
+  eyebrow was dropped (the sidebar already provides that context).
+- No behaviour changes; cards and content untouched beyond the wrappers.
+
+**Trust cleanup**
+- Dashboard Skill Momentum: removed the fake progress bars whose widths were
+  hard-coded per status (82/32/58 via `skillBarPct`, now deleted). Each skill row
+  now shows only the honest status arrow + label (↑ Improving / → Stable /
+  ↓ Needs attention / — Awaiting data), separated by hairline dividers.
+- No-data copy is now "Trend data appears after more scored calls."
+- The `/assignments` momentum bar was left in place — it is real data
+  (completed today / open count), not a fake width.
+
+**CTA consistency (touched pages only)**
+- `/settings/profile` Save Profile button: cyan → calm indigo
+  (`border-indigo-500/20 bg-indigo-600/20 text-indigo-200`); input focus borders
+  cyan → indigo to match.
+- `SparringStartButton` (only rendered on `/call-library`): solid emerald →
+  calm indigo, matching the dashboard mission CTA.
+- Filter chips on `/call-library` (white-on-black active state) left alone —
+  they are filters, not primary CTAs.
+
+**What remains**
+- `/coaching` Overview diet — still planned separately (§9.7).
+- Global CTA/button system unification (accounts cyan CTAs, assignments
+  white-on-black buttons, sparring surfaces).
+- `PageContainer`/`PageHeader` adoption on the remaining pages (`/coaching`,
+  `/upload`, `/review`, `/crm/*`, call detail).
+- Orphan routes (`/rewards`, `/whisperer`, `/crm/*` sub-app, `/crm/Leaderboard`).
+- Remaining emoji in secondary surfaces; empty-state pass.
+- Sidebar "Sparring" active-state mismatch on query-string hrefs (cosmetic).
+
+**Day 180 recommendation**
+Either (a) the `/coaching` Overview diet (§9.7) as its own carefully-scoped day —
+it is the largest remaining premium-feel gap — or (b) a lighter CTA/empty-state
+sweep extending the indigo standard to `/crm/accounts` and `/upload`.
+Recommend (a): coaching Overview diet.
+
+---
+
+*Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
+Day 179 — layout consistency + trust pass 2 implemented as above. Companion
+validators: `scripts/validate-premium-ux-day-177.sh`,
+`scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`.*
