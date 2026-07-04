@@ -23,8 +23,11 @@ function getBreadcrumb(pathname: string): string {
       }
     }
   }
-  // Fallback: capitalise last path segment
-  const segment = pathname.split('/').filter(Boolean).pop() ?? ''
+  // Fallback: capitalise the last human path segment (skip UUID-like ids so
+  // detail pages never show a raw identifier in the breadcrumb).
+  const UUIDISH = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i
+  const segment =
+    pathname.split('/').filter(Boolean).filter((s) => !UUIDISH.test(s)).pop() ?? ''
   return segment
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())

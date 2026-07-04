@@ -453,3 +453,30 @@ human-friendly call titles (rep + topic instead of `demo-call-9.mp3`) and
 fall back to rep name instead of the raw UUID in the call page header —
 then a final timed re-rehearsal to confirm Ready. Re-seed the UFC story
 before any demo after ~7 July.
+
+## 22. Day 172 — Human-friendly call identity (done)
+
+The demo path no longer shows raw filenames, UUID headers or
+"Weakest: Unknown". Seed: hero call stamped "Nate Diaz — Price Objection
+Call" by `seed-ufc-demo-story` (existing filename/rep_name columns — no
+migration), and `seed:demo` now stamps `rep_name` on every seeded call.
+API: manager overview/review-queue derive weakest skill from
+`analysis_json` *or* the `rubric` column (`stageSourceOf`), so seeded
+calls get real weakest skills. WEB: `lib/callDisplay.ts` formats
+demo-facing titles ("Rep — Skill Coaching Call"; fallback "Sales call
+review") on the Review Queue, Coaching Queue, Replay list, Call Library
+and call detail header, weakest fallback copy is "Needs review", and the
+topbar breadcrumb skips UUID segments.
+
+Final timed rehearsal as Dana: all chapters render from one login, hero
+call reads "Nate Diaz — Price Objection Call · 45/100", console clean.
+Verdict: **Ready**. Remaining nits only (vague Post-Action Summary copy
+on seeded calls, "—" duration, three repless legacy test uploads showing
+the calm fallback).
+
+**Day 173 recommendation:** freeze polish; do a full timed dress
+rehearsal against the exact demo script (target 5–7 min) and prepare the
+re-seed runbook (`seed:demo` → `seed:ufc-story`, in that order — the org
+seed refreshes filenames, the story seed re-stamps the hero title).
+Optional tidy-up if time: re-home legacy `gravix.com` dev users out of
+the UFC company.

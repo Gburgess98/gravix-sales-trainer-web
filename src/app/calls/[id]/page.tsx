@@ -13,6 +13,7 @@ import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
+import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
 
 import {
   listPins,
@@ -419,8 +420,9 @@ export default function CallPage() {
     const overallScore =
       typeof callMeta?.score_overall === "number" ? Math.round(Number(callMeta.score_overall)) : null;
 
-    // Weakest stage from analysis_json (intro/discovery/pitch/objection/close)
-    const stages = callMeta?.analysis_json?.stages ?? null;
+    // Weakest stage from analysis_json (intro/discovery/pitch/objection/close),
+    // with the rubric column as fallback for seeded/demo rows.
+    const stages = callMeta?.analysis_json?.stages ?? callMeta?.rubric?.stages ?? null;
     const SKILLS: Array<{ key: string; label: string; title: string }> = [
       { key: "intro", label: "Intro", title: "Opening Script Practice" },
       { key: "discovery", label: "Discovery", title: "Discovery Drill" },
@@ -1324,6 +1326,35 @@ export default function CallPage() {
   const flags: string[] =
     Array.isArray(callMeta?.flags) ? (callMeta.flags as string[]).filter(Boolean) : [];
 
+  // Day 172 — human header title: never show a raw filename or UUID up top.
+  const headerStages = callMeta?.analysis_json?.stages ?? callMeta?.rubric?.stages ?? null;
+  let headerWeakest: string | null = null;
+  {
+    let lowest = Number.POSITIVE_INFINITY;
+    for (const [key, label] of [
+      ["intro", "Intro"],
+      ["discovery", "Discovery"],
+      ["pitch", "Pitch"],
+      ["objection", "Objection"],
+      ["close", "Close"],
+    ] as const) {
+      const s = Number((headerStages as any)?.[key]?.score);
+      if (Number.isFinite(s) && s < lowest) {
+        lowest = s;
+        headerWeakest = label;
+      }
+    }
+  }
+  const callDisplayTitle = formatCallDisplayTitle({
+    title: callMeta?.filename,
+    repName: callMeta?.rep_name,
+    weakestSkill: headerWeakest,
+  });
+  const rawFileLabel =
+    callMeta?.filename && isRawCallLabel(String(callMeta.filename))
+      ? String(callMeta.filename)
+      : null;
+
   const transcriptText = renderTranscriptText(callMeta);
   const transcriptSegments = callMeta?.analysis_json?.transcript?.segments ?? null;
   const analysisMoments = Array.isArray(callMeta?.analysis_json?.moments)
@@ -1339,7 +1370,7 @@ export default function CallPage() {
               <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
             ) : (
               <>
-                {callMeta?.filename || `Call ${callId}`}
+                {callDisplayTitle}
                 {overall != null ? (
                   <ScorePill score={overall} />
                 ) : (
@@ -1466,6 +1497,11 @@ export default function CallPage() {
               {callMeta?.ai_model && (
                 <div className="text-xs text-neutral-500">
                   Scored by {callMeta.ai_model}
+                </div>
+              )}
+              {rawFileLabel && (
+                <div className="text-xs text-neutral-600 truncate max-w-[16rem]" title={rawFileLabel}>
+                  File: {rawFileLabel}
                 </div>
               )}
               {managerCheckDone && isManager && callMeta?.status === "scored" && (

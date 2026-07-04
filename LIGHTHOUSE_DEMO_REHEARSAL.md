@@ -78,3 +78,54 @@ gracefully). None render error text on the demo path.
 ## Recommended Day 171 action
 
 Fix the Pins card 403 for managers (either grant hierarchy-scoped manager read access on `/v1/pins` mirroring the review-queue rules, or hide the Pins card gracefully when the response is 403) — it is the last visible error string on the demo path. Secondary (if time): human-friendly call titles in the seed (rep + topic instead of `demo-call-9.mp3`) and re-home the legacy `gravix.com` dev users out of the UFC company.
+
+## Day 172 update — call identity polish + final rehearsal
+
+**Call identity is now human across the demo path.** Three-part fix, no
+migration (existing columns only):
+
+- **Seed:** `seed-ufc-demo-story` stamps the hero call as
+  "Nate Diaz — Price Objection Call" (filename + rep_name; run *after*
+  `seed:demo`, which now also stamps `rep_name` on every seeded call).
+- **API:** weakest-skill derivation in the manager overview / review-queue
+  now falls back from `analysis_json` to the `rubric` column
+  (`stageSourceOf`), where seeded calls store their stage scores — this is
+  what produced "Weakest: Unknown".
+- **WEB:** new `lib/callDisplay.ts` (`formatCallDisplayTitle`,
+  `weakestSkillLabel`) hides raw filenames/UUIDs behind
+  "Rep — Skill Coaching Call" style labels on the Review Queue, Coaching
+  Queue, Replay list, Call Library and the call detail header (raw file
+  name stays as a subtle secondary line). Weakest fallback copy is
+  "Needs review", never "Unknown". Topbar breadcrumb skips UUID segments
+  ("Calls" instead of a title-cased UUID).
+
+## Final rehearsal (browser, as Dana)
+
+- **/coaching:** Review Queue rows all read "Rep — Skill Coaching Call"
+  with real weakest skills (Close / Discovery / Intro / Objection);
+  hero row "Nate Diaz — Price Objection Call · 45" sits on top. Coaching
+  Queue card reads "Nate Diaz — Price Objection Call · score 45 · weakest
+  close". Sparring progress reads "Weakest area Objection Handling" (no
+  underscore).
+- **Call detail:** header "Nate Diaz — Price Objection Call · 45/100",
+  breadcrumb "Calls", pins calm ("No pinned coaching notes yet."), no
+  "forbidden", Whisperer Moments (3) render, console clean.
+- **Chapters:** Whisperer / AI Discovery candidate (1, approval-gated) /
+  sparring proof (2 completed, proof stored) all still visible from one
+  login.
+
+**Remaining stumbles (minor, non-blocking):**
+
+- Three legacy test-upload calls (no rep) show the calm fallback
+  "Sales call review · Unknown rep" in the Replay list — real data, calm
+  copy, acceptable.
+- Post-Action Summary panel copy is vague on seeded calls ("Strongest:
+  Overall / Improve your overall").
+- Hero call Duration shows "—" (no audio artefact exists for seeded calls).
+
+## Demo verdict
+
+**Ready.** The primary flow reads human end-to-end: no raw filename, UUID
+header or "Weakest: Unknown" anywhere on the demo path. Re-seed
+(`seed:demo` then `seed:ufc-story`, in that order) before any demo after
+~7 July to keep dates fresh.

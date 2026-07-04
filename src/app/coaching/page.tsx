@@ -10,6 +10,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyRow } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
+import { formatCallDisplayTitle, weakestSkillLabel } from '@/lib/callDisplay'
 
 type CoachingTab = 'overview' | 'interventions' | 'assignments' | 'replay' | 'review'
 type RepFilter = 'all' | 'at_risk' | 'watch' | 'healthy'
@@ -1997,7 +1998,7 @@ export default function CoachingPage() {
                                   <span><span className="text-neutral-200 tabular-nums">{completed}</span> completed</span>
                                   {avgScore !== null && <span>Avg score <span className="text-neutral-200 tabular-nums">{avgScore}</span></span>}
                                   {proofTrend.averageScore !== null && <span>Avg proof score <span className="text-neutral-200 tabular-nums">{proofTrend.averageScore}%</span></span>}
-                                  {weakest && <span>Weakest area <span className="text-neutral-200 capitalize">{weakest}</span></span>}
+                                  {weakest && <span>Weakest area <span className="text-neutral-200 capitalize">{weakest.replace(/_/g, ' ')}</span></span>}
                                 </div>
                               )}
                             </div>
@@ -2025,12 +2026,12 @@ export default function CoachingPage() {
                     commandCentre.callsNeedingReview.forEach((c) => {
                       const key = `call-${c.callId}`
                       const drill = sparringDrillForText(c.weakestSkill)
-                      const reason = `${c.repName} · score ${c.overallScore} · weakest ${c.weakestSkill}`
+                      const reason = `${c.repName} · score ${c.overallScore} · weakest ${weakestSkillLabel(c.weakestSkill).toLowerCase()}`
                       items.push({
                         key,
                         priority: c.overallScore < 50 ? 'High' : 'Medium',
                         type: 'Call review',
-                        title: c.title,
+                        title: formatCallDisplayTitle({ title: c.title, repName: c.repName, weakestSkill: c.weakestSkill }),
                         reason,
                         drill,
                         actions: [
@@ -3880,7 +3881,7 @@ export default function CoachingPage() {
                     <div key={call.id} className="px-4 py-3 flex items-center justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-white truncate">{call.filename || `Call ${call.id.slice(0, 8)}…`}</span>
+                          <span className="text-sm text-white truncate">{formatCallDisplayTitle({ title: call.filename, repName: call.rep_name })}</span>
                           {hasFlags && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 uppercase tracking-wide font-semibold shrink-0">
                               Flagged
@@ -3949,12 +3950,12 @@ export default function CoachingPage() {
                   <div key={item.callId} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-white truncate">{item.title}</span>
+                        <span className="text-sm text-white truncate">{formatCallDisplayTitle({ title: item.title, repName: item.repName, weakestSkill: item.weakestSkill })}</span>
                         <ScorePill score={item.overallScore} className="shrink-0" />
                       </div>
                       <div className="mt-0.5 text-xs text-neutral-500">
                         {item.repName}
-                        {item.weakestSkill !== 'Unknown' ? ` · Weakest: ${item.weakestSkill}` : ''}
+                        {` · Weakest: ${weakestSkillLabel(item.weakestSkill)}`}
                         {item.createdAt ? ` · ${new Date(item.createdAt).toLocaleDateString('en-GB')}` : ''}
                       </div>
                       {item.reasons.length > 0 && (
@@ -4016,7 +4017,7 @@ export default function CoachingPage() {
                 <div className="text-base font-semibold text-neutral-100">Assign Coaching</div>
                 <div className="mt-1 text-xs text-neutral-500">
                   {assignDraft.repName} · score {assignDraft.overallScore}
-                  {assignDraft.weakestSkill !== 'Unknown' ? ` · weakest: ${assignDraft.weakestSkill}` : ''}
+                  {assignDraft.weakestSkill !== 'Unknown' ? ` · weakest: ${weakestSkillLabel(assignDraft.weakestSkill)}` : ''}
                 </div>
               </div>
               <button

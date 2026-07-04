@@ -6,6 +6,7 @@ import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
 import { ScorePill } from "@/components/ui/status-badge";
+import { formatCallDisplayTitle } from "@/lib/callDisplay";
 
 // Shape returned by /api/proxy/v1/calls/paged
 type CallItem = {
@@ -984,7 +985,7 @@ export default function CallLibraryPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <div className="text-sm text-neutral-100 truncate">
-                            {c.filename || `Call ${c.id.slice(0, 8)}…`}
+                            {formatCallDisplayTitle({ title: c.filename, repName: c.rep_name })}
                           </div>
                           <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
                             {displayType(c.type)}
