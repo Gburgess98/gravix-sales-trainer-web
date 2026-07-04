@@ -354,15 +354,31 @@ async function handle(req: NextRequest, context: any) {
     const headers = new Headers(req.headers);
     headers.delete("host");
 
+    // Day 175 — in production, identity headers arriving from the browser are
+    // never trusted or forwarded: identity is resolved server-side from the
+    // verified bearer token or the Supabase cookie session only. In dev the
+    // legacy header path stays available for curl/smoke tests and the demo.
+    const isProdProxy = process.env.NODE_ENV === "production";
+    if (isProdProxy) {
+      headers.delete("x-user-id");
+      headers.delete("x-gravix-user-id");
+      headers.delete("x-forwarded-user-id");
+      headers.delete("x-real-user-id");
+      headers.delete("x-org-id");
+    }
+
     // ---- Resolve user id (priority)
-    // 1) Explicit x-user-id header (curl/dev)
-    // 2) Authorization: Bearer <jwt> (decode sub locally)
+    // 1) Explicit x-user-id header (curl/dev — ignored in production)
+    // 2) Authorization: Bearer <jwt> (verified against Supabase in production;
+    //    local decode in dev to keep offline smoke tests working)
     // 3) Supabase cookie session (real browser)
-    // 4) Dev fallback (explicit opt-in only)
-    const headerUserId = (headers.get("x-user-id") || "").trim();
+    // 4) Dev fallback (explicit opt-in only, never in production)
+    const headerUserId = isProdProxy ? "" : (headers.get("x-user-id") || "").trim();
     const authHeader = (headers.get("authorization") || headers.get("Authorization") || "").trim();
     const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
-    const bearerUserId = decodeJwtSub(bearerToken) || "";
+    const bearerUserId = bearerToken
+      ? (isProdProxy ? await getUserIdFromAuthorizationHeader(req) : decodeJwtSub(bearerToken) || "")
+      : "";
 
     const cookieUserId = (!headerUserId && !bearerUserId)
       ? await getUserIdFromSupabaseCookies(req, cookieList)
@@ -441,9 +457,13 @@ async function handle(req: NextRequest, context: any) {
       ""
     ).trim();
 
+    // Day 175 — in production the client-supplied x-org-id was deleted above,
+    // so the org always comes from the server-side reps lookup (or env default).
     const existingOrgId = (headers.get("x-org-id") || "").trim();
     const repOrgId = await getOrgIdForUser(resolvedUserId, cookieList);
-    const finalOrgId = existingOrgId || repOrgId || devOrg;
+    const finalOrgId = isProdProxy
+      ? (repOrgId || devOrg)
+      : (existingOrgId || repOrgId || devOrg);
 
     if (finalOrgId) {
       headers.set("x-org-id", finalOrgId);
@@ -482,6 +502,18 @@ async function handle(req: NextRequest, context: any) {
 
     // Preserve real authenticated user lineage for audit logging
     headers.set("x-real-user-id", resolvedUserId);
+
+    // Day 175 — proxy trust boundary. When PROXY_SHARED_SECRET is configured
+    // (server-side env, never exposed to the browser), stamp each upstream
+    // request so the API can distinguish proxy-injected identity headers from
+    // direct callers. The API ignores x-user-id without a matching secret.
+    const proxySharedSecret = (process.env.PROXY_SHARED_SECRET || "").trim();
+    if (proxySharedSecret) {
+      headers.set("x-proxy-secret", proxySharedSecret);
+    } else {
+      // Never forward a client-supplied value for the trust header.
+      headers.delete("x-proxy-secret");
+    }
 
     // Ensure a request id for tracing
     try {

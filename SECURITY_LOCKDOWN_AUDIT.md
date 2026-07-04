@@ -1,6 +1,6 @@
-# SECURITY LOCKDOWN AUDIT — Day 174
+# SECURITY LOCKDOWN AUDIT — Day 174 (updated Day 175)
 
-**Date:** 4 July 2026
+**Date:** 4 July 2026 (Day 175 update: 4 July 2026)
 **Scope:** gravix-sales-trainer-api (d0de9fa) + gravix-sales-trainer-web (c082acf)
 **Verdict:** The platform's single biggest exposure is that **user identity is client-asserted end-to-end**. Everything else (tenant scoping, manager gates, storage access) is built on top of that unverified identity. Several critical unauthenticated endpoints and fail-open scoping paths were patched today; the identity architecture itself is the Day 175 priority.
 
@@ -21,8 +21,8 @@
 
 | Risk | Severity | Area | Evidence | Suggested fix | Status |
 |---|---|---|---|---|---|
-| Identity spoofable: `x-user-id` header trusted above JWT; JWT decoded but never signature-verified | Critical | API auth | `src/server.ts` auth-context middleware (`Priority: explicit header > jwt > env`); `tryDecodeJwtSub` does no verification; same pattern in `requireUserId`, `requireManager` fallback | Verify Supabase JWT signature (or `auth.getUser`) server-side; accept `x-user-id` only from the trusted proxy via shared secret | **Open — Day 175 #1** |
-| WEB proxy forwards browser-supplied `x-user-id`/`x-org-id`; bearer path decode-only | Critical | WEB proxy | `src/app/api/proxy/[[...path]]/route.ts` — header takes priority; verified helper `getUserIdFromAuthorizationHeader` exists but is unused; client stores uid in `localStorage` (`useSession.ts`) and attaches it (`lib/api.ts`) | In production resolve identity from cookie session / verified bearer only; stop honouring client `x-user-id`/`x-org-id` | **Open — Day 175 #1** |
+| Identity spoofable: `x-user-id` header trusted above JWT; JWT decoded but never signature-verified | Critical | API auth | `src/server.ts` auth-context middleware (`Priority: explicit header > jwt > env`); `tryDecodeJwtSub` does no verification; same pattern in `requireUserId`, `requireManager` fallback | Verify Supabase JWT signature (or `auth.getUser`) server-side; accept `x-user-id` only from the trusted proxy via shared secret | **Partially patched Day 175** — header path now gated by `PROXY_SHARED_SECRET` (untrusted identity headers stripped centrally); API-side JWT verification still open (Day 176) |
+| WEB proxy forwards browser-supplied `x-user-id`/`x-org-id`; bearer path decode-only | Critical | WEB proxy | `src/app/api/proxy/[[...path]]/route.ts` — header takes priority; verified helper `getUserIdFromAuthorizationHeader` exists but is unused; client stores uid in `localStorage` (`useSession.ts`) and attaches it (`lib/api.ts`) | In production resolve identity from cookie session / verified bearer only; stop honouring client `x-user-id`/`x-org-id` | **Patched Day 175** (production only; dev/demo path unchanged) |
 | Dashboard aggregates unauthenticated + hierarchy filter dead (`req.authUserId` never set anywhere) | Critical | API tenant isolation | `src/routes/dashboard.ts` read `(req as any).authUserId` (no writer exists) → `getUserContext(null)` → `applyHierarchyFilters` no-op; endpoints had no auth | Router-level identity guard + correct requester resolution | **Patched Day 174** |
 | CRM manager org scope fail-open: missing or all-zero `x-org-id` (client-controllable) skipped membership checks | Critical | API tenant isolation | `src/routes/crm.ts` `requireManagerOrg` returned `bypassed: true` → `resolveVisibleReps` unscoped | Fail closed (`forbidden_org_scope`) in production; bypass kept for dev/local | **Patched Day 174** |
 | Legacy endpoints with no auth: `/v1/reps/:id/overview`, `/v1/coach/assignments` (list/patch/delete/by-entity), `/v1/coach/notes`, `/v1/crm/accounts/:id/overview`, `/v1/crm/contacts/:id/overview`, `/v1/jobs/:id` (job results contain full transcripts) | Critical | API access control | Defined directly in `src/server.ts` with no guard; jobs endpoint returned any job by UUID | `requireIdentity` guard added to all; `/v1/jobs/:id` now owner-only | **Patched Day 174** (tenant scoping still open, see High) |
@@ -82,9 +82,19 @@
 
 All verified live: anonymous requests 401/403 under `NODE_ENV=production`; dev fallback and demo path unchanged in local dev.
 
+## Day 175 patches (production identity hardening)
+
+1. **WEB proxy no longer trusts browser identity in production.** Incoming `x-user-id`, `x-gravix-user-id`, `x-forwarded-user-id`, `x-real-user-id` and `x-org-id` are deleted before resolution; identity comes from the signature-verified bearer token (`getUserIdFromAuthorizationHeader` → `supabase.auth.getUser`) or the Supabase cookie session only. Org id is always server-resolved (reps lookup → env default). Dev keeps the legacy header path for curl/smoke tests and the demo.
+2. **Proxy trust boundary (`PROXY_SHARED_SECRET`).** When the env is set on both deployments, the proxy stamps `x-proxy-secret` on every upstream request and the API strips all spoofable identity headers from requests lacking the matching secret (timing-safe compare) *before any route runs* — closing the per-route direct header reads as well as the central middleware. Unset env = unchanged behaviour, so rollout is opt-in and reversible. The internal cron self-call carries the secret too.
+3. Verified live: with the secret configured, spoofed `x-user-id`/alias headers → 401/empty results; correct secret → normal responses; env unset → back-compat. Production proxy build 401s spoofed-header requests with no session.
+
+**Rollout note:** set `PROXY_SHARED_SECRET` (same value) on the Vercel WEB project and the API host together. Until it is set, the API-side gate is dormant and direct callers can still supply `x-user-id`.
+
+**Still open after Day 175:** the API's bearer path remains decode-only — a direct caller can present a forged JWT. With `PROXY_SHARED_SECRET` set this is the last unverified identity route into the API (= Day 176 priority). Client-supplied `x-company-id` / `x-active-office-id` hierarchy headers are still forwarded and should be validated against membership server-side.
+
 ## Recommended Day 175 fixes
 
-1. **Verified identity (the big one).** Production proxy resolves the user from the Supabase cookie session or signature-verified bearer only; stop honouring browser `x-user-id`/`x-org-id`. API accepts `x-user-id` only when accompanied by a proxy shared secret (`x-proxy-secret` env pair). Keep header identity for local dev.
+1. ~~**Verified identity (the big one).** Production proxy resolves the user from the Supabase cookie session or signature-verified bearer only; stop honouring browser `x-user-id`/`x-org-id`. API accepts `x-user-id` only when accompanied by a proxy shared secret (`x-proxy-secret` env pair). Keep header identity for local dev.~~ **Shipped Day 175** (see above); remaining slice = API-side JWT verification (Day 176).
 2. Replace `requireAdmin` env flag with `requireSuperAdmin`.
 3. Ownership/org checks on coach assignments PATCH/DELETE, coach notes, CRM account/contact overviews.
 4. Manager-tier check inside `requireManagerOrg` + sweep of `/crm/manager/*`.
