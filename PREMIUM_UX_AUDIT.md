@@ -1,0 +1,304 @@
+# PREMIUM UX AUDIT — Day 177
+
+Whole-app UX/design audit of the WEB app at `158c11a`. Goal posture: **premium, calm,
+simple, easy to navigate** — an enterprise coaching platform, not an arcade. Audit only:
+no redesign shipped today; Day 178 carries the first implementation slice.
+
+Method: code-level review of the app shell (`src/components/shell/*`, `src/config/navigation.ts`)
+and the main routes — `/coaching`, `/upload`, `/call-library`, `/calls/[id]`, `/dashboard`,
+`/assignments`, `/sparring/[id]`, `/crm/accounts`, `/crm/manager/contacts`, `/settings/profile` —
+plus palette/emoji/animation scans across `src/app` and `src/components`.
+
+---
+
+## 1. Executive summary
+
+The bones are good: a real app shell exists (sidebar + topbar + workspace tabs), the dark
+neutral base is consistent, and the newest pages (`/upload`, the Day 161 coaching header)
+show exactly the calm direction we want. But the app as a whole does not yet feel premium,
+for four structural reasons:
+
+1. **One page carries the whole product.** `/coaching` is a 4,100-line file whose Overview
+   tab alone stacks 10+ modules (workflow strip, four priority cards, team snapshot,
+   sparring snapshot, coaching queue, sparring queue, score trend, rep/drill breakdown,
+   AI discovery, whisperer sessions). It is the single most overwhelming screen in the app.
+2. **No colour system.** Raw Tailwind hues are used ad hoc: ~490 `red-*` usages, ~490
+   `emerald-*`, ~390 `amber-*`, ~170 `cyan-*`, plus indigo, fuchsia, sky, violet. The
+   primary CTA alone is rendered four different ways (indigo on `/upload` and `/coaching`,
+   cyan on `/crm/accounts` and `/settings/profile`, white-on-black on `/assignments` and
+   `/sparring/[id]`, emerald for active tabs). Premium products have one accent and a
+   small semantic set; we currently have eight.
+3. **Arcade energy in an enterprise product.** Emoji in product copy (🔥 🎯 ✨ 🎉 ⚔️ 🎧 🏆),
+   a confetti toast on assignment completion, "Hard mode smashed." score toasts, an XP rank
+   ladder from "Novice" to "Legend", streak flames on the dashboard. Individually small;
+   together they read as a game, not a coaching platform a VP of Sales pays for.
+4. **Navigation doesn't match the product.** Two sidebar items point at the same route,
+   three links point at routes that don't exist, and a large part of the app (rewards,
+   whisperer, recent-calls, the whole `/crm` sub-app: overview, pipeline, tasks,
+   Leaderboard, control-centre) is reachable only by URL — exactly the
+   "isolated/disconnected pages" CLAUDE.md says to reduce.
+
+None of this needs a rewrite. The fixes are mostly deletions, consolidations and
+convention adoption — small reversible patches, which is the house style.
+
+---
+
+## 2. Top 10 UX problems (ranked)
+
+1. **`/coaching` Overview overload** — ~1,900 lines of modules on one scroll; every manager
+   concern rendered at once. Needs an editorial diet: priority cards + coaching queue on
+   Overview, everything else behind its existing tab or a dedicated sub-view.
+2. **No unified colour/accent system** — four different primary-CTA treatments; eight accent
+   hues; heavy red/amber alarm density on manager pages ("Rescue Queue", "Needs
+   Intervention") makes the default state feel like an incident. Pick one accent + a
+   restrained semantic set (success / warning / danger) and demote everything else to neutral.
+3. **Gamification clashes with the premium brief** — emoji copy, confetti (`✨ 🎉 ✨` in
+   `AssignmentsClient.tsx:977`), "smashed" toasts (`sparring/[id]/page.tsx:1188`), the
+   Novice→Legend rank ladder and streak flames (`dashboard/page.tsx`). Keep the underlying
+   XP/streak data; present it as quiet progress metrics, not fireworks.
+4. **Dead and broken links in core flows** — `href="/sparring"` (no such route → 404) from
+   the dashboard onboarding card, dashboard quick links, and `AssignmentsClient`;
+   `/sparring/new` from `calls/[id]` (only `/sparring/default` is the supported shortcut).
+   Broken links from the *first-run onboarding cards* is the fastest way to lose trust.
+5. **Sidebar items that lie** — "Sparring" and "Calls" both link to `/call-library`, both
+   highlight together, and "Sparring" lands on the *Live Calls* tab. "Settings" (Admin) and
+   "My Profile" split settings across two places. The nav also diverges heavily from the
+   target IA in CLAUDE.md (no Live section, no Replay Centre, no AI Feedback entry).
+6. **Orphaned surface area** — `/rewards`, `/whisperer`, `/recent-calls`, `/review/timeline`,
+   `/reps/[id]`, and ~15 `/crm/*` pages (overview, pipeline, tasks, actions, `Leaderboard`
+   — note the capitalised route segment) are absent from navigation. Either promote,
+   consolidate, or retire them; invisible pages still cost maintenance and confuse deep links.
+7. **Layout inconsistency** — `PageContainer`/`PageHeader` exist but only `/dashboard` uses
+   them. Everything else hand-rolls containers: full-width (`/coaching`, `/call-library`,
+   `/calls/[id]`), `max-w-5xl` (`/upload`), `max-w-7xl` (`/crm/accounts`, `/sparring/[id]`),
+   `max-w-2xl` (`/settings/profile`). Header scale drifts too (`text-2xl` on `/calls/[id]`
+   vs `text-xl` elsewhere; kicker-label pattern on some pages, absent on others).
+8. **Fake or dead UI erodes trust** — Skill Momentum bars render hard-coded widths
+   (82/32/58% in `dashboard/page.tsx:170`), "updated just now" is static text, the topbar
+   bell button does nothing, and `app-shell.tsx` ships `console.log` debug output on every
+   page load. Premium means every rendered signal is real.
+9. **Empty states are inconsistent and dead-endy** — the shared `EmptyState` is used in only
+   7 files; `/call-library`, `/coaching`, `/assignments`, `/sparring` roll their own plain
+   text. `/crm/accounts` shows "No accounts found." with no create action even though the
+   page has a New Account button. A brand-new user's dashboard renders six placeholder
+   modules in a row — calm would be one welcome module and three actions.
+10. **Redundant CTAs create choice overload** — on `/coaching` Overview, Upload Call appears
+    three times (header, workflow strip, sidebar makes four) and the Review Queue is
+    reachable four ways from the same screen. One primary action per screen; the rest
+    becomes quiet links.
+
+---
+
+## 3. Page-by-page notes
+
+### App shell — sidebar / topbar (`src/components/shell/*`)
+- Solid foundation: collapsible sidebar with hover-expand, mobile drawer, role-filtered
+  sections. The 56px collapsed rail + 220px expanded width feel right.
+- **Topbar bell is a placeholder** (no handler, no badge) — remove until notifications exist.
+- Breadcrumb is a single label; on detail pages (`/calls/[id]`) it just says "Calls" with no
+  back affordance or context. Acceptable for now, but detail pages should carry their own
+  back link consistently (assignments' "← Back" currently goes to `/crm/overview`, a page
+  not even in the nav).
+- `app-shell.tsx:68-70` logs `reps/me response` + `userTier state` to the console in
+  production — remove.
+- Impersonation banner (fuchsia) is fine — a loud colour is *correct* for an unusual state.
+
+### Navigation config (`src/config/navigation.ts`)
+- "Sparring" → `/call-library` duplicates "Calls"; both active states light up together.
+  Should deep-link a sparring tab (`/call-library?tab=sparring`) or get its own route.
+- Section naming: sidebar says "Command Centre" under *Coaching*, the page calls itself
+  "Command Centre", success screens call it "Manager Command Centre", and CLAUDE.md calls
+  the same concept "AI Feedback"/"Replay Centre" territory. Pick one name.
+- Target IA in CLAUDE.md (Workspace / Coaching / Live / Admin) is a good calm structure —
+  current nav is partway there; Live (Whisperer) is entirely missing while the whisperer
+  page exists as an orphan.
+
+### `/coaching` (4,100 lines)
+- Header (Day 161) is the best pattern in the app: kicker, title, one sentence, one primary
+  CTA + one secondary. Keep exactly this.
+- Overview tab stacks: manager-workflow strip, 4 priority cards, team snapshot, sparring
+  snapshot, coaching queue, sparring assignments + completion proof + score trend + rep/drill
+  breakdown, AI discovery, whisperer sessions, custom trigger library. Nobody can hold this
+  in their head; the page scrolls for many screens and every module competes with amber/red
+  badges.
+- Tab labels "Replay Queue" vs "Review Queue" differ by one word and confuse — rename one.
+- The workflow strip explains the product in dev-diary voice ("nothing is auto-created,
+  auto-activated, or auto-completed") — reads as a changelog reassurance, not product copy.
+
+### `/upload`
+- **Best page in the app.** Single card, three labelled groups, calm right-rail explaining
+  what happens next, honest processing states. This is the reference for premium-calm.
+- Issues: the "Demo tip" panel leaks internal demo language to real users — remove or gate.
+  Rep field shows both a picker *and* a free-text input simultaneously (pick one, reveal the
+  other on demand). Primary CTA is indigo here vs cyan elsewhere.
+
+### `/call-library`
+- Hand-rolled tabs instead of `WorkspaceTabs`; hand-rolled search input style; no shared
+  container. Three tabs (Live Calls / AI Sparring / Call Uploads) are fine, but there is no
+  URL state — the sidebar cannot deep-link the sparring tab, which is the root cause of the
+  duplicate nav item.
+- Filter row on Live Calls (scope, status, score, rep, sort) is dense but functional; the
+  ad-hoc empty copy ("No calls found yet.") should move to `EmptyState` with an Upload CTA.
+
+### `/calls/[id]` (2,652 lines)
+- Sticky section nav with score pill is genuinely good IA for a long document page.
+- Noise: `text-2xl` title breaks the type scale; `zinc-*` classes mixed into a `neutral-*`
+  app; keyboard-shortcut `<kbd>` hints in the section bar are power-user clutter; 🎧 emoji
+  status banners; the post-action summary uses 🎯/⚠️/🔥 cards and "+XP gained"; "Preview
+  Slack" dev tool renders whenever `NEXT_PUBLIC_SHOW_ADMIN=true`.
+- Links to `/sparring/new` (unsupported — only `/sparring/default` special-cases).
+
+### `/dashboard`
+- Good: uses `PageContainer`, `StatCard`, `AiInsightCard`, real chart, structured briefing
+  grid. The layout discipline is the best of the data-heavy pages.
+- The fuchsia "AI Daily Briefing" block uses a fifth accent for the most prominent module;
+  within one viewport the page shows fuchsia, amber, emerald, indigo, cyan and red.
+- Arcade elements: rank ladder (Novice→Legend), streak 🔥 next to a number, XP gradient
+  bar, italic "motivation message". Skill Momentum bars are hard-coded percentages — render
+  real data or drop the bars and keep the ↑/→/↓ status only.
+- Onboarding cards use emoji tiles (🎙️ ⚔️ 📋) and one of the three links 404s (`/sparring`).
+
+### `/assignments`
+- Functional and information-rich, but the most gamified page: streak pills (🔥), focus
+  target (🎯), completion confetti (✨ 🎉 ✨), and a white-on-black CTA style unique to this
+  page + sparring. "← Back" goes to `/crm/overview` (orphan page). No shared container or
+  header pattern; page carries its own toast system instead of the global `ToastProvider`.
+
+### `/sparring/[id]` (2,990 lines)
+- The live drill loop itself is strong (turns, whisper hits, scoring, replay).
+- Score toast copy "🔥 78/100 — Hard mode smashed." and win/lose framing is the arcade tone
+  in its purest form; a rep's manager reads these scores. Calm alternative: "Scored 78/100 —
+  strongest area: discovery."
+- `max-w-7xl` container + own header style; ends of sessions push "Restart drill" in three
+  different phrasings.
+
+### `/crm/accounts`
+- Dense but coherent. Cyan CTA + cyan search focus + red "Needs Intervention" chip — accent
+  soup again. StatCards named "Rescue Queue" / "Unassigned" / danger variants make the
+  default view feel alarmed; premium tone states facts ("3 accounts unassigned") without
+  sirens. `EmptyState` used, but without a "+ New Account" action.
+- Detail pages link onward into `/crm/*` orphan pages, so users fall off the navigable map.
+
+### `/crm/manager/contacts`
+- Uses the shared kit properly (`StatCard`, `FilterBar`, `EntitySearch`, `EmptyState`,
+  `ScorePill`) — second-best pattern citizen after `/dashboard`. Main issue is reachability:
+  manager-only nav item, and rep-facing contacts don't exist, so "Contacts" disappears
+  entirely for reps.
+
+### `/settings/profile`
+- Simple and calm. Issues: section label "Editable" is developer-speak (say "Preferences");
+  cyan CTA (fourth primary style); `/settings` has no index — the sidebar splits "Settings"
+  (→ `/admin/settings`, managers only) from "My Profile", so reps have no Settings home.
+
+---
+
+## 4. Navigation issues (consolidated)
+
+- Dead links: `href="/sparring"` ×3 (dashboard ×2, assignments), `/sparring/new` (calls).
+- Duplicate destination: sidebar "Sparring" ≡ "Calls" → `/call-library`, wrong landing tab.
+- Orphan routes (no nav entry): `/rewards`, `/whisperer`, `/recent-calls`, `/review/*`,
+  `/reps/[id]`, `/crm/{overview,pipeline,tasks,actions,import,analytics*,Leaderboard,manager/*}`
+  (*analytics is nav-linked for managers only*). `/crm/Leaderboard` is a capitalised route.
+- Cross-links to orphans: assignments → `/crm/overview`; account detail → deeper CRM pages.
+- Settings split across `/admin/settings` (manager) and `/settings/profile` (all); no
+  `/settings` index.
+- Topbar breadcrumb gives no hierarchy on detail pages; back-links are inconsistent
+  (some pages none, assignments points at an orphan).
+- Naming: Command Centre / Manager Command Centre / Coaching; Review Queue vs Replay Queue;
+  Calls vs Call Library vs Live Calls vs Call Uploads. Each pair costs the user a decision.
+
+## 5. Visual noise issues (consolidated)
+
+- Emoji in product copy across dashboard, assignments, calls, sparring, rewards,
+  ActivityFeed (🔥 🎯 ✨ 🎉 ⚔️ 🎧 📋 🏆 ⚠️).
+- Confetti toast on completion; "smashed" score toasts; XP rank ladder + streak flames.
+- Six accent hues in a single dashboard viewport; amber/red badge density on `/coaching`
+  makes the resting state read as an emergency.
+- Hard-coded skill bars, static "updated just now", dead bell button, console.log noise —
+  fake signals are noise of the worst kind.
+- `animate-pulse` used decoratively (10× on `/crm/overview`) rather than only for loading.
+- Internal voice leaking into UI: "Demo tip" panel, "nothing is auto-created…" reassurance,
+  "Free text still works for quick demos.", "Editable" section label.
+- Three-plus entry points to the same action on one screen (upload, review).
+
+## 6. Empty-state issues (consolidated)
+
+- Shared `EmptyState` adopted in only 7 files; big pages (`/call-library`, `/coaching` tabs,
+  `/assignments`, sparring) use bare text with no next action.
+- Empty states rarely offer the one obvious CTA (accounts: no "New Account"; call-library:
+  no "Upload"). Rule: every empty state names the one action that fills it.
+- New-user `/dashboard` renders six placeholder modules ("Awaiting data" ×n) below the
+  onboarding cards — placeholder-mode should collapse, not enumerate.
+- Sparring/whisperer empty flows fall back to raw error-ish copy ("No response from server
+  when loading sparring sessions.") where a calm "Nothing here yet" belongs.
+
+## 7. Colour / theme issues (consolidated)
+
+- No token layer; raw Tailwind hues everywhere (approx. usages: red 493, emerald 492,
+  amber 389, cyan 167, indigo 77, fuchsia 55, sky 50, green 44, blue 20, rose 19…).
+- Primary CTA appears as indigo, cyan, white-on-black, and emerald depending on page.
+- Neutrals mix `neutral-*`, `zinc-*`, `black/40`, `bg-black` backgrounds inside cards.
+- Radius scale drifts (`rounded-md`→`rounded-2xl` mixed within single pages); border
+  opacities vary (`neutral-800` vs `neutral-800/80` vs `neutral-700`).
+- Semantic colours are used decoratively (cyan = "info"? "brand"? "focus ring"?), so real
+  warnings no longer stand out.
+
+## 8. Recommended design principles
+
+1. **Calm by default.** The resting state of every screen is neutral; colour appears only
+   when something needs attention. If everything is amber, nothing is.
+2. **One accent, three semantics.** Single brand accent (recommend standardising on indigo,
+   already used by the newest pages) + emerald/amber/red reserved strictly for
+   success/warning/danger. Everything else neutral.
+3. **One primary action per screen.** Every page answers "what should I do here?" with
+   exactly one prominent CTA; alternatives are quiet.
+4. **Real data or nothing.** No hard-coded bars, no static "just now", no dead buttons.
+   A premium UI never decorates with fake signals.
+5. **Professional voice, no emoji.** Progress and scores stated plainly; celebration is a
+   quiet check, not confetti. Keep the XP/streak *data*, drop the fireworks.
+6. **Shared layout primitives everywhere.** `PageContainer` + `PageHeader` + `WorkspaceTabs`
+   + `EmptyState` on every page; one container width policy (full-bleed workspaces, `5xl`
+   forms, `2xl` settings).
+7. **Navigation is the product map.** Every page is reachable from the sidebar or clearly
+   nested under something that is; no dead links, no duplicate destinations, no orphans.
+8. **Empty states teach.** Each names what will appear and offers the one action that
+   creates it.
+9. **Editorial density.** Each screen earns each module; anything that duplicates another
+   screen gets a link, not a copy.
+10. **Internal voice stays internal.** No demo tips, sprint references, or reassurance-about-
+    our-own-code in user-facing copy.
+
+## 9. Day 178 implementation plan
+
+Small reversible patches, in priority order — each independently shippable:
+
+1. **Fix dead links (tiny, high trust-impact).** Point `href="/sparring"` and
+   `/sparring/new` at working destinations (`/call-library?tab=sparring` and
+   `/sparring/default`). Add `?tab=` query support to `/call-library` and make the sidebar
+   "Sparring" item use it (kills the duplicate-destination problem too).
+2. **De-arcade pass (copy/classes only).** Remove emoji from product copy in dashboard,
+   assignments, calls, sparring; replace the confetti toast and "smashed" toast copy with
+   plain statements; drop the rank-ladder/streak-flame presentation to plain numbers.
+3. **Kill fake/dead UI.** Remove hard-coded Skill Momentum bar widths (keep status arrows),
+   static "updated just now", the topbar bell placeholder, the `/upload` "Demo tip" panel,
+   and the `console.log`s in `app-shell.tsx`.
+4. **One CTA colour.** Standardise primary buttons on the indigo treatment used by
+   `/upload`/`/coaching`; convert cyan and white-on-black primaries to it (mechanical class
+   swap; no layout change).
+5. **Container adoption.** Wrap `/call-library`, `/assignments`, `/settings/profile`,
+   `/crm/accounts` in `PageContainer` + `PageHeader` (visual no-op where padding already
+   matches; brings headers onto one type scale).
+6. **Empty-state pass.** Swap bare empty text on `/call-library` and `/coaching` tabs for
+   `EmptyState` with a single CTA; add "+ New Account" action to the accounts empty state.
+7. **(Stretch) Coaching Overview diet — plan only.** Draft the module→tab mapping for
+   slimming the Overview tab (priority cards + coaching queue stay; sparring analytics →
+   Assignments tab; AI discovery + whisperer → their own tab). Implementation is its own
+   day; do not start it inside Day 178.
+
+Validation: keep `validate-premium-ux-day-177` green, run `validate-tier-2b-smoke` after
+each patch, and `npm run build` before commit.
+
+---
+
+*Day 177 — audit only. No code changed. Companion validator:
+`scripts/validate-premium-ux-day-177.sh`.*

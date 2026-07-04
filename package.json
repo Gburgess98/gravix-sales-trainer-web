@@ -92,6 +92,7 @@
     "validate-demo-readiness-day-173": "bash scripts/validate-demo-readiness-day-173.sh",
     "validate-security-day-174": "bash scripts/validate-security-day-174.sh",
     "validate-security-day-175": "bash scripts/validate-security-day-175.sh",
+    "validate-premium-ux-day-177": "bash scripts/validate-premium-ux-day-177.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",
