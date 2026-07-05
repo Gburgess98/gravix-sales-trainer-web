@@ -543,11 +543,71 @@ out since Day 181.
 
 ---
 
+## 15. Day 183 — implemented (call detail premium pass)
+
+Polish pass on the call detail page `/calls/[id]` only, patch mode, WEB-only.
+No API changes, no migrations, no new features. Validator
+`scripts/validate-premium-ux-day-183.sh`.
+
+**Audit (call detail + review surfaces)**
+- `/calls/[id]` — active, bespoke `<main>` layout with a sticky in-page section
+  nav (`-mx-6 px-6`) and the score rendered inline inside the `<h1>` title.
+- `/review/timeline` and `/review/[callId]/timeline` — orphaned legacy/demo
+  transcript-player scaffolding (mock data; the `[callId]` variant even fetches
+  `NEXT_PUBLIC_API_URL` directly, bypassing the proxy). Neither is linked from
+  the app — the live Review Queue is `/coaching?tab=review`. Left untouched to
+  stay controlled (flagged below as cleanup candidates).
+
+**What changed (`/calls/[id]`)**
+- Header title `<h1>` aligned to the shell typography: `text-2xl` → `text-xl`
+  (matches `PageHeader` used on every other page) and `break-all` →
+  `break-words` so friendly titles wrap on words, not mid-character. The score
+  `ScorePill` stays inline; the human-friendly `formatCallDisplayTitle` output
+  and the subtle `File: …` raw-filename line (`text-xs text-neutral-600
+  truncate`) are unchanged — no UUID-looking header.
+- Primary CTA standardised to calm indigo: the Coach panel's "Save Assignment"
+  button moved off solid emerald (`bg-emerald-600`) onto `bg-indigo-600
+  hover:bg-indigo-500 text-white`.
+- Emerald-outline secondary cleanup begun on this surface: the "Assign
+  Coaching" action button moved off emerald-outline onto the neutral secondary
+  style (`border-neutral-700 bg-neutral-900 …`). Emerald is now reserved for
+  *status* here — the "Reviewed ✓" and "Coaching assigned ✓" confirmation pills
+  keep their emerald treatment.
+- Processing-status banner de-arcaded: the 🎧/📝/🤖/⚠️/⏳ emoji dropped, leaving
+  calm status text ("Transcribing call…", "Processing transcript…", etc.); the
+  failed state keeps its red text.
+
+**Deliberately not done**
+- `PageContainer`/`PageHeader` were **not** forced onto `/calls/[id]`: the
+  inline-score `<h1>` and the sticky `-mx-6` section nav don't fit those
+  primitives cleanly, so a swap is not low-risk. The bespoke `<main>` wrapper is
+  kept (same call made for `/upload` in Day 182 §14).
+
+**Preserved (behaviour untouched)**
+- Mark Reviewed, Assign Coaching, Assign Drill / Save Assignment, the pins calm
+  empty state ("No pinned coaching notes yet.") and graceful `pinsErr` handling
+  (Day 171), Whisperer Moments + its calm empty/error states, the audio player,
+  signed-URL handling and manager-only access gating.
+
+**What remains**
+- Full button-system unification across untouched surfaces (remaining
+  emerald-outline actions elsewhere).
+- Orphan-route cleanup: retire or proxy-fix `/review/timeline` +
+  `/review/[callId]/timeline`.
+- Pins section still uses raw `border rounded` styling — a later cosmetic pass.
+
+**Day 184 recommendation**
+Either (a) retire/consolidate the orphaned `/review/*` demo routes (they bypass
+the proxy and are unlinked), or (b) continue the emerald-outline secondary
+cleanup + indigo-CTA standard across the remaining CRM/contact detail surfaces.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
-pass implemented as above. Companion validators:
-`scripts/validate-premium-ux-day-177.sh`,
+pass. Day 183 — call detail premium pass implemented as above. Companion
+validators: `scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
 `scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
-`scripts/validate-premium-ux-day-182.sh`.*
+`scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`.*

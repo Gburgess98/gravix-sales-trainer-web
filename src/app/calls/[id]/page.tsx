@@ -1365,7 +1365,7 @@ export default function CallPage() {
     <AuthGate>
       <main className="px-6 py-6 space-y-6">
         <div className="flex items-start gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold break-all flex items-center gap-3">
+          <h1 className="text-xl font-semibold break-words flex items-center gap-3">
             {loadingCall ? (
               <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
             ) : (
@@ -1446,27 +1446,27 @@ export default function CallPage() {
         {callMeta && callMeta.status !== 'scored' && (
           <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm flex items-center gap-2">
             {callMeta.status === "queued" && (
-              <span>🎧 Transcribing call…</span>
+              <span>Transcribing call…</span>
             )}
 
             {callMeta.status === "processing" && (
-              <span>📝 Processing transcript…</span>
+              <span>Processing transcript…</span>
             )}
 
             {callMeta.status === "processed" && (
-              <span>📝 Transcript ready. Scoring…</span>
+              <span>Transcript ready. Scoring…</span>
             )}
 
             {callMeta.status === "scoring" && (
-              <span>🤖 Scoring call…</span>
+              <span>Scoring call…</span>
             )}
 
             {callMeta.status === "failed" && (
-              <span className="text-red-400">⚠️ Processing failed. Please retry.</span>
+              <span className="text-red-400">Processing failed. Please retry.</span>
             )}
 
             {!["queued", "processing", "processed", "scoring", "failed"].includes(callMeta.status) && (
-              <span>⏳ Processing…</span>
+              <span>Processing…</span>
             )}
           </div>
         )}
@@ -1534,7 +1534,7 @@ export default function CallPage() {
                       type="button"
                       onClick={assignCoachingFromCall}
                       disabled={assigningCoaching}
-                      className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 transition-colors disabled:opacity-50"
                     >
                       {assigningCoaching ? "Assigning…" : "Assign Coaching"}
                     </button>
@@ -2569,8 +2569,8 @@ export default function CallPage() {
                 <button
                   onClick={onSaveAssign}
                   disabled={assignSaving || !assigneeUserId || !drillId}
-                  className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">
-                  {assignSaving ? "Saving..." : "Save Assignment"}
+                  className="px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50">
+                  {assignSaving ? "Saving…" : "Save Assignment"}
                 </button>
               </div>
             )}
