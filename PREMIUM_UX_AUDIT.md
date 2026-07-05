@@ -500,9 +500,54 @@ platform-consistency thread.
 
 ---
 
+## 14. Day 182 — implemented (CRM + Upload consistency pass)
+
+Platform-consistency pass on `/crm/accounts` and `/upload` only, patch mode,
+WEB-only. No API changes, no migrations, no new features. Validator
+`scripts/validate-premium-ux-day-182.sh`.
+
+**What changed**
+- `/crm/accounts`: adopted shared `PageContainer`/`PageHeader` (Day 179 §11 /
+  Day 181 §13 pattern); dropped the redundant "CRM" eyebrow — the sidebar
+  already provides that context. The KPI cards + New Account/New Contact action
+  stack moved into the `PageHeader` `actions` slot unchanged.
+- `/crm/accounts` primary CTAs standardised toward calm indigo: the header
+  "+ New Account" button and both modal submit buttons ("Create Account",
+  "Create Contact") moved off cyan onto the indigo standard
+  (`border-indigo-500/20 bg-indigo-600/20 text-indigo-200 hover:bg-indigo-600/30`).
+  Secondary "+ New Contact" stays neutral; sort toggles and the search field
+  keep their existing accents (state, not CTAs).
+- `/crm/accounts` trust copy: the Escalation card's raw internal fallback token
+  `manager_queue` softened to a readable "Manager queue". Real escalation
+  values still render as returned.
+- `/upload`: adopted the shared `PageHeader` for the title/subtitle (dropped the
+  "Calls" eyebrow, consistent with the above). `PageContainer` was deliberately
+  **not** applied here — the `max-w-5xl` wrapper keeps the two-column
+  form/guidance layout centred as intended (Day 164). Upload CTAs were already
+  on the indigo standard and were left unchanged.
+
+**Preserved (behaviour untouched)**
+- Create new client link, account picker, rep picker, call type, tag/campaign,
+  the full signed-upload flow and all post-upload actions (Open Review Queue,
+  Command Centre, View call, Upload another).
+
+**What remains**
+- Button-system unification (emerald-outline secondary buttons).
+- `PageContainer`/`PageHeader` on `/review`, call detail, remaining `/crm/*`.
+- Orphan routes, remaining emoji in secondary surfaces, empty-state pass.
+
+**Day 183 recommendation**
+Extend the same `PageHeader` + indigo-CTA standard to `/review` and the call
+detail page, and start the emerald-outline secondary-button unification called
+out since Day 181.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
-Day 181 — coaching Overview final cleanup implemented as above. Companion
-validators: `scripts/validate-premium-ux-day-177.sh`,
+Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
+pass implemented as above. Companion validators:
+`scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
-`scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`.*
+`scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
+`scripts/validate-premium-ux-day-182.sh`.*

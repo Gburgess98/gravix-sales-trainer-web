@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PageHeader } from "@/components/layout/page-header";
 import {
   signedInitUpload,
   finalizeSignedUpload,
@@ -250,14 +251,12 @@ export default function UploadPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl p-6 space-y-4">
-      {/* Header */}
-      <div>
-        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Calls</p>
-        <h1 className="mt-0.5 text-xl font-semibold text-white">Upload a sales call</h1>
-        <p className="mt-0.5 text-sm text-neutral-400">
-          Link the recording to the right client, rep and review queue.
-        </p>
-      </div>
+      {/* Header — shared PageHeader for shell consistency; the max-w-5xl wrapper
+          keeps the two-column form/guidance layout centred. */}
+      <PageHeader
+        title="Upload a sales call"
+        subtitle="Link the recording to the right client, rep and review queue."
+      />
 
       {/* Two-column on desktop: form on the left, calm guidance on the right so the
           page uses the available width instead of floating in the centre. */}

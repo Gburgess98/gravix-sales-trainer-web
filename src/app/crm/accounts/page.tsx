@@ -9,6 +9,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingText } from '@/components/ui/loading-skeleton';
 import { useToast } from '@/components/Toast';
 import { EntitySearch, type EntityHit } from '@/components/ui/entity-search';
+import { PageContainer } from '@/components/layout/page-container';
+import { PageHeader } from '@/components/layout/page-header';
 
 type AccountRow = {
   id: string;
@@ -220,47 +222,37 @@ export default function CrmAccountsPage() {
   }, [filteredAccounts]);
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-            CRM
+    <PageContainer>
+      <PageHeader
+        title="Accounts"
+        subtitle="Account activity, contacts, call history, and relationship intelligence."
+        actions={
+          /* KPI cards + vertical action stack — items-stretch keeps equal heights */
+          <div className="flex items-stretch gap-3">
+            <StatCard label="Accounts" value={filteredAccounts.length} size="sm" className="w-28" />
+            <StatCard label="Contacts" value={totals.contacts} size="sm" className="w-28" />
+            <StatCard label="Calls" value={totals.calls} size="sm" className="w-28" />
+
+            {/* Action stack: two buttons fill the combined card height */}
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="flex flex-1 items-center justify-center rounded-lg border border-indigo-500/20 bg-indigo-600/20 px-4 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors whitespace-nowrap"
+              >
+                + New Account
+              </button>
+              <button
+                type="button"
+                onClick={() => setContactCreateOpen(true)}
+                className="flex flex-1 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors whitespace-nowrap"
+              >
+                + New Contact
+              </button>
+            </div>
           </div>
-
-          <h1 className="mt-0.5 text-xl font-semibold text-white">
-            Accounts
-          </h1>
-
-          <p className="mt-0.5 text-sm text-neutral-400">
-            Account activity, contacts, call history, and relationship intelligence.
-          </p>
-        </div>
-
-        {/* KPI cards + vertical action stack — items-stretch keeps equal heights */}
-        <div className="flex items-stretch gap-3">
-          <StatCard label="Accounts" value={filteredAccounts.length} size="sm" className="w-28" />
-          <StatCard label="Contacts" value={totals.contacts} size="sm" className="w-28" />
-          <StatCard label="Calls" value={totals.calls} size="sm" className="w-28" />
-
-          {/* Action stack: two buttons fill the combined card height */}
-          <div className="flex flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="flex flex-1 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 transition-colors whitespace-nowrap"
-            >
-              + New Account
-            </button>
-            <button
-              type="button"
-              onClick={() => setContactCreateOpen(true)}
-              className="flex flex-1 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors whitespace-nowrap"
-            >
-              + New Contact
-            </button>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -420,7 +412,7 @@ export default function CrmAccountsPage() {
                 <button
                   type="submit"
                   disabled={contactCreateSaving || (!contactCreateForm.first_name.trim() && !contactCreateForm.email.trim())}
-                  className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="rounded-lg border border-indigo-500/20 bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {contactCreateSaving ? 'Creating…' : 'Create Contact'}
                 </button>
@@ -492,7 +484,7 @@ export default function CrmAccountsPage() {
                 <button
                   type="submit"
                   disabled={createSaving || !createForm.name.trim()}
-                  className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="rounded-lg border border-indigo-500/20 bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {createSaving ? 'Creating…' : 'Create Account'}
                 </button>
@@ -585,7 +577,7 @@ export default function CrmAccountsPage() {
 
                   <div className="mt-1 text-xs text-white leading-relaxed">
                     {account.coaching_ownership
-                      ?.escalation_route || 'manager_queue'}
+                      ?.escalation_route || 'Manager queue'}
                   </div>
                 </div>
               </div>
@@ -615,6 +607,6 @@ export default function CrmAccountsPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
