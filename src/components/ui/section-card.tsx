@@ -5,7 +5,7 @@ export type SectionVariant = 'default' | 'ai' | 'rescue' | 'coaching' | 'warning
 
 const BORDER: Record<SectionVariant, string> = {
   default: 'border-neutral-800 bg-neutral-950',
-  ai: 'border-fuchsia-500/20 bg-fuchsia-500/5',
+  ai: 'border-indigo-500/20 bg-indigo-500/5',
   rescue: 'border-amber-500/20 bg-amber-500/5',
   coaching: 'border-emerald-500/20 bg-emerald-500/5',
   warning: 'border-amber-500/20 bg-amber-500/5',
@@ -14,7 +14,7 @@ const BORDER: Record<SectionVariant, string> = {
 
 const DIVIDER: Record<SectionVariant, string> = {
   default: 'border-neutral-800',
-  ai: 'border-fuchsia-500/10',
+  ai: 'border-indigo-500/10',
   rescue: 'border-amber-500/10',
   coaching: 'border-emerald-500/10',
   warning: 'border-amber-500/10',
@@ -23,7 +23,7 @@ const DIVIDER: Record<SectionVariant, string> = {
 
 const EYEBROW_CLASS: Record<SectionVariant, string> = {
   default: 'text-neutral-500',
-  ai: 'text-fuchsia-300',
+  ai: 'text-indigo-300',
   rescue: 'text-amber-300',
   coaching: 'text-emerald-300',
   warning: 'text-amber-300',

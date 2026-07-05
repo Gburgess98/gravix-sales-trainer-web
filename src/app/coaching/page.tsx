@@ -855,12 +855,6 @@ function getUrgencyState(rep: RepRisk, critical: number): UrgencyState {
   return 'healthy'
 }
 
-function mockTrend(count: number): TrendDirection {
-  if (count >= 3) return 'rising'
-  if (count === 1) return 'improving'
-  return 'stable'
-}
-
 function getAssignmentReasoning(rep: RepRisk, critical: number, flagged: number): string {
   const overdue = Number(rep.counts?.overdue ?? 0)
   const weak = inferWeakestSkill(rep)
@@ -1746,30 +1740,12 @@ export default function CoachingPage() {
 
   return (
     <div className="p-6">
-      {/* Day 161 — UX simplification: one obvious primary action (Upload Call) and
-          one calm secondary action (Review Calls) in the header. The manager should
-          never have to hunt for upload. */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
-          <h1 className="mt-0.5 text-xl font-semibold text-white">Command Centre</h1>
-          <p className="mt-0.5 text-sm text-neutral-400">Start by uploading a recorded sales call. Gravix coaches the rep, scores the session, and trains the team.</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/upload"
-            className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400"
-          >
-            Upload Call
-          </Link>
-          <button
-            type="button"
-            onClick={() => setTab('review')}
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-          >
-            Review Calls
-          </button>
-        </div>
+      {/* Day 180 — calmer header: title only; the primary actions live in one
+          row at the top of the Overview tab instead of competing header CTAs. */}
+      <div className="mb-4 min-w-0">
+        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
+        <h1 className="mt-0.5 text-xl font-semibold text-white">Manager Command Centre</h1>
+        <p className="mt-0.5 text-sm text-neutral-400">Upload calls, review them, and assign coaching from one place.</p>
       </div>
 
       <WorkspaceTabs
@@ -1813,198 +1789,134 @@ export default function CoachingPage() {
                 </div>
               )}
 
-              {/* Day 157 — workflow strip; Day 161 — refined into a calm "Manager workflow"
-                  navigation strip. Upload Call is the obvious first step; the rest jump to
-                  existing tabs/anchors (no new data, no auto-actions). */}
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Manager workflow</div>
-                  <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
-                    Start here
-                  </span>
-                </div>
-                <p className="mt-1 text-[12px] text-neutral-400">
-                  Upload a call → review it → assign sparring → review AI discoveries.
-                </p>
-                <p className="mt-0.5 text-[11px] text-neutral-500">
-                  The manager stays in control — nothing is auto-created, auto-activated, or auto-completed.
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Link
-                    href="/upload"
-                    className="rounded-md border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-200 transition-colors hover:border-indigo-500/60 hover:text-white"
+              {/* Day 180 — primary actions: the four things a manager does most,
+                  in one calm row. Jumps reuse existing tabs/anchors — no new data,
+                  no auto-actions. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+                <Link
+                  href="/upload"
+                  className="rounded-lg bg-indigo-500 px-3.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400"
+                >
+                  Upload Call
+                </Link>
+                {[
+                  { label: 'Review Queue', onClick: () => setTab('review') },
+                  { label: 'Coaching Queue', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                  { label: 'Assign Sparring', onClick: () => setTab('assignments') },
+                  { label: 'AI Discovery', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+                ].map((step) => (
+                  <button
+                    key={step.label}
+                    type="button"
+                    onClick={step.onClick}
+                    className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm font-medium text-neutral-200 hover:border-neutral-600 hover:text-white transition-colors"
                   >
-                    Upload Call
-                  </Link>
-                  {[
-                    { label: 'Review Calls', onClick: () => setTab('review') },
-                    { label: 'Coaching Queue', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                    { label: 'Sparring', onClick: () => document.getElementById('queue-sparring')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                    { label: 'AI Discovery', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                  ].map((step) => (
-                    <button
-                      key={step.label}
-                      type="button"
-                      onClick={step.onClick}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-200 hover:border-neutral-600 hover:text-white transition-colors"
-                    >
-                      {step.label}
-                    </button>
-                  ))}
-                </div>
+                    {step.label}
+                  </button>
+                ))}
+                <span className="ml-auto hidden text-[11px] text-neutral-500 sm:block">Upload → review → assign → approve AI suggestions</span>
               </div>
 
               {commandCentre && (
                 <>
-                  {/* Day 149 — Manager Command Centre: priority actions + team snapshot
-                      (all from already-loaded data; no new API). Builds on the Day 148
-                      triage panel and promotes it to the top manager action area. */}
+                  {/* Day 180 — Today's priorities: one compact block answering "what
+                      needs attention and what do I do next" (same already-loaded data
+                      as the former priority cards; no new API). */}
                   {(() => {
                     const reviewCount = commandCentre.teamHealth.callsNeedingReview
                     const overdueCount = commandCentre.teamHealth.overdueAssignments
-                    const openCount = commandCentre.teamHealth.openAssignments
                     const repsAtRisk = commandCentre.repsNeedingAttention.length
                     const candidateCount = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id)).length
-                    const whispererSessions = whisperer?.summary.sessionCount ?? 0
                     const topRep = commandCentre.repsNeedingAttention[0]
                     const topSkill = commandCentre.weakestSkills[0]?.skill
                     // Recommended next drill from the weakest team skill (or top rep's risk reason).
                     const recommendedDrill = sparringDrillForText(topSkill || topRep?.riskReason || topRep?.recommendedAction)
 
-                    const goToDiscovery = () => {
-                      if (typeof document !== 'undefined') {
-                        document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                      }
-                    }
-
-                    const cards: Array<{ key: string; title: string; count: number; reason: string; cta: string; onClick: () => void; tone: 'red' | 'amber' | 'indigo' | 'neutral' }> = [
-                      {
+                    type PriorityRow = { key: string; label: string; detail: string; count: number; cta: string; onClick: () => void; urgent?: boolean }
+                    const rows: PriorityRow[] = []
+                    if (reviewCount > 0) {
+                      rows.push({
                         key: 'review',
-                        title: 'Review calls',
+                        label: 'Calls waiting for review',
+                        detail: 'Lowest-scoring calls first.',
                         count: reviewCount,
-                        reason: reviewCount > 0 ? 'Lowest-scoring calls waiting for manager review.' : 'No calls waiting for review.',
-                        cta: 'Review calls',
+                        cta: 'Open Review Queue',
                         onClick: () => setTab('review'),
-                        tone: reviewCount > 0 ? 'amber' : 'neutral',
-                      },
-                      {
+                      })
+                    }
+                    if (repsAtRisk > 0) {
+                      rows.push({
                         key: 'reps',
-                        title: 'Coach reps at risk',
+                        label: 'Reps needing attention',
+                        detail: topRep ? `${topRep.repName} — ${topRep.recommendedAction}` : 'Rule-based risk from recent calls.',
                         count: repsAtRisk,
-                        reason: repsAtRisk > 0 && topRep ? `${topRep.repName} — ${topRep.recommendedAction}` : 'No reps need urgent coaching.',
-                        cta: 'Coach reps at risk',
+                        cta: 'View reps',
                         onClick: () => setTab('interventions'),
-                        tone: repsAtRisk > 0 ? 'red' : 'neutral',
-                      },
-                      {
+                        urgent: topRep?.riskLevel === 'red',
+                      })
+                    }
+                    if (overdueCount > 0) {
+                      rows.push({
+                        key: 'overdue',
+                        label: 'Overdue assignments',
+                        detail: 'Coaching drills past their due date.',
+                        count: overdueCount,
+                        cta: 'View assignments',
+                        onClick: () => setTab('assignments'),
+                        urgent: true,
+                      })
+                    } else if (topSkill || topRep) {
+                      rows.push({
                         key: 'sparring',
-                        title: 'Assign sparring',
-                        count: openCount,
-                        reason: topSkill || topRep ? `Recommended drill: ${recommendedDrill}` : 'No weak skills to drill yet.',
+                        label: 'Suggested next drill',
+                        detail: recommendedDrill,
+                        count: 0,
                         cta: 'Assign sparring',
                         onClick: () => setTab('assignments'),
-                        tone: 'indigo',
-                      },
-                      {
+                      })
+                    }
+                    if (candidateCount > 0) {
+                      rows.push({
                         key: 'discovery',
-                        title: 'Review AI discovery candidates',
+                        label: 'AI Discovery suggestions to review',
+                        detail: 'Suggested triggers — nothing activates without your approval.',
                         count: candidateCount,
-                        reason: candidateCount > 0 ? 'Manager-approval gated trigger suggestions.' : 'No new AI trigger candidates yet.',
-                        cta: 'Review AI discovery candidates',
-                        onClick: goToDiscovery,
-                        tone: candidateCount > 0 ? 'amber' : 'neutral',
-                      },
-                    ]
-
-                    const TONE_CLS: Record<'red' | 'amber' | 'indigo' | 'neutral', string> = {
-                      red: 'border-red-500/30 bg-red-500/10 text-red-300',
-                      amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-                      indigo: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200',
-                      neutral: 'border-neutral-700 bg-neutral-900 text-neutral-400',
+                        cta: 'Review suggestions',
+                        onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                      })
                     }
 
                     return (
-                      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-4">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Manager Command Centre</p>
-                          <h2 className="mt-0.5 text-lg font-semibold text-white">Your team coaching command centre</h2>
-                          <p className="mt-0.5 text-sm text-neutral-400">Review calls, assign drills, and act on the highest-priority coaching moments.</p>
-                        </div>
-
-                        {/* Priority actions / What to do next */}
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          {cards.map((c) => (
-                            <div key={c.key} className="flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3">
-                              <div>
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium text-white">{c.title}</span>
-                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${TONE_CLS[c.tone]}`}>{c.count}</span>
+                      <SectionCard title="Today's priorities" subtitle="What needs your attention right now.">
+                        {rows.length === 0 ? (
+                          <EmptyRow message="All clear — nothing needs your attention right now." />
+                        ) : (
+                          <div className="divide-y divide-neutral-800/60">
+                            {rows.map((r) => (
+                              <div key={r.key} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    {r.count > 0 && (
+                                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${r.urgent ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-neutral-700 bg-neutral-900 text-neutral-300'}`}>
+                                        {r.count}
+                                      </span>
+                                    )}
+                                    <span className="text-sm font-medium text-white">{r.label}</span>
+                                  </div>
+                                  <p className="mt-0.5 text-[12px] text-neutral-400">{r.detail}</p>
                                 </div>
-                                <p className="mt-1 text-[12px] leading-snug text-neutral-400">{c.reason}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={c.onClick}
-                                className="mt-3 w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-[12px] font-medium text-neutral-200 hover:bg-neutral-800 transition-colors"
-                              >
-                                {c.cta}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Team coaching snapshot */}
-                        <div>
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Team coaching snapshot</div>
-                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            {[
-                              { label: 'Calls needing review', value: reviewCount },
-                              { label: 'Open assignments', value: openCount },
-                              { label: 'Reps needing attention', value: repsAtRisk },
-                              { label: candidateCount > 0 ? 'Trigger candidates' : 'Whisperer sessions', value: candidateCount > 0 ? candidateCount : whispererSessions },
-                            ].map((stat) => (
-                              <div key={stat.label} className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                                <div className="text-base font-semibold text-white tabular-nums">{stat.value}</div>
-                                <div className="text-[11px] text-neutral-500">{stat.label}</div>
+                                <button
+                                  type="button"
+                                  onClick={r.onClick}
+                                  className="shrink-0 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+                                >
+                                  {r.cta}
+                                </button>
                               </div>
                             ))}
                           </div>
-                        </div>
-
-                        {/* Sparring progress snapshot (Day 149 — from already-loaded sparring data) */}
-                        {(() => {
-                          const completed = recentSparring.filter((s) => s.completedAt).length
-                          const scored = recentSparring.filter((s) => typeof s.overall === 'number' && s.overall > 0)
-                          const avgScore = scored.length > 0 ? Math.round(scored.reduce((sum, s) => sum + s.overall, 0) / scored.length) : null
-                          const weakCounts = new Map<string, number>()
-                          recentSparring.forEach((s) => {
-                            if (s.weakestDimension && s.weakestDimension !== 'unknown') {
-                              weakCounts.set(s.weakestDimension, (weakCounts.get(s.weakestDimension) ?? 0) + 1)
-                            }
-                          })
-                          const weakest = [...weakCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
-                          // Day 156 — proof-backed average from persisted assignment scores.
-                          const proofTrend = computeSparringTrendSummary(getSparringProofRows(assignments, repNameById))
-                          return (
-                            <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5">
-                              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Sparring progress</div>
-                              {sparringLoading ? (
-                                <p className="mt-1 text-[12px] text-neutral-500">Loading sparring progress…</p>
-                              ) : recentSparring.length === 0 ? (
-                                <p className="mt-1 text-[12px] text-neutral-400">No sparring sessions completed yet.</p>
-                              ) : (
-                                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-neutral-400">
-                                  <span><span className="text-neutral-200 tabular-nums">{recentSparring.length}</span> recent</span>
-                                  <span><span className="text-neutral-200 tabular-nums">{completed}</span> completed</span>
-                                  {avgScore !== null && <span>Avg score <span className="text-neutral-200 tabular-nums">{avgScore}</span></span>}
-                                  {proofTrend.averageScore !== null && <span>Avg proof score <span className="text-neutral-200 tabular-nums">{proofTrend.averageScore}%</span></span>}
-                                  {weakest && <span>Weakest area <span className="text-neutral-200 capitalize">{weakest.replace(/_/g, ' ')}</span></span>}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })()}
-                      </div>
+                        )}
+                      </SectionCard>
                     )
                   })()}
 
@@ -2161,256 +2073,8 @@ export default function CoachingPage() {
                     )
                   })()}
 
-                  {/* Day 152/153 — Queue-assigned sparring: surface sparring assignments
-                      created from the Coaching Queue (manager_dashboard / origin
-                      "Coaching Queue"), with open/completed/overdue counts and Day 153
-                      sparring-session follow-through (direct assignment_id link, else a
-                      safe inferred match). All from already-loaded data (no new API). */}
-                  <span id="queue-sparring" className="block scroll-mt-4" aria-hidden="true" />
-                  {(() => {
-                    const now = Date.now()
-                    const queueSparring = assignments.filter((a) =>
-                      String(a.type || '') === 'sparring' &&
-                      (String(a.source || '') === 'manager_dashboard' || String(a.meta?.origin_label || '') === 'Coaching Queue')
-                    )
-                    const isCompleted = (a: Assignment) => String(a.status || '') === 'completed' || !!a.completed_at
-                    const isOverdue = (a: Assignment) => !isCompleted(a) && !!a.due_at && new Date(a.due_at as string).getTime() < now
-                    const completedCount = queueSparring.filter(isCompleted).length
-                    const overdueCount = queueSparring.filter(isOverdue).length
-                    const openCount = queueSparring.filter((a) => !isCompleted(a) && !isOverdue(a)).length
-                    // Day 153 — match each assignment to a completed sparring session.
-                    const matches = new Map<string, SparringMatch>()
-                    queueSparring.forEach((a) => matches.set(a.id, findRelatedSparringSession(a, recentSparring)))
-                    const matchedCount = queueSparring.filter((a) => (matches.get(a.id)?.confidence ?? 'none') !== 'none').length
-                    // Day 155 — assignments with persisted completion proof metadata.
-                    const proofStoredCount = queueSparring.filter((a) => String(a.meta?.completed_via || '') === 'sparring_session_match').length
-                    const recent = [...queueSparring]
-                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                      .slice(0, 3)
-                    return (
-                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
-                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                            <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
-                            <div className="text-[11px] text-neutral-500">Open sparring drills</div>
-                          </div>
-                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{completedCount}</div>
-                            <div className="text-[11px] text-neutral-500">Completed sparring drills</div>
-                          </div>
-                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                            <div className={`text-base font-semibold tabular-nums ${overdueCount > 0 ? 'text-red-300' : 'text-white'}`}>{overdueCount}</div>
-                            <div className="text-[11px] text-neutral-500">Overdue sparring drills</div>
-                          </div>
-                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                            <div className="text-base font-semibold text-cyan-300 tabular-nums">{matchedCount}</div>
-                            <div className="text-[11px] text-neutral-500">Matched completed sparring</div>
-                          </div>
-                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{proofStoredCount}</div>
-                            <div className="text-[11px] text-neutral-500">Proof stored</div>
-                          </div>
-                        </div>
-                        {assignmentsLoading && queueSparring.length === 0 ? (
-                          <LoadingText text="Loading sparring assignments…" />
-                        ) : recent.length === 0 ? (
-                          <EmptyRow message="No queue-assigned sparring drills yet." />
-                        ) : (
-                          <div className="space-y-2">
-                            {recent.map((a) => {
-                              const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
-                              const due = dueLabelOf(a)
-                              const drill = String(a.meta?.recommended_drill || '')
-                              const match = matches.get(a.id) ?? { confidence: 'none' as const }
-                              const hasMatch = match.confidence !== 'none'
-                              const completed = isCompleted(a)
-                              // Day 155 — persisted completion proof on the assignment meta.
-                              const hasProof = String(a.meta?.completed_via || '') === 'sparring_session_match'
-                              const proofScore = typeof a.meta?.completion_score === 'number' ? a.meta.completion_score : null
-                              // Day 154 — only a direct, completed-session match enables Mark complete.
-                              // Day 155 — never re-offer once proof is stored.
-                              const canMarkComplete = !completed && !hasProof && match.confidence === 'direct' && !!match.completedAt && !!match.sessionId
-                              return (
-                                <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-sm font-medium text-white truncate">{a.title || 'Sparring drill'}</span>
-                                    <StatusBadge status={a.status || 'assigned'} />
-                                  </div>
-                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
-                                    {repName && <span>{repName}</span>}
-                                    {due && <span className={due.cls}>{due.text}</span>}
-                                  </div>
-                                  {drill && (
-                                    <div className="text-[11px] text-neutral-400">Recommended drill: <span className="text-neutral-200">{drill}</span></div>
-                                  )}
-                                  {/* Day 153 — sparring session follow-through */}
-                                  {hasMatch ? (
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-                                      <span className="font-medium text-emerald-300">
-                                        Completed sparring: {typeof match.overall === 'number' ? `${match.overall}%` : '—'}
-                                      </span>
-                                      {match.completedAt && (
-                                        <span className="text-neutral-500">Completed on {new Date(match.completedAt).toLocaleDateString('en-GB')}</span>
-                                      )}
-                                      {match.confidence === 'inferred' && (
-                                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-400">Match: inferred</span>
-                                      )}
-                                      {match.sessionId && (
-                                        <Link href={`/sparring/${match.sessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">View session</Link>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="text-[11px] text-neutral-500">No completed sparring found yet</div>
-                                  )}
-                                  {/* Day 155 — persisted completion proof metadata */}
-                                  {hasProof ? (
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-                                      <span className="font-medium text-emerald-300">Proof: sparring session match</span>
-                                      {proofScore !== null && (
-                                        <span className="text-neutral-400">Proof score: {proofScore}%</span>
-                                      )}
-                                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Proof stored</span>
-                                    </div>
-                                  ) : completed && hasMatch ? (
-                                    /* Day 154 — completed without stored proof (legacy / inferred) */
-                                    <div className="text-[11px] font-medium text-emerald-300">Completed via sparring session</div>
-                                  ) : canMarkComplete ? (
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                      <span className="text-[11px] font-medium text-cyan-300">Ready to mark complete</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => markSparringComplete(a.id, match)}
-                                        disabled={markingCompleteId === a.id}
-                                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
-                                      >
-                                        {markingCompleteId === a.id ? 'Marking…' : 'Mark complete'}
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </SectionCard>
-                    )
-                  })()}
-
-                  {/* Day 156 — Sparring score trend foundation (proof-backed scores) */}
-                  {(() => {
-                    const proofRows = getSparringProofRows(assignments, repNameById)
-                    const trend = computeSparringTrendSummary(proofRows)
-                    const recent = proofRows.slice(0, 3)
-                    // Day 158 — rep / drill breakdowns from the same proof rows.
-                    const byRep = groupProofScoresByRep(proofRows)
-                    const byDrill = groupProofScoresByDrill(proofRows)
-                    const topDrill = byDrill[0] ?? null
-                    const improvedRep = byRep.find((r) => r.trend === 'improving') ?? null
-                    return (
-                      <SectionCard variant="coaching" title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
-                        {proofRows.length === 0 ? (
-                          <div className="space-y-1">
-                            <EmptyRow message="No proof-backed sparring scores yet." />
-                            <p className="text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                                <div className="text-base font-semibold text-white tabular-nums">{trend.proofCount}</div>
-                                <div className="text-[11px] text-neutral-500">Proof-backed completions</div>
-                              </div>
-                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                                <div className="text-base font-semibold text-emerald-300 tabular-nums">{trend.averageScore !== null ? `${trend.averageScore}%` : '—'}</div>
-                                <div className="text-[11px] text-neutral-500">Average proof score</div>
-                              </div>
-                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                                <div className="text-base font-semibold text-cyan-300 tabular-nums">{trend.bestScore !== null ? `${trend.bestScore}%` : '—'}</div>
-                                <div className="text-[11px] text-neutral-500">Best proof score</div>
-                              </div>
-                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                                <div className="text-base font-semibold text-white tabular-nums">{trend.latestScore !== null ? `${trend.latestScore}%` : '—'}</div>
-                                <div className="text-[11px] text-neutral-500">Latest proof score</div>
-                              </div>
-                            </div>
-                            {/* Day 158 — top-level highlights (reliable only) */}
-                            {(topDrill || improvedRep) && (
-                              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-400">
-                                {topDrill && <span>Top drill: <span className="text-neutral-200">{topDrill.drill}</span> ({topDrill.averageScore}%)</span>}
-                                {improvedRep && <span>Most improved rep: <span className="text-neutral-200">{improvedRep.repName}</span></span>}
-                              </div>
-                            )}
-                            <div className="space-y-2">
-                              {recent.map((r) => (
-                                <div key={r.assignmentId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-sm font-medium text-white truncate">{r.drill}</span>
-                                    <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.score}%</span>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
-                                    {r.repName && <span>{r.repName}</span>}
-                                    {r.completedAt && <span>Completed {new Date(r.completedAt).toLocaleDateString('en-GB')}</span>}
-                                    {r.matchedSparringSessionId && (
-                                      <Link href={`/sparring/${r.matchedSparringSessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">Session {r.matchedSparringSessionId.slice(0, 8)}</Link>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="mt-2 text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
-                          </>
-                        )}
-
-                        {/* Day 158 — proof-backed performance grouped by rep / drill */}
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By rep</div>
-                            {byRep.length === 0 ? (
-                              <p className="mt-1 text-[12px] text-neutral-400">No rep-level sparring trend yet.</p>
-                            ) : (
-                              <div className="mt-2 space-y-2">
-                                {byRep.slice(0, 3).map((r) => (
-                                  <div key={r.repName} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-sm font-medium text-white truncate">{r.repName}</span>
-                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.averageScore}%</span>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
-                                      <span>{r.proofCount} {r.proofCount === 1 ? 'completion' : 'completions'}</span>
-                                      <span className={`font-medium ${PROOF_TREND_CLASSES[r.trend]}`}>{PROOF_TREND_LABELS[r.trend]}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By drill</div>
-                            {byDrill.length === 0 ? (
-                              <p className="mt-1 text-[12px] text-neutral-400">No drill-level sparring trend yet.</p>
-                            ) : (
-                              <div className="mt-2 space-y-2">
-                                {byDrill.slice(0, 3).map((d) => (
-                                  <div key={d.drill} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-sm font-medium text-white truncate">{d.drill}</span>
-                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{d.averageScore}%</span>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
-                                      <span>{d.proofCount} {d.proofCount === 1 ? 'completion' : 'completions'}</span>
-                                      <span>Best {d.bestScore}%</span>
-                                      <span>{d.uniqueReps} {d.uniqueReps === 1 ? 'rep' : 'reps'}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <p className="mt-2 text-[11px] text-neutral-500">Trends need at least two proof-backed scores.</p>
-                      </SectionCard>
-                    )
-                  })()}
+                  {/* Day 180 — calm divider between primary actions and supporting evidence */}
+                  <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-neutral-600">More insights below — team health, skills and AI discovery</p>
 
                   {/* Team Health */}
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -2927,13 +2591,7 @@ export default function CoachingPage() {
 
                       {/* Tier 2B Day 130 — Suggested Trigger Candidates (read-only) */}
                       <span id="ai-discovery" className="block scroll-mt-4" aria-hidden="true" />
-                      <SectionCard variant="ai" title="Suggested Trigger Candidates" subtitle="Recurring sales moments mined from recent sessions.">
-                        <p className="mb-1 text-[11px] text-neutral-500">
-                          Gravix can spot repeated sales moments and suggest triggers. Managers approve before anything goes live.
-                        </p>
-                        <p className="mb-2 text-[10px] text-neutral-600">
-                          Dismissed candidates stay hidden for this manager scope.
-                        </p>
+                      <SectionCard variant="ai" title="AI Discovery" subtitle="Suggested triggers from recent sessions — nothing activates without manager approval.">
                         {/* Day 146 — discovery coverage counters (read-only). Hides when summary absent. */}
                         {(() => {
                           const s = candidateSummary
@@ -3014,7 +2672,7 @@ export default function CoachingPage() {
                                     <button
                                       type="button"
                                       onClick={() => useCandidate(c)}
-                                      className="rounded-md bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-500 transition-colors"
+                                      className="rounded-md bg-indigo-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-400 transition-colors"
                                     >
                                       Use this candidate
                                     </button>
@@ -3039,7 +2697,6 @@ export default function CoachingPage() {
                                     >
                                       Reject
                                     </button>
-                                    <span className="text-[10px] text-neutral-600">Manager approval required</span>
                                   </div>
                                   {open && (
                                     <div className="mt-1 space-y-2.5 border-t border-neutral-800 pt-2.5">
@@ -3125,7 +2782,7 @@ export default function CoachingPage() {
                                         <button
                                           type="button"
                                           onClick={() => useCandidate(c)}
-                                          className="rounded-md bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-500 transition-colors"
+                                          className="rounded-md bg-indigo-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-400 transition-colors"
                                         >
                                           Use this candidate
                                         </button>
@@ -3259,7 +2916,6 @@ export default function CoachingPage() {
                                         {typeof t.sourceMeta?.confidence === 'number' && <>{t.sourceMeta.confidence}% confidence</>}
                                       </span>
                                     )}
-                                    <span className="text-[10px] text-neutral-700">{t.sourceCandidateId.slice(0, 24)}</span>
                                   </div>
                                 )}
                                 <div className="flex items-center gap-2 pt-0.5">
@@ -3301,7 +2957,7 @@ export default function CoachingPage() {
                             <input value={triggerDraft.suggestionTitle} onChange={(e) => setTriggerDraft({ ...triggerDraft, suggestionTitle: e.target.value })} placeholder="Suggestion title" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
                             <textarea value={triggerDraft.suggestionResponse} onChange={(e) => setTriggerDraft({ ...triggerDraft, suggestionResponse: e.target.value })} placeholder="Suggested response" rows={2} className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200" />
                             <div className="flex items-center gap-2">
-                              <button type="button" onClick={submitTrigger} disabled={savingTrigger} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{savingTrigger ? 'Saving…' : 'Save trigger'}</button>
+                              <button type="button" onClick={submitTrigger} disabled={savingTrigger} className="rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-400 disabled:opacity-50">{savingTrigger ? 'Saving…' : 'Save trigger'}</button>
                               <button type="button" onClick={() => setShowTriggerForm(false)} className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900">Cancel</button>
                             </div>
                           </div>
@@ -3314,44 +2970,331 @@ export default function CoachingPage() {
                       </div>
                     </div>
                   </div>
+                  {/* Day 180 — sparring follow-through: queue-assigned drills, completion
+                      proof and score trends grouped into one collapsible area (moved below
+                      the team grids; content unchanged). */}
+                  <span id="queue-sparring" className="block scroll-mt-4" aria-hidden="true" />
+                  <details className="rounded-2xl border border-neutral-800 bg-neutral-900/20">
+                    <summary className="cursor-pointer select-none px-4 py-3">
+                      <span className="text-sm font-medium text-neutral-200">Sparring follow-through</span>
+                      <span className="ml-2 text-[12px] text-neutral-500">Queue-assigned drills, completion proof and score trends</span>
+                    </summary>
+                    <div className="space-y-4 px-4 pb-4">
+                      {/* Sparring progress at a glance (from already-loaded sparring data) */}
+                      {(() => {
+                        if (sparringLoading) return <p className="text-[12px] text-neutral-500">Loading sparring progress…</p>
+                        if (recentSparring.length === 0) return <p className="text-[12px] text-neutral-400">No sparring sessions completed yet.</p>
+                        const completed = recentSparring.filter((s) => s.completedAt).length
+                        const scored = recentSparring.filter((s) => typeof s.overall === 'number' && s.overall > 0)
+                        const avgScore = scored.length > 0 ? Math.round(scored.reduce((sum, s) => sum + s.overall, 0) / scored.length) : null
+                        const proofTrend = computeSparringTrendSummary(getSparringProofRows(assignments, repNameById))
+                        return (
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-neutral-400">
+                            <span><span className="text-neutral-200 tabular-nums">{recentSparring.length}</span> recent sessions</span>
+                            <span><span className="text-neutral-200 tabular-nums">{completed}</span> completed</span>
+                            {avgScore !== null && <span>Average score <span className="text-neutral-200 tabular-nums">{avgScore}</span></span>}
+                            {proofTrend.averageScore !== null && <span>Average proof score <span className="text-neutral-200 tabular-nums">{proofTrend.averageScore}%</span></span>}
+                          </div>
+                        )
+                      })()}
+
+                  {/* Day 152/153 — Queue-assigned sparring: surface sparring assignments
+                      created from the Coaching Queue (manager_dashboard / origin
+                      "Coaching Queue"), with open/completed/overdue counts and Day 153
+                      sparring-session follow-through (direct assignment_id link, else a
+                      safe inferred match). All from already-loaded data (no new API). */}
+                  {(() => {
+                    const now = Date.now()
+                    const queueSparring = assignments.filter((a) =>
+                      String(a.type || '') === 'sparring' &&
+                      (String(a.source || '') === 'manager_dashboard' || String(a.meta?.origin_label || '') === 'Coaching Queue')
+                    )
+                    const isCompleted = (a: Assignment) => String(a.status || '') === 'completed' || !!a.completed_at
+                    const isOverdue = (a: Assignment) => !isCompleted(a) && !!a.due_at && new Date(a.due_at as string).getTime() < now
+                    const completedCount = queueSparring.filter(isCompleted).length
+                    const overdueCount = queueSparring.filter(isOverdue).length
+                    const openCount = queueSparring.filter((a) => !isCompleted(a) && !isOverdue(a)).length
+                    // Day 153 — match each assignment to a completed sparring session.
+                    const matches = new Map<string, SparringMatch>()
+                    queueSparring.forEach((a) => matches.set(a.id, findRelatedSparringSession(a, recentSparring)))
+                    const matchedCount = queueSparring.filter((a) => (matches.get(a.id)?.confidence ?? 'none') !== 'none').length
+                    // Day 155 — assignments with persisted completion proof metadata.
+                    const proofStoredCount = queueSparring.filter((a) => String(a.meta?.completed_via || '') === 'sparring_session_match').length
+                    const recent = [...queueSparring]
+                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .slice(0, 3)
+                    return (
+                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
+                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
+                            <div className="text-[11px] text-neutral-500">Open sparring drills</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{completedCount}</div>
+                            <div className="text-[11px] text-neutral-500">Completed sparring drills</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className={`text-base font-semibold tabular-nums ${overdueCount > 0 ? 'text-red-300' : 'text-white'}`}>{overdueCount}</div>
+                            <div className="text-[11px] text-neutral-500">Overdue sparring drills</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-cyan-300 tabular-nums">{matchedCount}</div>
+                            <div className="text-[11px] text-neutral-500">Matched completed sparring</div>
+                          </div>
+                          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                            <div className="text-base font-semibold text-emerald-300 tabular-nums">{proofStoredCount}</div>
+                            <div className="text-[11px] text-neutral-500">Proof stored</div>
+                          </div>
+                        </div>
+                        {assignmentsLoading && queueSparring.length === 0 ? (
+                          <LoadingText text="Loading sparring assignments…" />
+                        ) : recent.length === 0 ? (
+                          <EmptyRow message="No queue-assigned sparring drills yet." />
+                        ) : (
+                          <div className="space-y-2">
+                            {recent.map((a) => {
+                              const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
+                              const due = dueLabelOf(a)
+                              const drill = String(a.meta?.recommended_drill || '')
+                              const match = matches.get(a.id) ?? { confidence: 'none' as const }
+                              const hasMatch = match.confidence !== 'none'
+                              const completed = isCompleted(a)
+                              // Day 155 — persisted completion proof on the assignment meta.
+                              const hasProof = String(a.meta?.completed_via || '') === 'sparring_session_match'
+                              const proofScore = typeof a.meta?.completion_score === 'number' ? a.meta.completion_score : null
+                              // Day 154 — only a direct, completed-session match enables Mark complete.
+                              // Day 155 — never re-offer once proof is stored.
+                              const canMarkComplete = !completed && !hasProof && match.confidence === 'direct' && !!match.completedAt && !!match.sessionId
+                              return (
+                                <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2.5 space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{a.title || 'Sparring drill'}</span>
+                                    <StatusBadge status={a.status || 'assigned'} />
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                    {repName && <span>{repName}</span>}
+                                    {due && <span className={due.cls}>{due.text}</span>}
+                                  </div>
+                                  {drill && (
+                                    <div className="text-[11px] text-neutral-400">Recommended drill: <span className="text-neutral-200">{drill}</span></div>
+                                  )}
+                                  {/* Day 153 — sparring session follow-through */}
+                                  {hasMatch ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                                      <span className="font-medium text-emerald-300">
+                                        Completed sparring: {typeof match.overall === 'number' ? `${match.overall}%` : '—'}
+                                      </span>
+                                      {match.completedAt && (
+                                        <span className="text-neutral-500">Completed on {new Date(match.completedAt).toLocaleDateString('en-GB')}</span>
+                                      )}
+                                      {match.confidence === 'inferred' && (
+                                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-400">Match: inferred</span>
+                                      )}
+                                      {match.sessionId && (
+                                        <Link href={`/sparring/${match.sessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">View session</Link>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-neutral-500">No completed sparring found yet</div>
+                                  )}
+                                  {/* Day 155 — persisted completion proof metadata */}
+                                  {hasProof ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                                      <span className="font-medium text-emerald-300">Proof: sparring session match</span>
+                                      {proofScore !== null && (
+                                        <span className="text-neutral-400">Proof score: {proofScore}%</span>
+                                      )}
+                                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Proof stored</span>
+                                    </div>
+                                  ) : completed && hasMatch ? (
+                                    /* Day 154 — completed without stored proof (legacy / inferred) */
+                                    <div className="text-[11px] font-medium text-emerald-300">Completed via sparring session</div>
+                                  ) : canMarkComplete ? (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="text-[11px] font-medium text-cyan-300">Ready to mark complete</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => markSparringComplete(a.id, match)}
+                                        disabled={markingCompleteId === a.id}
+                                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                      >
+                                        {markingCompleteId === a.id ? 'Marking…' : 'Mark complete'}
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </SectionCard>
+                    )
+                  })()}
+
+                  {/* Day 156 — Sparring score trend foundation (proof-backed scores) */}
+                  {(() => {
+                    const proofRows = getSparringProofRows(assignments, repNameById)
+                    const trend = computeSparringTrendSummary(proofRows)
+                    const recent = proofRows.slice(0, 3)
+                    // Day 158 — rep / drill breakdowns from the same proof rows.
+                    const byRep = groupProofScoresByRep(proofRows)
+                    const byDrill = groupProofScoresByDrill(proofRows)
+                    const topDrill = byDrill[0] ?? null
+                    const improvedRep = byRep.find((r) => r.trend === 'improving') ?? null
+                    return (
+                      <SectionCard variant="coaching" title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
+                        {proofRows.length === 0 ? (
+                          <div className="space-y-1">
+                            <EmptyRow message="No proof-backed sparring scores yet." />
+                            <p className="text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-white tabular-nums">{trend.proofCount}</div>
+                                <div className="text-[11px] text-neutral-500">Proof-backed completions</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-emerald-300 tabular-nums">{trend.averageScore !== null ? `${trend.averageScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Average proof score</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-cyan-300 tabular-nums">{trend.bestScore !== null ? `${trend.bestScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Best proof score</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-base font-semibold text-white tabular-nums">{trend.latestScore !== null ? `${trend.latestScore}%` : '—'}</div>
+                                <div className="text-[11px] text-neutral-500">Latest proof score</div>
+                              </div>
+                            </div>
+                            {/* Day 158 — top-level highlights (reliable only) */}
+                            {(topDrill || improvedRep) && (
+                              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-400">
+                                {topDrill && <span>Top drill: <span className="text-neutral-200">{topDrill.drill}</span> ({topDrill.averageScore}%)</span>}
+                                {improvedRep && <span>Most improved rep: <span className="text-neutral-200">{improvedRep.repName}</span></span>}
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              {recent.map((r) => (
+                                <div key={r.assignmentId} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{r.drill}</span>
+                                    <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.score}%</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                    {r.repName && <span>{r.repName}</span>}
+                                    {r.completedAt && <span>Completed {new Date(r.completedAt).toLocaleDateString('en-GB')}</span>}
+                                    {r.matchedSparringSessionId && (
+                                      <Link href={`/sparring/${r.matchedSparringSessionId}`} className="text-indigo-300 hover:text-indigo-200 transition-colors">Session {r.matchedSparringSessionId.slice(0, 8)}</Link>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-[11px] text-neutral-500">Trend data becomes stronger as more assigned drills are completed.</p>
+                          </>
+                        )}
+
+                        {/* Day 158 — proof-backed performance grouped by rep / drill */}
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By rep</div>
+                            {byRep.length === 0 ? (
+                              <p className="mt-1 text-[12px] text-neutral-400">No rep-level sparring trend yet.</p>
+                            ) : (
+                              <div className="mt-2 space-y-2">
+                                {byRep.slice(0, 3).map((r) => (
+                                  <div key={r.repName} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-sm font-medium text-white truncate">{r.repName}</span>
+                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{r.averageScore}%</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                      <span>{r.proofCount} {r.proofCount === 1 ? 'completion' : 'completions'}</span>
+                                      <span className={`font-medium ${PROOF_TREND_CLASSES[r.trend]}`}>{PROOF_TREND_LABELS[r.trend]}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">By drill</div>
+                            {byDrill.length === 0 ? (
+                              <p className="mt-1 text-[12px] text-neutral-400">No drill-level sparring trend yet.</p>
+                            ) : (
+                              <div className="mt-2 space-y-2">
+                                {byDrill.slice(0, 3).map((d) => (
+                                  <div key={d.drill} className="rounded-lg border border-neutral-800 bg-neutral-900/30 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-sm font-medium text-white truncate">{d.drill}</span>
+                                      <span className="text-sm font-semibold text-emerald-300 tabular-nums">{d.averageScore}%</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-neutral-500">
+                                      <span>{d.proofCount} {d.proofCount === 1 ? 'completion' : 'completions'}</span>
+                                      <span>Best {d.bestScore}%</span>
+                                      <span>{d.uniqueReps} {d.uniqueReps === 1 ? 'rep' : 'reps'}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] text-neutral-500">Trends need at least two proof-backed scores.</p>
+                      </SectionCard>
+                    )
+                  })()}
+                    </div>
+                  </details>
+
                 </>
               )}
 
-              {/* Manager Briefing */}
-              <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-3">
+              {/* Manager Briefing — Day 180: calmed from fuchsia "AI" styling to the
+                  neutral card language used elsewhere on the page. */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-400 font-medium">AI Manager Briefing</span>
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-medium">Manager briefing</span>
                   <span className="text-[10px] text-neutral-600">· {reps.length} reps analysed</span>
                 </div>
                 <ul className="space-y-1">
                   {managerBriefing.map((bullet, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-neutral-200 leading-relaxed">
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-fuchsia-400/60" />
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400/60" />
                       {bullet}
                     </li>
                   ))}
                 </ul>
               </div>
 
-              {/* 8 KPI cards */}
+              {/* Day 180 — KPI diet: 8 cards reduced to the 4 that are not already
+                  shown in Team Health or Today's priorities. */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard label="At Risk" value={headline?.reps_at_risk ?? 0} subtext="reps" variant="danger" />
-                <StatCard label="Watch" value={headline?.reps_watch ?? 0} subtext="reps" variant="warning" />
-                <StatCard label="Overdue Actions" value={headline?.overdue_actions_total ?? 0} variant={(headline?.overdue_actions_total ?? 0) > 0 ? 'danger' : 'default'} />
-                <StatCard label="Open Actions" value={headline?.open_actions_total ?? 0} />
+                <StatCard label="At Risk" value={headline?.reps_at_risk ?? 0} subtext="reps" variant={(headline?.reps_at_risk ?? 0) > 0 ? 'danger' : 'default'} />
                 <StatCard label="Critical Today" value={reporting?.critical_calls_today ?? 0} variant={(reporting?.critical_calls_today ?? 0) > 0 ? 'danger' : 'default'} />
-                <StatCard label="Flagged 7d" value={reporting?.flagged_calls_this_week ?? 0} variant={(reporting?.flagged_calls_this_week ?? 0) > 0 ? 'warning' : 'default'} />
-                <StatCard label="Auto Assignments" value={reporting?.auto_assignments_created ?? 0} variant="info" />
+                <StatCard label="Flagged This Week" value={reporting?.flagged_calls_this_week ?? 0} variant={(reporting?.flagged_calls_this_week ?? 0) > 0 ? 'warning' : 'default'} />
                 <StatCard label="Reps Tracked" value={headline?.reps_total ?? reps.length} />
               </div>
 
+              {/* Day 180 — rep coaching breakdown grouped and collapsed: per-rep
+                  urgency, weakness patterns and suggested plans (content unchanged);
+                  the full rep table below stays visible. */}
+              <details className="rounded-2xl border border-neutral-800 bg-neutral-900/20">
+                <summary className="cursor-pointer select-none px-4 py-3">
+                  <span className="text-sm font-medium text-neutral-200">Rep coaching breakdown</span>
+                  <span className="ml-2 text-[12px] text-neutral-500">Who needs help, weakness patterns and suggested coaching plans</span>
+                </summary>
+                <div className="space-y-5 px-4 pb-4">
               {/* 3-column intelligence grid */}
               <div className="grid gap-4 xl:grid-cols-3">
 
                 {/* Col 1 — Who needs help? */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
-                    <div className="text-sm font-semibold text-neutral-100">1. Who needs help?</div>
+                    <div className="text-sm font-semibold text-neutral-100">Who needs help</div>
                     <div className="text-xs text-neutral-500">Ranked by urgency with outcome prediction.</div>
                   </div>
                   <div className="flex-1 p-3 space-y-2">
@@ -3399,7 +3342,7 @@ export default function CoachingPage() {
                             </span>
                           </div>
 
-                          <p className="text-[11px] text-neutral-400 italic">"{why}"</p>
+                          <p className="text-[11px] text-neutral-400">{why}</p>
                           <div className={`text-[11px] font-medium ${outcomeCfg.cls}`}>{outcomeCfg.label}</div>
 
                           {weak && (
@@ -3434,24 +3377,21 @@ export default function CoachingPage() {
                 {/* Col 2 — What are they bad at? */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
-                    <div className="text-sm font-semibold text-neutral-100">2. What are they bad at?</div>
-                    <div className="text-xs text-neutral-500">Team weakness patterns with trend direction.</div>
+                    <div className="text-sm font-semibold text-neutral-100">Team weakness patterns</div>
+                    <div className="text-xs text-neutral-500">Recurring weakness themes across reps.</div>
                   </div>
                   <div className="flex-1 p-4 space-y-3">
                     {weaknessData.length === 0 ? (
                       <div className="text-sm text-neutral-400">No recurring patterns detected yet.</div>
                     ) : weaknessData.map(([label, count]) => {
-                      const trend = mockTrend(count)
-                      const trendCfg = TREND_CONFIG[trend]
+                      // Day 180 — honest share-of-signals bar; the previous trend
+                      // arrows were derived from counts, not real trend data.
                       const pct = totalWeaknessCount > 0 ? Math.round((count / totalWeaknessCount) * 100) : 0
 
                       return (
                         <div key={label} className="space-y-1">
                           <div className="flex items-center justify-between gap-2 text-sm">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className={`text-base leading-none ${trendCfg.cls}`}>{trendCfg.arrow}</span>
-                              <span className="text-neutral-200 truncate">{label}</span>
-                            </div>
+                            <span className="text-neutral-200 truncate">{label}</span>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-[10px] text-neutral-500">{pct}%</span>
                               <span className="text-xs font-semibold tabular-nums text-neutral-400">{count}</span>
@@ -3459,8 +3399,8 @@ export default function CoachingPage() {
                           </div>
                           <div className="h-1.5 rounded-full bg-neutral-900 overflow-hidden">
                             <div
-                              className={`h-full rounded-full transition-all ${trend === 'rising' ? 'bg-red-400/60' : trend === 'improving' ? 'bg-emerald-400/60' : 'bg-amber-400/60'}`}
-                              style={{ width: `${Math.min(100, Math.max(8, pct * 1.4))}%` }}
+                              className="h-full rounded-full bg-indigo-400/50"
+                              style={{ width: `${Math.min(100, Math.max(4, pct))}%` }}
                             />
                           </div>
                         </div>
@@ -3472,8 +3412,8 @@ export default function CoachingPage() {
                 {/* Col 3 — Coaching Plans */}
                 <div className="flex flex-col rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
                   <div className="border-b border-neutral-800 px-4 py-3">
-                    <div className="text-sm font-semibold text-neutral-100">3. Coaching Plans</div>
-                    <div className="text-xs text-neutral-500">AI-generated: drill · replay · sparring per rep.</div>
+                    <div className="text-sm font-semibold text-neutral-100">Coaching plans</div>
+                    <div className="text-xs text-neutral-500">Suggested drill, replay and sparring focus per rep.</div>
                   </div>
                   <div className="flex-1 p-3 space-y-2">
                     {topReps.length === 0 ? (
@@ -3510,11 +3450,11 @@ export default function CoachingPage() {
                             </div>
                             <div>
                               <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Replay</div>
-                              <div className="text-[11px] text-cyan-300/80">{replay}</div>
+                              <div className="text-[11px] text-neutral-300">{replay}</div>
                             </div>
                             <div>
                               <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Sparring</div>
-                              <div className="text-[11px] text-fuchsia-300/80">{sparring}</div>
+                              <div className="text-[11px] text-neutral-300">{sparring}</div>
                             </div>
                             <div>
                               <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Why</div>
@@ -3580,6 +3520,8 @@ export default function CoachingPage() {
                   </div>
                 </div>
               )}
+                </div>
+              </details>
 
               {/* Full rep table */}
               <div className="space-y-3">
@@ -4087,7 +4029,7 @@ export default function CoachingPage() {
                 type="button"
                 disabled={assigning}
                 onClick={() => void submitAssignCoaching()}
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+                className="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
               >
                 {assigning ? 'Assigning…' : 'Assign Coaching'}
               </button>

@@ -404,7 +404,72 @@ Recommend (a): coaching Overview diet.
 
 ---
 
+## 12. Day 180 — implemented (coaching Overview diet)
+
+Third implementation slice, patch mode, WEB-only, `/coaching` Overview tab only.
+Validator `scripts/validate-premium-ux-day-180.sh`. Companion doc:
+`COACHING_OVERVIEW_SIMPLIFICATION.md` (full before/after structure).
+
+**What changed**
+- Header simplified to title-only: eyebrow + "Manager Command Centre" + one calm
+  subtitle. The competing header CTAs moved into the primary actions row.
+- New **primary actions row** at the top of Overview: Upload Call (indigo solid),
+  Review Queue, Coaching Queue, Assign Sparring, AI Discovery — one row, five
+  calm buttons, replacing the old "Manager workflow" strip (its "Start here"
+  badge and two explanatory paragraphs removed).
+- The large Command Centre panel (duplicate heading + four priority cards +
+  four-box "Team coaching snapshot" + sparring progress row) became one compact
+  **"Today's priorities"** list — only rows that actually need attention render
+  (calls waiting for review, reps needing attention, overdue assignments or a
+  suggested next drill, AI Discovery suggestions), each with a count and one
+  indigo action. "All clear" empty state when nothing is urgent.
+- A calm "More insights below" divider separates primary actions from
+  supporting evidence.
+- **Sparring follow-through group**: "Queue-assigned sparring", "Sparring score
+  trend" and the sparring progress line moved below the team grids and grouped
+  behind one collapsible summary (content unchanged; `#queue-sparring` anchor
+  preserved outside the collapse).
+- **Rep coaching breakdown group**: the 3-column intelligence grid ("Who needs
+  help" / "Team weakness patterns" / "Coaching plans" — numbered arcade headings
+  renamed) plus the Coaching Health timeline collapsed behind one summary. The
+  full rep table stays visible.
+- **KPI diet**: the 8-card KPI grid reduced to 4 (At Risk, Critical Today,
+  Flagged This Week, Reps Tracked); Watch / Overdue Actions / Open Actions /
+  Auto Assignments were duplicates of Team Health or Today's priorities.
+- **Trust/premium pass**: fake `mockTrend` weakness arrows removed (bars now show
+  honest share-of-signals); fuchsia "AI Manager Briefing" calmed to a neutral
+  "Manager briefing" card; "Suggested Trigger Candidates" retitled **AI
+  Discovery** with approval copy folded into the subtitle (repeated "Manager
+  approval required" lines reduced to one); raw candidate-id dev string removed
+  from Custom Triggers; solid emerald CTAs (Use this candidate, Save trigger,
+  Assign Coaching modal) switched to calm indigo.
+
+**How Overview was simplified**
+Above the fold is now: primary actions row → Today's priorities → Coaching
+Queue. Everything else (team health stats, reps/calls/assignments grids, weakest
+skills, AI area, sparring group, briefing, KPIs, rep breakdown, rep table) reads
+as supporting evidence below the divider. No tabs, data loading, anchors or
+features were removed.
+
+**What remains**
+- Emerald-outline secondary buttons (Assign sparring / Mark complete) kept — a
+  full button-system unification is still pending.
+- `PageContainer`/`PageHeader` adoption on `/coaching` itself.
+- Right-column AI stack (Whisperer Insights detail, reviewed-candidate history)
+  is still dense; candidates for a future collapse pass.
+- Orphan routes, remaining emoji in secondary surfaces, empty-state pass.
+
+**Day 181 recommendation**
+Either (a) coaching Overview diet pass 2 — collapse the Whisperer Insights
+detail + reviewed-candidate history and adopt `PageContainer`/`PageHeader` on
+`/coaching`, or (b) extend the indigo CTA standard to `/crm/accounts` and
+`/upload`. Recommend (a) to finish the coaching calm-down while context is
+fresh.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
-Day 179 — layout consistency + trust pass 2 implemented as above. Companion
-validators: `scripts/validate-premium-ux-day-177.sh`,
-`scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`.*
+Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet
+implemented as above. Companion validators: `scripts/validate-premium-ux-day-177.sh`,
+`scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
+`scripts/validate-premium-ux-day-180.sh`.*
