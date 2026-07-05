@@ -468,8 +468,41 @@ fresh.
 
 ---
 
+## 13. Day 181 — implemented (coaching Overview final cleanup)
+
+Final polish pass on `/coaching` only, patch mode, WEB-only. Validator
+`scripts/validate-premium-ux-day-181.sh`.
+
+**What changed**
+- `PageContainer`/`PageHeader` adopted on `/coaching` (Day 179 §11 pattern);
+  the redundant "Coaching" eyebrow dropped — the sidebar already provides that
+  context. Tabs + tab content grouped in one wrapper so container spacing
+  applies once; the Assign Coaching modal stays a direct child.
+- Today's priorities: count badge moved into its own column so the detail line
+  aligns with the label text (the Day 180 first-remaining-issue).
+- Whisperer Insights: the "Usefulness by objection" and "Needs editing"
+  sub-boxes grouped behind one "Suggestion quality detail" collapsible line —
+  content unchanged, one click away. Top stats, summary lines and the session
+  list stay visible (demo path untouched).
+- Reviewed candidates: the latest five render; older history sits behind a
+  "Show N more" collapsible. Raw candidate id now only shows when a row has no
+  readable title; the metadata line joins its parts cleanly.
+
+**What remains**
+- Button-system unification (emerald-outline secondary buttons).
+- Orphan routes, remaining emoji in secondary surfaces, empty-state pass.
+- `PageContainer`/`PageHeader` on `/upload`, `/review`, `/crm/*`, call detail.
+
+**Day 182 recommendation**
+Extend the indigo CTA standard + `PageContainer`/`PageHeader` to
+`/crm/accounts` and `/upload` (option (b) from Day 181), closing out the
+platform-consistency thread.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
-Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet
-implemented as above. Companion validators: `scripts/validate-premium-ux-day-177.sh`,
+Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
+Day 181 — coaching Overview final cleanup implemented as above. Companion
+validators: `scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
-`scripts/validate-premium-ux-day-180.sh`.*
+`scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`.*

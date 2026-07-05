@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
+import { PageContainer } from '@/components/layout/page-container'
+import { PageHeader } from '@/components/layout/page-header'
 import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
 import { RiskBadge, ScorePill, StatusBadge, UrgencyBadge } from '@/components/ui/status-badge'
@@ -1739,15 +1741,18 @@ export default function CoachingPage() {
   )
 
   return (
-    <div className="p-6">
+    <PageContainer>
       {/* Day 180 — calmer header: title only; the primary actions live in one
-          row at the top of the Overview tab instead of competing header CTAs. */}
-      <div className="mb-4 min-w-0">
-        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Coaching</p>
-        <h1 className="mt-0.5 text-xl font-semibold text-white">Manager Command Centre</h1>
-        <p className="mt-0.5 text-sm text-neutral-400">Upload calls, review them, and assign coaching from one place.</p>
-      </div>
+          row at the top of the Overview tab. Day 181 — PageContainer/PageHeader
+          adoption; the redundant "Coaching" eyebrow was dropped (the sidebar
+          already provides that context). */}
+      <PageHeader
+        title="Manager Command Centre"
+        subtitle="Upload calls, review them, and assign coaching from one place."
+      />
 
+      {/* Tabs + tab content grouped so the container spacing applies once. */}
+      <div>
       <WorkspaceTabs
         tabs={[
           { id: 'overview', label: 'Overview', badge: headline?.reps_at_risk || undefined },
@@ -1894,16 +1899,18 @@ export default function CoachingPage() {
                           <div className="divide-y divide-neutral-800/60">
                             {rows.map((r) => (
                               <div key={r.key} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    {r.count > 0 && (
-                                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${r.urgent ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-neutral-700 bg-neutral-900 text-neutral-300'}`}>
-                                        {r.count}
-                                      </span>
-                                    )}
+                                {/* Day 181 — badge sits in its own column so the detail
+                                    line aligns with the label text. */}
+                                <div className="flex min-w-0 items-start gap-2">
+                                  {r.count > 0 && (
+                                    <span className={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${r.urgent ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-neutral-700 bg-neutral-900 text-neutral-300'}`}>
+                                      {r.count}
+                                    </span>
+                                  )}
+                                  <div className="min-w-0">
                                     <span className="text-sm font-medium text-white">{r.label}</span>
+                                    <p className="mt-0.5 text-[12px] text-neutral-400">{r.detail}</p>
                                   </div>
-                                  <p className="mt-0.5 text-[12px] text-neutral-400">{r.detail}</p>
                                 </div>
                                 <button
                                   type="button"
@@ -2493,7 +2500,15 @@ export default function CoachingPage() {
                               </div>
                             )}
 
-                            {/* Day 124 — usefulness breakdown by objection type + custom vs built-in */}
+                            {/* Day 124/125 — suggestion quality detail; Day 181 — grouped
+                                behind one collapsible line to calm the card (content
+                                unchanged, one click away). */}
+                            {(whisperer.summary.usefulnessByType || whisperer.summary.customTriggerHealth) && (
+                            <details>
+                              <summary className="cursor-pointer select-none text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors">
+                                Suggestion quality detail
+                              </summary>
+                              <div className="mt-2 space-y-2">
                             {whisperer.summary.usefulnessByType && (
                               (() => {
                                 const types = whisperer.summary.usefulnessByType!
@@ -2554,6 +2569,9 @@ export default function CoachingPage() {
                                   ))
                                 )}
                               </div>
+                            )}
+                              </div>
+                            </details>
                             )}
 
                             <div className="space-y-2">
@@ -2826,8 +2844,10 @@ export default function CoachingPage() {
                           ) : reviewedCandidateDecisions.length === 0 ? (
                             <div className="text-[11px] text-neutral-500 py-1">No reviewed candidates yet.</div>
                           ) : (
-                            <div className="space-y-1.5">
-                              {reviewedCandidateDecisions.map((d) => {
+                            (() => {
+                              // Day 181 — show the latest five; older history stays one
+                              // click away instead of stacking a long list.
+                              const renderDecision = (d: ReviewedCandidateDecision) => {
                                 const badge = d.decision === 'approved'
                                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                                   : d.decision === 'rejected'
@@ -2843,11 +2863,14 @@ export default function CoachingPage() {
                                       <span className="text-[12px] text-neutral-200 truncate">{name}</span>
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${badge}`}>{label}</span>
                                     </div>
+                                    {/* Day 181 — raw candidate id only when there is no
+                                        readable title to identify the row. */}
                                     <div className="text-[10px] text-neutral-500">
-                                      {d.candidateType && <span className="text-neutral-400">{d.candidateType}</span>}
-                                      {d.candidateType && ' · '}
-                                      <span className="text-neutral-600">{d.candidateId}</span>
-                                      {d.updatedAt && <>{' · '}{new Date(d.updatedAt).toLocaleDateString('en-GB')}</>}
+                                      {[
+                                        d.candidateType,
+                                        d.source?.title ? null : d.candidateId,
+                                        d.updatedAt ? new Date(d.updatedAt).toLocaleDateString('en-GB') : null,
+                                      ].filter(Boolean).join(' · ')}
                                     </div>
                                     {hasMeta && (
                                       <div className="text-[10px] text-neutral-600">
@@ -2873,8 +2896,23 @@ export default function CoachingPage() {
                                     </div>
                                   </div>
                                 )
-                              })}
-                            </div>
+                              }
+                              const visible = reviewedCandidateDecisions.slice(0, 5)
+                              const rest = reviewedCandidateDecisions.slice(5)
+                              return (
+                                <div className="space-y-1.5">
+                                  {visible.map(renderDecision)}
+                                  {rest.length > 0 && (
+                                    <details>
+                                      <summary className="cursor-pointer select-none text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors">
+                                        Show {rest.length} more reviewed candidate{rest.length === 1 ? '' : 's'}
+                                      </summary>
+                                      <div className="mt-1.5 space-y-1.5">{rest.map(renderDecision)}</div>
+                                    </details>
+                                  )}
+                                </div>
+                              )
+                            })()
                           )}
                         </div>
                       </SectionCard>
@@ -3950,6 +3988,8 @@ export default function CoachingPage() {
         </div>
       )}
 
+      </div>
+
       {/* ── ASSIGN COACHING MODAL (Sprint 4 Day 92) ── */}
       {assignDraft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -4037,6 +4077,6 @@ export default function CoachingPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
