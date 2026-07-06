@@ -6,6 +6,7 @@ import ContactHeaderClient from "./ContactHeaderClient";
 import ContactAssignmentsClient from "./ContactAssignmentsClient";
 import RepNotesClient from "./RepNotesClient";
 import AIBriefClient from "./AIBriefClient";
+import { PageHeader } from "@/components/layout/page-header";
 
 async function autoAssign(formData: FormData) {
   "use server";
@@ -270,16 +271,15 @@ export default async function ContactPage({
       ) : null}
 
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">CRM · Contact</h1>
-          <p className="text-sm text-neutral-400">Relationship context, activity, and coaching signals.</p>
-        </div>
-
-        <Link href="/crm/overview" className="text-sm text-neutral-400 hover:text-neutral-200 underline">
-          ← Back to CRM
-        </Link>
-      </div>
+      <PageHeader
+        title="Contact"
+        subtitle="Relationship context, activity, and coaching signals."
+        actions={
+          <Link href="/crm/overview" className="text-sm text-neutral-400 hover:text-neutral-200 underline">
+            ← Back to CRM
+          </Link>
+        }
+      />
 
       {/* Contact header */}
       <ContactHeaderClient contactId={contactId} health={health} />

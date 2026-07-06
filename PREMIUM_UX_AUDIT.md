@@ -702,13 +702,70 @@ surfaces.
 
 ---
 
+## 18. Day 186 — implemented (CRM detail + secondary CTA cleanup)
+
+Premium-consistency pass on the CRM detail surfaces, patch mode, WEB-only. No
+API changes, no migrations, no new features, no deep table/card redesign.
+Validator `scripts/validate-premium-ux-day-186.sh`.
+
+**Audit**
+- `/crm/accounts/[id]` — active. Header already premium (`text-xl` title, domain
+  subtitle, a back-link eyebrow + health status badge). Action buttons were a
+  mix of cyan primaries and cyan/emerald-outline secondaries; the many other
+  emerald/amber/red usages are health *status* cards/pills (correct semantics).
+- `/crm/contacts/[id]` — active server page composing client sub-components.
+  Header was a bespoke title/subtitle/back-link block ("CRM · Contact"). Its
+  only emerald usages are hot/warm health *status* pills (correct).
+- `/crm/contacts` (index) — does not exist as a route; contacts are managed via
+  the `/crm/accounts` New Contact modal. Nothing to touch.
+
+**What changed**
+- `/crm/accounts/[id]` primary CTAs standardised to the page's existing calm
+  indigo (`border-indigo-500/30 bg-indigo-500/10 …`, matching the "Assign Owner"
+  button): "+ Add Contact" and the Add-Contact modal submit moved off cyan.
+- `/crm/accounts/[id]` secondary CTA cleanup — the emerald/cyan-outline *action*
+  buttons moved onto the neutral secondary style (`border-neutral-700
+  bg-neutral-900 …`): "Complete" (rescue task), "Assign Replay", "Assign
+  Sparring", "Complete" (coaching action). Emerald is now reserved for *status*
+  here — the "Done"/"done" pills and health cards keep their green.
+- `/crm/contacts/[id]` adopted the shared `PageHeader` for its header block
+  (title/subtitle + back-link in `actions`); the redundant "CRM ·" eyebrow
+  prefix dropped (the sidebar already provides that context, per Day 181/182).
+  The `max-w-6xl` centred wrapper is preserved.
+
+**Deliberately not done**
+- `PageContainer`/`PageHeader` were **not** forced onto `/crm/accounts/[id]`:
+  its header carries a back-link eyebrow *above* the title plus a right-side
+  status badge, which `PageHeader` can't host cleanly, and its wrapper spacing
+  differs. Header is already on-standard, so CTA cleanup was the higher-value
+  win (same judgement as `/upload` §14 and `/calls/[id]` §15).
+- Tables/cards not redesigned.
+
+**Preserved (behaviour untouched)**
+- Account/contact creation, the Add-Contact modal + link-existing-contact flow,
+  owner assign/remove, task/coaching completion, account↔contact links, all data
+  loading and empty states.
+
+**What remains**
+- Button-system unification across the wider CRM manager surfaces.
+- Optional cosmetic pass on the pins section of `/calls/[id]`.
+
+**Day 187 recommendation**
+Continue the secondary-CTA cleanup + indigo-CTA standard into the CRM manager
+surfaces (`/crm/overview`, `/crm/pipeline`, `/crm/manager/*`) — the next cluster
+of mixed cyan/emerald action buttons.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
 pass. Day 183 — call detail premium pass. Day 184 — orphaned review route
-cleanup. Day 185 — dead-code + shell-path cleanup implemented as above.
-Companion validators: `scripts/validate-premium-ux-day-177.sh`,
+cleanup. Day 185 — dead-code + shell-path cleanup. Day 186 — CRM detail +
+secondary CTA cleanup implemented as above. Companion validators:
+`scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
 `scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
 `scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`,
-`scripts/validate-premium-ux-day-184.sh`, `scripts/validate-premium-ux-day-185.sh`.*
+`scripts/validate-premium-ux-day-184.sh`, `scripts/validate-premium-ux-day-185.sh`,
+`scripts/validate-premium-ux-day-186.sh`.*

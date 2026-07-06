@@ -1129,7 +1129,7 @@ export default function AccountPage() {
             <button
               type="button"
               onClick={() => setAddContactOpen(true)}
-              className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 transition-colors"
+              className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors"
             >
               + Add Contact
             </button>
@@ -1278,7 +1278,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={addContactSaving || (!addContactForm.first_name.trim() && !addContactForm.email.trim())}
-                      className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {addContactSaving ? 'Adding…' : 'Add Contact'}
                     </button>
@@ -1419,7 +1419,7 @@ export default function AccountPage() {
                           type="button"
                           disabled={taskActionLoading}
                           onClick={() => completeTask(task.id)}
-                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60 shrink-0"
+                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60 shrink-0 transition-colors"
                         >
                           Complete
                         </button>
@@ -1453,7 +1453,7 @@ export default function AccountPage() {
                   type="button"
                   disabled={coachingActionLoading}
                   onClick={createReplayAssignment}
-                  className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-60"
+                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60 transition-colors"
                 >
                   Assign Replay
                 </button>
@@ -1461,7 +1461,7 @@ export default function AccountPage() {
                   type="button"
                   disabled={coachingActionLoading}
                   onClick={createSparringAssignment}
-                  className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60"
+                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60 transition-colors"
                 >
                   Assign Sparring
                 </button>
@@ -1525,7 +1525,7 @@ export default function AccountPage() {
                         <button
                           type="button"
                           onClick={() => completeCoachingAction(action.id)}
-                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 shrink-0"
+                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 shrink-0 transition-colors"
                         >
                           Complete
                         </button>
