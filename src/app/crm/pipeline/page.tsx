@@ -1710,7 +1710,7 @@ return (
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Pipeline</h1>
             <StagePill label={loading ? "Loading" : "Live"} />
           </div>
           <p className="mt-1 text-sm text-neutral-400">

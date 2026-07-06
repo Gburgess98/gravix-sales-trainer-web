@@ -271,7 +271,7 @@ export default function ManagerContactsClient() {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 transition-colors"
+            className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors"
           >
             + New Contact
           </button>
@@ -598,7 +598,7 @@ export default function ManagerContactsClient() {
               <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-800">
                 <p className="text-[10px] text-neutral-600">
                   {/* TODO: wire to POST /v1/crm/contacts when available */}
-                  Contact creation requires backend endpoint.
+                  Contact creation isn’t available yet.
                 </p>
                 <div className="flex gap-2">
                   <button

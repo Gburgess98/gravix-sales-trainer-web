@@ -757,6 +757,65 @@ of mixed cyan/emerald action buttons.
 
 ---
 
+## §17 — CRM manager surfaces (Day 187)
+
+WEB-only, patch mode. No API, no migrations, no new features. UK spelling.
+
+**Route audit (active vs orphaned)**
+- **Active** (reachable via sidebar or in-app links): `/crm/manager` (Team,
+  sidebar), `/crm/manager/contacts` (Contacts, sidebar), `/crm/analytics`
+  (Analytics, sidebar), `/crm/overview` (from Team), `/crm/manager/nudges`
+  (from Overview/Team), `/crm/pipeline` (from `/crm/tasks`).
+- **Redirect** (kept): `/crm/manager/control-centre` → `/coaching` (already
+  consolidated Day-157-era). Left as-is.
+- **Orphaned / legacy** (no inbound links — left untouched):
+  `/crm/Leaderboard` (capitalised route, 0 inbound refs),
+  `/crm/manager/auto-assign` (+`/runs`) — light-themed legacy page that bypasses
+  `/api/proxy` (uses `NEXT_PUBLIC_API_URL` directly); the live auto-assign UI is
+  embedded in `ManagerClient` via `RunHistoryTable`. Deliberately not touched:
+  re-theming/re-wiring it is a redesign, out of scope for a consistency patch.
+- `/crm/pipeline/PipelineClient.tsx` is dead (not imported); the active Pipeline
+  is the self-contained `page.tsx`.
+
+**Changes made**
+- `/crm/manager` (Team): adopted shared `PageContainer` + `PageHeader`
+  (title/subtitle + the two nav links in `actions`). Was already visually
+  on-standard; this makes it structurally consistent. Indigo/neutral CTAs kept.
+- `/crm/manager/ManagerClient.tsx`: "Run batch assign" solid **emerald** action
+  button → solid **indigo** (matches the sibling primary in the same panel).
+  Emerald/blue *status pills* left alone.
+- `/crm/manager/contacts`: "+ New Contact" **cyan**-outline primary action →
+  calm **indigo** outline. Softened raw modal copy
+  ("Contact creation requires backend endpoint." → "…isn't available yet.").
+  Input focus-rings and the account table link kept (cosmetic accents, not
+  action buttons — table not redesigned).
+- `/crm/pipeline`: header `text-2xl` → `text-xl` to match the PageHeader scale.
+- `/crm/overview`: header `text-2xl "CRM · Overview"` → `text-xl "Overview"`
+  (drops redundant eyebrow prefix; centred `max-w-5xl` wrapper preserved).
+- `/crm/manager/nudges`: header `"CRM · Manager Nudges"` → `"Manager Nudges"`.
+
+**Deliberately not done**
+- `/crm/analytics` — audited, already premium (dark theme, `text-xl` header,
+  neutral export buttons, no stray emerald/cyan actions). No change.
+- `/crm/overview` not forced onto `PageContainer`: it uses a bespoke centred
+  `max-w-5xl` layout; swapping in the full-width container would restyle the
+  whole page (out of scope). Header normalised only.
+- Tables/cards not redesigned; pipeline/nudges/auto-assign data untouched.
+
+**Preserved (behaviour untouched)**
+- Manager overview + auto-assign run/preview/execute, batch-assign flow, contacts
+  triage + create modal, pipeline drag/scope, analytics loaders + realtime, all
+  cross-links and empty states.
+
+**Day 188 recommendation**
+Two candidates: (a) modernise the orphaned `/crm/manager/auto-assign` runs page
+(dark theme + route it through `/api/proxy`) *or retire it* if the embedded
+`RunHistoryTable` fully covers it; (b) continue the button-system unification into
+`/crm/tasks` and `/crm/actions`. Prefer (a) — it removes a proxy-bypass and a
+light-theme outlier in one move.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -768,4 +827,6 @@ secondary CTA cleanup implemented as above. Companion validators:
 `scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
 `scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`,
 `scripts/validate-premium-ux-day-184.sh`, `scripts/validate-premium-ux-day-185.sh`,
-`scripts/validate-premium-ux-day-186.sh`.*
+`scripts/validate-premium-ux-day-186.sh`. Day 187 — CRM manager surfaces
+consistency pass (above). Companion validator:
+`scripts/validate-premium-ux-day-187.sh`.*

@@ -1,6 +1,8 @@
 // src/app/crm/manager/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 import ManagerClient from "./ManagerClient";
 
 
@@ -57,42 +59,37 @@ export default async function CrmManagerPage() {
     : { ok: true, items: [], mode: "fallback", error: overview?.error };
 
   return (
-    <div className="p-6">
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Team</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            Overview + run auto-assign across recent contacts (dry-run first, then execute).
-          </p>
-        </div>
+    <PageContainer>
+      <PageHeader
+        title="Team"
+        subtitle="Overview + run auto-assign across recent contacts (dry-run first, then execute)."
+        actions={
+          <>
+            <Link
+              href="/crm/manager/control-centre"
+              className="rounded-lg bg-indigo-600/20 px-3 py-2 text-sm font-semibold text-indigo-200 hover:bg-indigo-600/30"
+            >
+              Open Control Centre
+            </Link>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href="/crm/manager/control-centre"
-            className="rounded-lg bg-indigo-600/20 px-3 py-2 text-sm font-semibold text-indigo-200 hover:bg-indigo-600/30"
-          >
-            Open Control Centre
-          </Link>
-
-          <Link
-            href="/crm/overview"
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-          >
-            Back to CRM Overview
-          </Link>
-        </div>
-      </div>
+            <Link
+              href="/crm/overview"
+              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+            >
+              Back to CRM Overview
+            </Link>
+          </>
+        }
+      />
 
       {!overview.ok ? (
-        <div className="mt-6 rounded-lg border border-amber-800 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-lg border border-amber-800 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
           Manager overview failed to load: {overview.error ?? "overview_failed"}. Core manager controls are still available below.
         </div>
       ) : null}
 
       {/* Manager client */}
-      <div className="mt-6">
-        <ManagerClient initial={managerInitial} />
-      </div>
-    </div>
+      <ManagerClient initial={managerInitial} />
+    </PageContainer>
   );
 }

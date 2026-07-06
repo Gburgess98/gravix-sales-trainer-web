@@ -594,7 +594,7 @@ export default function CrmOverviewPage() {
     <div className="max-w-5xl mx-auto py-10 px-6">
       <div className="flex items-start justify-between gap-4 mb-2">
         <div>
-          <h1 className="text-2xl font-semibold">CRM · Overview</h1>
+          <h1 className="text-xl font-semibold">Overview</h1>
           <p className="opacity-80">Snapshot of recent team performance based on analysed calls.</p>
         </div>
 

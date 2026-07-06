@@ -83,7 +83,7 @@ export default async function ManagerNudgesPage() {
     <div className="mx-auto max-w-6xl p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">CRM · Manager Nudges</h1>
+          <h1 className="text-xl font-semibold">Manager Nudges</h1>
           <p className="text-sm text-neutral-400">
             Sorted by urgency. Click a row to jump into the contact.
           </p>
