@@ -176,7 +176,7 @@ export default function ActionsPage() {
             onClick={() => goStatus(t.value)}
             className={`rounded-xl border px-3 py-1.5 text-xs transition-all ${
               activeStatus === t.value
-                ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+                ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-200"
                 : "border-neutral-800 bg-black/30 text-neutral-400 hover:border-neutral-700"
             }`}
           >
@@ -258,7 +258,7 @@ export default function ActionsPage() {
                           type="button"
                           disabled={Boolean(completingIds[id])}
                           onClick={() => completeAction(id)}
-                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60 transition-colors"
+                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60 transition-colors"
                         >
                           {completingIds[id] ? "Completing…" : "Complete"}
                         </button>

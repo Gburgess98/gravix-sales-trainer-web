@@ -14,7 +14,6 @@ import {
   getTopObjections,
   type DashboardKpisResp,
 } from "@/lib/api";
-import { getBackendBase } from "@/lib/config"; // or your config utility if already available
 import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -359,8 +358,6 @@ export default function CrmOverviewPage() {
     let alive = true;
     (async () => {
       try {
-        // Debug: log backend base being used
-        console.debug("CRM Overview hitting backend:", getBackendBase?.() || process.env.NEXT_PUBLIC_API_BASE);
         // Manager banner: attempt to fetch a broad sample (API may require a target; handle 400 gracefully)
         const res: any = await listCoachAssignments({ limit: 100 } as any);
         if (!alive) return;

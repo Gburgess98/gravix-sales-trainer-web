@@ -912,6 +912,53 @@ them.
 
 ---
 
+## §20 — CRM tasks / actions button-system pass (Day 190)
+
+WEB-only, patch mode. No API, no migrations, no new features. UK spelling.
+
+**Route audit (active vs orphaned)**
+- **Active:** `/crm/tasks` (linked from `/crm/pipeline`), `/crm/actions`
+  (linked from `/crm/reps/[id]` ×4 and `/coaching` ×3). No sidebar entries; both
+  reached via in-app links. Both fetch through `/api/proxy`.
+- **Orphaned (left untouched, documented):** `src/app/crm/actions/ActionsClient.tsx`
+  — never imported (the active `/crm/actions` is a self-contained `page.tsx`
+  rewrite). Uses `/api/proxy` (no bypass), so no security reason to remove now;
+  flagged as a future dead-code tidy alongside the dead
+  `pipeline/PipelineClient.tsx` (§17).
+
+**Changes made**
+- `/crm/tasks`: header `text-2xl` → `text-xl` (PageHeader scale; kept the "CRM"
+  eyebrow to match `/crm/actions` + `/crm/manager/contacts`). The loud **white**
+  "Refresh" primary (`bg-white text-neutral-950`) → calm neutral bordered button,
+  matching the sibling "← Pipeline" and the app's utility-button convention. The
+  "Complete" button was already neutral; the emerald "done" pill is status only.
+- `/crm/actions`: filter **active-tab** accent **cyan** → calm **indigo**
+  (`border-indigo-500/30 bg-indigo-500/10 text-indigo-200`), matching the app
+  accent. The "Complete" **action** button **emerald** → neutral bordered
+  (green reserved for the "Done" status pill only). Cyan contact table-link left
+  as-is (accent, not an action — table not redesigned), same call as §16/§17.
+- Hardening tick (per §19's Day 190 note): deleted the vestigial
+  `src/lib/config.ts` (`getBackendBase()`, hardcoded backend host) and removed its
+  only consumer — the `console.debug(...)` + import on `/crm/overview`. Nothing
+  else referenced it; the proxy has its own private `getBackendBase`.
+
+**Deliberately not done**
+- No `PageContainer`/`PageHeader` forced onto `/crm/tasks` (bespoke
+  `min-h-screen … max-w-7xl` wrapper) or `/crm/actions` (`max-w-7xl` wrapper) —
+  header scale normalised instead, same judgement as `/crm/overview` (§17).
+- Tables/cards not redesigned; filters, completion/update flows, empty states,
+  realtime subscription, and rep gating all preserved. Task/action completion
+  logic untouched (styling-only changes).
+
+**Day 191 recommendation**
+Dead-code tidy: remove the two confirmed orphaned client components
+(`crm/actions/ActionsClient.tsx`, `crm/pipeline/PipelineClient.tsx`) — both
+never-imported duplicates of live self-contained pages. Otherwise, extend the
+button-system/header pass to `/crm/reps/[id]` (rep profile) if any mixed-colour
+CTAs remain there.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -928,5 +975,7 @@ consistency pass. Companion validator:
 `scripts/validate-premium-ux-day-187.sh`. Day 188 — CRM auto-assign legacy
 route retirement. Companion validator:
 `scripts/validate-premium-ux-day-188.sh`. Day 189 — direct backend fetch /
-proxy-bypass sweep (above). Companion validator:
-`scripts/validate-premium-ux-day-189.sh`.*
+proxy-bypass sweep. Companion validator:
+`scripts/validate-premium-ux-day-189.sh`. Day 190 — CRM tasks/actions
+button-system pass (above). Companion validator:
+`scripts/validate-premium-ux-day-190.sh`.*

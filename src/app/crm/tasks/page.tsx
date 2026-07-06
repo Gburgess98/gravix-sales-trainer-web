@@ -228,7 +228,7 @@ export default function CrmTasksPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-neutral-500">CRM</div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Tasks</h1>
+            <h1 className="mt-2 text-xl font-semibold tracking-tight">Tasks</h1>
             <p className="mt-2 max-w-2xl text-sm text-neutral-400">
               Follow-ups and next actions across your pipeline. Keep reps focused on what needs doing next.
             </p>
@@ -243,7 +243,7 @@ export default function CrmTasksPage() {
             </Link>
             <button
               type="button"
-              className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-neutral-950 hover:opacity-90"
+              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
               onClick={() => void loadTasks()}
             >
               Refresh
