@@ -816,6 +816,48 @@ light-theme outlier in one move.
 
 ---
 
+## §18 — CRM auto-assign legacy route cleanup (Day 188)
+
+WEB-only, patch mode. No API, no migrations, no new features. UK spelling.
+Chose option (a)-retire from §17's Day 188 recommendation.
+
+**Re-audit (all three orphaned):**
+- `/crm/manager/auto-assign/page.tsx` — light-themed outlier, **bypassed
+  `/api/proxy`** by fetching `${NEXT_PUBLIC_API_URL}${path}` directly with
+  hand-forwarded `x-user-id`/`x-org-id` headers.
+- `/crm/manager/auto-assign/runs/page.tsx` — dark table, went through
+  `/api/proxy` (via an `absoluteUrl()` helper); still orphaned.
+- `/crm/manager/auto-assign/runs/[run_id]/page.tsx` — run detail, relative
+  `/api/proxy` fetch; still orphaned.
+- **Inbound navigation: none.** The only references to `crm/manager/auto-assign`
+  elsewhere are the functional `/api/proxy/v1/crm/manager/auto-assign/*` endpoint
+  strings in `ManagerClient` + `RunHistoryTable` (the *live* auto-assign UI that
+  actually renders on the Team page `/crm/manager`). No links reach the pages.
+
+**Decision — retire (redirect), not redesign.** Per the "prefer redirect/removal
+over redesign if orphaned" rule and the Day 184 (`/review/*`) + Day 187
+(`control-centre`) precedents, all three page files were replaced with tiny
+server redirects (`redirect('/crm/manager')`). This removes the proxy-bypass, the
+light-theme outlier, and ~700 lines of dead UI in one move, while keeping the live
+auto-assign surface (Team page) untouched.
+
+**Changes made**
+- `auto-assign/page.tsx`, `auto-assign/runs/page.tsx`,
+  `auto-assign/runs/[run_id]/page.tsx` → server-redirect stubs → `/crm/manager`.
+
+**Preserved (behaviour untouched)**
+- The live auto-assign run history / preview / execute UI on `/crm/manager`
+  (`ManagerClient` + `RunHistoryTable`) and all its `/api/proxy` calls. No
+  assignment-completion logic changed. Nothing auto-created/auto-enabled.
+
+**Day 189 recommendation**
+Continue the button-system unification into `/crm/tasks` and `/crm/actions` (the
+remaining CRM surfaces with mixed CTA colours), or sweep for any *other*
+`NEXT_PUBLIC_API_URL`/direct-backend fetches outside `/api/proxy` across the app
+and neutralise them the same way.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -828,5 +870,7 @@ secondary CTA cleanup implemented as above. Companion validators:
 `scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`,
 `scripts/validate-premium-ux-day-184.sh`, `scripts/validate-premium-ux-day-185.sh`,
 `scripts/validate-premium-ux-day-186.sh`. Day 187 — CRM manager surfaces
-consistency pass (above). Companion validator:
-`scripts/validate-premium-ux-day-187.sh`.*
+consistency pass. Companion validator:
+`scripts/validate-premium-ux-day-187.sh`. Day 188 — CRM auto-assign legacy
+route retirement (above). Companion validator:
+`scripts/validate-premium-ux-day-188.sh`.*
