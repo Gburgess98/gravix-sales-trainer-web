@@ -100,6 +100,7 @@
     "validate-premium-ux-day-182": "bash scripts/validate-premium-ux-day-182.sh",
     "validate-premium-ux-day-183": "bash scripts/validate-premium-ux-day-183.sh",
     "validate-premium-ux-day-184": "bash scripts/validate-premium-ux-day-184.sh",
+    "validate-premium-ux-day-185": "bash scripts/validate-premium-ux-day-185.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
     "test:manager-workflow": "playwright test tests/e2e/manager-workflow.spec.ts",

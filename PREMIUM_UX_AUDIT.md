@@ -657,13 +657,58 @@ remaining CRM/contact detail surfaces, or do the small dead-code tidy
 
 ---
 
+## 17. Day 185 — implemented (dead-code + shell-path cleanup)
+
+Tidy of the scaffolding left behind after Day 184's review-route redirects.
+WEB-only, patch mode. No API changes, no migrations, no new features.
+Validator `scripts/validate-premium-ux-day-185.sh`.
+
+**Audit**
+- `/review/timeline` and `/review/[callId]/timeline` — both are now the tiny
+  Day 184 server-side redirect stubs (→ `/coaching?tab=review` and
+  → `/calls/[callId]`). Intact and useful for old/bookmarked links.
+- `TranscriptPlayer` (`src/components/TranscriptPlayer.tsx`, 52 lines) — zero
+  importers anywhere after Day 184; the only references were self-references
+  inside the file. Truly unused.
+- `/review` was still listed in `SHELL_PATHS` (`src/config/navigation.ts`), whose
+  only consumer is `shell-gate.tsx` via `isShellPath`. The redirect pages fire
+  server-side before shell chrome renders, so the entry is vestigial.
+- No remaining mock references (`cdn.pixabay.com`, `DEMO_TRANSCRIPT`,
+  `DEMO_AUDIO`) and no stray links into `/review/*/timeline`.
+
+**Cleanup decision**
+- Keep both redirect stubs (tiny, graceful for bookmarks — per the Day 184
+  rationale).
+- Remove `/review` from `SHELL_PATHS` (no longer needed).
+- Delete the unused `TranscriptPlayer` component.
+
+**What changed**
+- `src/config/navigation.ts` — dropped the `'/review'` `SHELL_PATHS` entry.
+- `src/components/TranscriptPlayer.tsx` — deleted (unused).
+
+**Preserved (behaviour untouched)**
+- The two `/review/*` redirects, the real Review Queue `/coaching?tab=review`,
+  and the call detail page `/calls/[id]`. No proxy-bypass or mock surface
+  reintroduced.
+
+**What remains**
+- Button-system unification across untouched surfaces.
+- Pins section cosmetic pass on `/calls/[id]`.
+
+**Day 186 recommendation**
+Return to the premium-consistency thread: continue the emerald-outline secondary
+cleanup + indigo-CTA standard across the remaining CRM / contact detail
+surfaces.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
 pass. Day 183 — call detail premium pass. Day 184 — orphaned review route
-cleanup implemented as above. Companion validators:
-`scripts/validate-premium-ux-day-177.sh`,
+cleanup. Day 185 — dead-code + shell-path cleanup implemented as above.
+Companion validators: `scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
 `scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
 `scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`,
-`scripts/validate-premium-ux-day-184.sh`.*
+`scripts/validate-premium-ux-day-184.sh`, `scripts/validate-premium-ux-day-185.sh`.*

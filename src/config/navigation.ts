@@ -41,7 +41,6 @@ export const SHELL_PATHS = [
   '/assignments',
   '/admin',
   '/sparring',
-  '/review',
   '/reps',
   '/rewards',
   '/upload',
