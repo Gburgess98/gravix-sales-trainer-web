@@ -858,6 +858,60 @@ and neutralise them the same way.
 
 ---
 
+## §19 — Direct backend fetch / proxy-bypass sweep (Day 189)
+
+WEB-only, patch mode. No API, no migrations, no new features. UK spelling.
+Followed §18's Day 189 recommendation (app-wide bypass sweep).
+
+**Patterns audited:** `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_BASE`, `API_BASE`,
+`apiBase`, `BACKEND_BASE`, `getBackendBase`, `fetch("http…`, `fetch(\`http…`,
+`` fetch(`${…}/v1…` ``, and direct backend-host calls from `app/components/lib`.
+
+**Findings classified**
+- **Orphaned bypass — removed (3 files, all from the `0a37da5 init web` scaffold,
+  zero callers repo-wide):**
+  - `src/app/calls/[id]/Player.tsx` — dead client component (never imported; the
+    live `/calls/[id]` page plays audio via its own `/api/proxy`-bound `audioUrl`).
+    Fetched `${NEXT_PUBLIC_API_BASE || "http://localhost:4000"}/v1/calls/…/audio-url`
+    **from the browser** — a real client-side bypass.
+  - `src/app/calls/route.ts` — orphaned `POST /calls` handler that fetched
+    `${BACKEND_BASE}/v1/calls` directly (unauthenticated, service-role write).
+  - `src/app/api/calls/route.ts` — duplicate orphaned `POST /api/calls` handler,
+    same direct `${BACKEND_BASE}/v1/calls` bypass.
+- **Safe (through the proxy) — left untouched:**
+  - `src/lib/Admin/adminConfig.ts` — `API_URL = "/api/proxy"`; the
+    `` `${API_URL}/v1/admin/config` `` template resolves to `/api/proxy/…`.
+  - `src/app/crm/contacts/[id]/page.tsx` + `src/app/crm/manager/nudges/page.tsx` —
+    server components hitting `` `${INTERNAL_API_BASE_URL ?? "http://localhost:3000"}/api/proxy/…` ``
+    (an absolute URL to the WEB app's *own* proxy, not the backend).
+  - `src/app/api/proxy/[[...path]]/route.ts` — the proxy itself (`getBackendBase`).
+- **Debug-only, no fetch — left untouched (documented):**
+  - `src/lib/config.ts` `getBackendBase()` + its single consumer at
+    `src/app/crm/overview/page.tsx:363` (`console.debug(…)`). No request is made
+    through it; the overview's real calls all use `/api/proxy`.
+- **Comment-only / false positive:** the Day 188 note in
+  `auto-assign/page.tsx` and the `// …avoid any direct API_BASE usage…` note at
+  `calls/[id]/page.tsx:101`.
+
+**Changes made**
+- Deleted the three orphaned bypass files above. No redirect stubs needed —
+  nothing links to or POSTs at these paths, and they carry no active behaviour
+  (audio playback and call ingestion both run through `/api/proxy`).
+
+**Preserved (behaviour untouched)**
+- `/calls/[id]` audio playback (own `/api/proxy` `audioUrl` flow), the upload /
+  call-ingestion flow (already `/api/proxy`), admin config, CRM contact/nudges
+  server fetches. No auth/session semantics changed beyond removing bypasses.
+
+**Day 190 recommendation**
+Resume the CTA/button-system unification into `/crm/tasks` and `/crm/actions`
+(the last mixed-colour CRM surfaces). Optionally, a follow-up hardening tick could
+drop the now-vestigial `lib/config.ts` `getBackendBase()` + the overview
+`console.debug` that reference a hardcoded backend host, since nothing else uses
+them.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -872,5 +926,7 @@ secondary CTA cleanup implemented as above. Companion validators:
 `scripts/validate-premium-ux-day-186.sh`. Day 187 — CRM manager surfaces
 consistency pass. Companion validator:
 `scripts/validate-premium-ux-day-187.sh`. Day 188 — CRM auto-assign legacy
-route retirement (above). Companion validator:
-`scripts/validate-premium-ux-day-188.sh`.*
+route retirement. Companion validator:
+`scripts/validate-premium-ux-day-188.sh`. Day 189 — direct backend fetch /
+proxy-bypass sweep (above). Companion validator:
+`scripts/validate-premium-ux-day-189.sh`.*
