@@ -603,11 +603,67 @@ cleanup + indigo-CTA standard across the remaining CRM/contact detail surfaces.
 
 ---
 
+## 16. Day 184 — implemented (orphaned review route cleanup)
+
+Cleanup of the two orphaned `/review/*` demo routes flagged on Day 183, so the
+app has one clear review path. WEB-only. No API changes, no migrations, no new
+features. Validator `scripts/validate-premium-ux-day-184.sh`.
+
+**Audit**
+- `src/app/review/timeline` — a self-contained demo page rendering an inline
+  mock transcript player backed by a hardcoded `DEMO_TRANSCRIPT` and an external
+  `cdn.pixabay.com` audio placeholder. Pure mock; trust/UX confusion.
+- `src/app/review/[callId]/timeline` — a server component fetching
+  `NEXT_PUBLIC_API_URL/v1/calls/:id` **directly, bypassing the `/api/proxy`
+  boundary**, and passing props (`audioSrc`/`transcript`/`title`, plus a `Turn`
+  import) the shared `@/components/TranscriptPlayer` does not accept — already
+  broken.
+- Inbound links: **none**. No source references to either route anywhere; the
+  only `/review` mention is the `SHELL_PATHS` prefix in `src/config/navigation.ts`.
+- Real review path confirmed intact: the Review Queue is `/coaching?tab=review`
+  and the real call review page is `/calls/[id]`.
+
+**Cleanup decision**
+Both routes are truly unused, so the mock/proxy-bypass surface must go. Rather
+than delete (which would 404 any stray/bookmarked link), each page was replaced
+with a clean **server-side redirect** to the real path — the simplest change
+that removes the mock data and the direct `NEXT_PUBLIC_API_URL` fetch while
+funnelling traffic to the supported flow.
+
+**What changed**
+- `review/timeline/page.tsx` → `redirect("/coaching?tab=review")` (13 lines,
+  server component; all mock data + the inline demo player removed).
+- `review/[callId]/timeline/page.tsx` → `redirect(\`/calls/${params.callId}\`)`
+  (server component; the direct proxy-bypassing fetch + broken imports removed,
+  callId preserved).
+- `/review` left in `SHELL_PATHS` — harmless, and the redirects fire server-side
+  before the shell renders.
+
+**Preserved (behaviour untouched)**
+- `/coaching?tab=review` (Review Queue) and `/calls/[id]` (call detail) — no
+  changes. The shared `@/components/TranscriptPlayer` is now unused by any route
+  but left in place (out of scope; no broken imports remain).
+
+**What remains**
+- Full button-system unification across untouched surfaces.
+- Pins section cosmetic pass on `/calls/[id]`.
+- Optional: drop the now-vestigial `TranscriptPlayer` component and the
+  `/review` `SHELL_PATHS` entry in a later tidy.
+
+**Day 185 recommendation**
+Continue the emerald-outline secondary cleanup + indigo-CTA standard across the
+remaining CRM/contact detail surfaces, or do the small dead-code tidy
+(`TranscriptPlayer` + `/review` shell-path entry).
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
-pass. Day 183 — call detail premium pass implemented as above. Companion
-validators: `scripts/validate-premium-ux-day-177.sh`,
+pass. Day 183 — call detail premium pass. Day 184 — orphaned review route
+cleanup implemented as above. Companion validators:
+`scripts/validate-premium-ux-day-177.sh`,
 `scripts/validate-premium-ux-day-178.sh`, `scripts/validate-premium-ux-day-179.sh`,
 `scripts/validate-premium-ux-day-180.sh`, `scripts/validate-premium-ux-day-181.sh`,
-`scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`.*
+`scripts/validate-premium-ux-day-182.sh`, `scripts/validate-premium-ux-day-183.sh`,
+`scripts/validate-premium-ux-day-184.sh`.*
