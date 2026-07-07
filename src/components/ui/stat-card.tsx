@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 type StatVariant = 'default' | 'danger' | 'warning' | 'success' | 'ai' | 'info'
 
 const BORDER_CLASS: Record<StatVariant, string> = {
-  default: 'border-neutral-800 bg-neutral-950',
+  default: 'border-neutral-800/70 bg-neutral-950',
   danger: 'border-red-500/20 bg-red-500/5',
   warning: 'border-amber-500/20 bg-amber-500/5',
   success: 'border-emerald-500/20 bg-emerald-500/5',
@@ -40,7 +40,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <div className={clsx('rounded-xl border px-4 py-3', BORDER_CLASS[variant], className)}>
+    <div className={clsx('rounded-xl border px-4 py-3 shadow-md shadow-black/20', BORDER_CLASS[variant], className)}>
       <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">{label}</div>
       <div
         className={clsx(

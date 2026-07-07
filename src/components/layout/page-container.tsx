@@ -7,7 +7,7 @@ interface PageContainerProps {
 
 export function PageContainer({ children, className }: PageContainerProps) {
   return (
-    <div className={clsx('p-6 space-y-6', className)}>
+    <div className={clsx('mx-auto w-full max-w-[1400px] p-6 lg:px-8 space-y-6', className)}>
       {children}
     </div>
   )

@@ -22,7 +22,19 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist is loaded in layout.tsx — use it everywhere for the command-centre feel */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Thin, quiet scrollbars — command-centre chrome */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(38 38 38) transparent;
+}
+
+/* Brand-tinted text selection */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
 }
 
 /* --- Safety: disable pointer events for any accidental full-screen overlay elements --- */

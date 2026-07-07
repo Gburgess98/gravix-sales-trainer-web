@@ -71,7 +71,7 @@ export function Sidebar({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         className={clsx(
-          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-neutral-800/80 bg-neutral-950 transition-all duration-200 ease-in-out',
+          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-neutral-800/60 bg-neutral-950/70 backdrop-blur-xl transition-all duration-200 ease-in-out',
           'lg:relative lg:translate-x-0',
           effectiveCollapsed ? 'lg:w-[56px]' : 'lg:w-[220px]',
           mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0',

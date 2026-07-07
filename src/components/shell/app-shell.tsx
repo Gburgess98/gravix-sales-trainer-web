@@ -71,7 +71,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-950 text-neutral-100">
+    <div className="flex h-screen overflow-hidden bg-[#060609] bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.08),transparent_60%)] text-neutral-100">
       <Sidebar
         collapsed={collapsed}
         onCollapse={handleCollapse}

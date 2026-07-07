@@ -28,7 +28,7 @@ export function NavItem({ item, collapsed }: NavItemProps) {
       className={clsx(
         'group relative flex items-center gap-2.5 rounded-md py-1.5 text-sm font-medium transition-colors',
         isActive
-          ? 'bg-neutral-800/80 text-white'
+          ? 'bg-indigo-500/10 text-white'
           : 'text-neutral-400 hover:bg-neutral-800/40 hover:text-neutral-200',
         collapsed ? 'justify-center px-2' : 'px-3',
       )}

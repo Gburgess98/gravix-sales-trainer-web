@@ -1223,6 +1223,75 @@ sub-tab residual cyan CTAs, `HealthBadge`/`DashboardKpis` colour maps).
 
 ---
 
+## §25 — Global Command Centre shell upgrade (Day 195)
+
+Scope: WEB-only. The first *visible* slice of the full-app transformation:
+global shell, layout and shared-component surfaces upgraded so every shell
+page improves at once. No routes, behaviour, API or product logic changed.
+
+### What shipped
+
+**Typography — the headline fix.** `layout.tsx` has always loaded Geist and
+set `--font-geist-sans`, but `globals.css` overrode the body with
+`font-family: Arial`. The entire app was rendering in Arial. The body now
+uses Geist (with system fallbacks) — an instant, app-wide premium shift with
+zero new dependencies. Also added: thin quiet scrollbars
+(`scrollbar-width: thin`) and indigo-tinted text selection.
+
+**Depth model.** The shell page background dropped from flat `neutral-950`
+to a near-black `#060609` overlaid with a faint indigo radial glow at the
+top of the viewport (`rgba(99,102,241,0.08)`, fading by 60%). Because
+almost every card in the app is `bg-neutral-950`, this one change gives
+*every existing card on every page* elevation contrast for free — the
+core "less flat/template" fix, with no per-route edits.
+
+**Shell panels.** Sidebar and topbar are now translucent
+(`bg-neutral-950/70 backdrop-blur-xl`) with softened borders
+(`border-neutral-800/60`), so the ambient glow reads through the chrome.
+
+**Navigation states.** Active nav item upgraded from a grey block to an
+indigo-tinted surface (`bg-indigo-500/10` + existing indigo accent bar and
+icon). `WorkspaceTabs` active underline emerald → indigo (last emerald
+action-state in the shell).
+
+**Cards.** `SectionCard` and `StatCard` gained a soft shadow
+(`shadow-md shadow-black/20`) and softened default borders
+(`border-neutral-800/70`). Tinted variant colours untouched.
+
+**Layout.** `PageContainer` now clamps content at `max-w-[1400px] mx-auto`
+with `lg:px-8` (the Day 194 deferral, done as part of this pass and
+browser-verified).
+
+`/dashboard` was the proof page — no dashboard-side adjustments were needed;
+the shell changes carried it.
+
+### Observations (not changed)
+
+- `/calls` has no index page (only `/calls/[id]`); the sidebar "Calls" item
+  correctly targets `/call-library`. Pre-existing; confirmed absent in
+  `backup-pre-day195` too. A future tidy could remove `'/calls'` ambiguity
+  from `SHELL_PATHS` comments or add a redirect stub.
+- Shared buttons are still not centralised — CTA styling remains per-route
+  Tailwind. A `ui/button.tsx` primitive is the natural Day 196+ companion to
+  the token pass.
+- Legacy non-shell pages (login etc.) keep the plain `HeaderClient` layout;
+  they now inherit Geist but none of the shell depth model.
+
+### Theme-readiness
+
+The depth model concentrates "brand atmosphere" in exactly two places — the
+app-shell background classes and the indigo accents already mapped in
+component variant `Record`s — so a future theme swaps one gradient and one
+hue. No switcher built (deliberate).
+
+**Day 196 recommendation:** route-group visual upgrades on the demo path
+(`/coaching` first: tab bar spacing, card rhythm, queue tables), or the
+Tailwind semantic-token pass + shared `ui/button.tsx` so CTA styling joins
+the system. Shell is now strong enough that route work is polish, not
+rescue.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1249,4 +1318,6 @@ button-system pass (above). Companion validator:
 `scripts/validate-premium-ux-day-192.sh`. Day 193 — orphaned rep route cleanup
 (above). Companion validator: `scripts/validate-premium-ux-day-193.sh`.
 Day 194 — Gravix Command Centre visual direction + system pass (above).
-Companion validator: `scripts/validate-premium-ux-day-194.sh`.*
+Companion validator: `scripts/validate-premium-ux-day-194.sh`.
+Day 195 — global Command Centre shell upgrade (above). Companion validator:
+`scripts/validate-premium-ux-day-195.sh`.*

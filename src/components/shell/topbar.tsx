@@ -55,7 +55,7 @@ export function Topbar({ onMobileMenuOpen }: TopbarProps) {
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center border-b border-neutral-800 bg-neutral-950 px-4 gap-4">
+    <header className="flex h-12 shrink-0 items-center border-b border-neutral-800/60 bg-neutral-950/70 backdrop-blur-xl px-4 gap-4">
       {/* Mobile hamburger */}
       <button
         type="button"

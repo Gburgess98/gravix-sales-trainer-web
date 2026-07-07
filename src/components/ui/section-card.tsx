@@ -4,7 +4,7 @@ import { ReactNode } from 'react'
 export type SectionVariant = 'default' | 'ai' | 'rescue' | 'coaching' | 'warning' | 'danger'
 
 const BORDER: Record<SectionVariant, string> = {
-  default: 'border-neutral-800 bg-neutral-950',
+  default: 'border-neutral-800/70 bg-neutral-950',
   ai: 'border-indigo-500/20 bg-indigo-500/5',
   rescue: 'border-amber-500/20 bg-amber-500/5',
   coaching: 'border-emerald-500/20 bg-emerald-500/5',
@@ -51,7 +51,7 @@ export function SectionCard({
 }: SectionCardProps) {
   const hasHeader = eyebrow || title || subtitle || actions
   return (
-    <div className={clsx('rounded-xl border overflow-hidden', BORDER[variant], className)}>
+    <div className={clsx('rounded-xl border overflow-hidden shadow-md shadow-black/20', BORDER[variant], className)}>
       {hasHeader && (
         <div
           className={clsx(
