@@ -1292,6 +1292,67 @@ rescue.
 
 ---
 
+## §26 — Coaching Command Centre visual pass (Day 196)
+
+Scope: WEB-only, visual-only. `/coaching` (the key buyer/demo surface,
+4,082-line route) aligned with the Command Centre shell. All handlers,
+tabs, filters, collapsibles, links, data fetching and empty states
+preserved — colour/spacing class changes plus one additive shared prop.
+
+### The structural fix — card body insets
+
+Every one of the 14 `SectionCard` bodies on this page rendered its content
+flush against the card edges (lists touching the rounded border and the
+header divider) — the single biggest "cramped/template" signal on the
+route. `SectionCard` gained an additive `padded` prop (default **false** —
+zero change to any other consumer) that wraps the body in `px-5 py-4`,
+aligning body content with the `px-5` header. All 14 coaching SectionCards
+now pass `padded`; dividers in "Today's priorities" become inset, list
+rows breathe, empty states sit generously.
+
+### Colour-role corrections
+
+- **Six emerald action buttons → indigo** ("Assign sparring", "Assign
+  Coaching", "Assign", "Mark complete" — real actions, not statuses),
+  matching the page's existing indigo CTA recipe.
+- **`SectionCard` `coaching` variant retired from emerald to neutral**
+  (used only by this route — verified): "Estimated Manager Time Saved",
+  "Coaching Impact", "Recent Sparring", "Queue-assigned sparring" and
+  "Sparring score trend" were five large green-tinted panels; they now
+  render as calm neutral cards. The variant key stays for future theming;
+  green survives inside them only as status values (`StatCard
+  variant="success"`).
+- **Rep-band filter chips cyan → indigo** (active filter state is an
+  action, mirroring the Day 190 `/crm/actions` precedent).
+- **`watch` band cyan → amber** in `URGENCY_LEFT`/`URGENCY_LABEL_CLS`,
+  aligning with the shared `RiskBadge`/`StatusBadge` (watch = amber
+  everywhere now). "Momentum recovering" keeps cyan as an informational
+  accent.
+- Overview "Upload Call" CTA normalised to the canonical
+  `bg-indigo-600 hover:bg-indigo-500`.
+
+### Rhythm
+
+Tab content containers harmonised: Overview `space-y-5 → space-y-6`
+(matches the PageContainer rhythm), Assignments/Replay/Review
+`space-y-3 → space-y-4`.
+
+### Not changed (verified fine)
+
+"Mark Reviewed" buttons are already neutral secondary; priority/status
+pills (red/amber/neutral) are status-correct; the Coaching Queue's indigo
+"Review call" links unchanged; error banners red, success notices emerald
+(status roles). Remaining `text-cyan-*` instances are informational
+accents within the allowed role.
+
+**Day 197 recommendation:** either the Tailwind semantic-token pass +
+shared `ui/button.tsx` primitive (the emerald→indigo button recipe swap
+was six copies of one string — a Button component would have made it one
+line), or continue the route-group pass to `/calls/[id]` + the Review
+Queue surfaces.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1320,4 +1381,6 @@ button-system pass (above). Companion validator:
 Day 194 — Gravix Command Centre visual direction + system pass (above).
 Companion validator: `scripts/validate-premium-ux-day-194.sh`.
 Day 195 — global Command Centre shell upgrade (above). Companion validator:
-`scripts/validate-premium-ux-day-195.sh`.*
+`scripts/validate-premium-ux-day-195.sh`. Day 196 — coaching Command Centre
+visual pass (above). Companion validator:
+`scripts/validate-premium-ux-day-196.sh`.*

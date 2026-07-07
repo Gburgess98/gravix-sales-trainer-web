@@ -466,7 +466,7 @@ const URGENCY_LEFT: Record<UrgencyState, string> = {
   escalated: 'border-l-[3px] border-l-red-300',
   critical:  'border-l-[3px] border-l-red-500',
   high:      'border-l-[3px] border-l-amber-500',
-  watch:     'border-l-[3px] border-l-cyan-500/50',
+  watch:     'border-l-[3px] border-l-amber-500/50',
   healthy:   'border-l-[3px] border-l-emerald-500/30',
 }
 
@@ -490,7 +490,7 @@ const URGENCY_LABEL_CLS: Record<UrgencyState, string> = {
   escalated: 'text-red-300',
   critical:  'text-red-400',
   high:      'text-amber-400',
-  watch:     'text-cyan-400',
+  watch:     'text-amber-400',
   healthy:   'text-emerald-400',
 }
 
@@ -1767,7 +1767,7 @@ export default function CoachingPage() {
 
       {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {overviewLoading && <LoadingText text="Loading coaching intelligence…" />}
           {overviewError && !overviewLoading && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 text-sm text-red-300">{overviewError}</div>
@@ -1800,7 +1800,7 @@ export default function CoachingPage() {
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
                 <Link
                   href="/upload"
-                  className="rounded-lg bg-indigo-500 px-3.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400"
+                  className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500"
                 >
                   Upload Call
                 </Link>
@@ -1892,7 +1892,7 @@ export default function CoachingPage() {
                     }
 
                     return (
-                      <SectionCard title="Today's priorities" subtitle="What needs your attention right now.">
+                      <SectionCard padded title="Today's priorities" subtitle="What needs your attention right now.">
                         {rows.length === 0 ? (
                           <EmptyRow message="All clear — nothing needs your attention right now." />
                         ) : (
@@ -2022,7 +2022,7 @@ export default function CoachingPage() {
                     }
 
                     return (
-                      <SectionCard title="Coaching Queue" subtitle="Prioritised coaching moments from reviews, rep risk signals and open assignments.">
+                      <SectionCard padded title="Coaching Queue" subtitle="Prioritised coaching moments from reviews, rep risk signals and open assignments.">
                         {queue.length === 0 ? (
                           <EmptyRow message="All clear — no urgent coaching actions right now." />
                         ) : (
@@ -2057,7 +2057,7 @@ export default function CoachingPage() {
                                       type="button"
                                       onClick={act.onClick}
                                       disabled={assigningSparringKey === q.key}
-                                      className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                      className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
                                     >
                                       {assigningSparringKey === q.key ? 'Assigning…' : act.label}
                                     </button>
@@ -2114,7 +2114,7 @@ export default function CoachingPage() {
 
                   {/* Reps / Calls / Assignments */}
                   <div className="grid gap-4 xl:grid-cols-3">
-                    <SectionCard title="Reps Needing Attention" subtitle="Rule-based risk from the last 30 days.">
+                    <SectionCard padded title="Reps Needing Attention" subtitle="Rule-based risk from the last 30 days.">
                       {commandCentre.repsNeedingAttention.length === 0 ? (
                         <EmptyRow message="No reps need attention right now." />
                       ) : (
@@ -2140,7 +2140,7 @@ export default function CoachingPage() {
                                     type="button"
                                     onClick={() => assignSparring({ key: `attn-${rep.repId}`, repId: rep.repId, repName: rep.repName, drill: sparringDrillForText(rep.riskReason || rep.recommendedAction), reason: rep.riskReason, sectionText: rep.riskReason || rep.recommendedAction, priority: rep.riskLevel === 'red' ? 'High' : 'Medium' })}
                                     disabled={assigningSparringKey === `attn-${rep.repId}`}
-                                    className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                    className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
                                   >
                                     {assigningSparringKey === `attn-${rep.repId}` ? 'Assigning…' : 'Assign sparring'}
                                   </button>
@@ -2158,7 +2158,7 @@ export default function CoachingPage() {
                       )}
                     </SectionCard>
 
-                    <SectionCard title="Calls Needing Review" subtitle="Lowest scores first · score below 70 or a critical section.">
+                    <SectionCard padded title="Calls Needing Review" subtitle="Lowest scores first · score below 70 or a critical section.">
                       {commandCentre.callsNeedingReview.length === 0 ? (
                         <EmptyRow message="No calls need review right now." />
                       ) : (
@@ -2192,7 +2192,7 @@ export default function CoachingPage() {
                                 <button
                                   type="button"
                                   onClick={() => openAssignCoaching(call)}
-                                  className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                  className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors"
                                 >
                                   Assign Coaching
                                 </button>
@@ -2203,7 +2203,7 @@ export default function CoachingPage() {
                       )}
                     </SectionCard>
 
-                    <SectionCard title="Open Coaching" subtitle="Overdue first, then nearest due date.">
+                    <SectionCard padded title="Open Coaching" subtitle="Overdue first, then nearest due date.">
                       {commandCentre.openAssignments.length === 0 ? (
                         <EmptyRow message="No open coaching assignments." />
                       ) : (
@@ -2249,7 +2249,7 @@ export default function CoachingPage() {
 
                   {/* Weakest Skills + ROI */}
                   <div className="grid gap-4 xl:grid-cols-3">
-                    <SectionCard title="Weakest Skills" subtitle="Stage scores across reviewed calls." className="xl:col-span-2">
+                    <SectionCard padded title="Weakest Skills" subtitle="Stage scores across reviewed calls." className="xl:col-span-2">
                       {commandCentre.weakestSkills.length === 0 ? (
                         <EmptyRow message="No skill data available yet." />
                       ) : (
@@ -2336,7 +2336,7 @@ export default function CoachingPage() {
                                               assignSparring({ key: pickerKey, repId: rep.repId, repName: rep.repName, drill, reason: `Team weak skill: ${s.skill}`, sectionText: s.skill, priority: s.averageScore < 50 ? 'High' : 'Medium' })
                                               setSkillPickerKey(null)
                                             }}
-                                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                            className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
                                           >
                                             {assigningSparringKey === pickerKey ? 'Assigning…' : 'Assign'}
                                           </button>
@@ -2360,7 +2360,7 @@ export default function CoachingPage() {
                     </SectionCard>
 
                     <div className="space-y-4">
-                      <SectionCard variant="coaching" title="Estimated Manager Time Saved" subtitle="20 minutes per reviewed call.">
+                      <SectionCard variant="coaching" padded title="Estimated Manager Time Saved" subtitle="20 minutes per reviewed call.">
                         <div className="grid grid-cols-3 gap-3">
                           <StatCard label="Calls Reviewed" value={commandCentre.roi.callsReviewed} size="sm" />
                           <StatCard label="Minutes Saved" value={commandCentre.roi.estimatedMinutesSaved} size="sm" variant="success" />
@@ -2369,7 +2369,7 @@ export default function CoachingPage() {
                       </SectionCard>
 
                       {commandCentre.coachingImpact && (
-                        <SectionCard variant="coaching" title="Coaching Impact" subtitle="This period vs the previous one.">
+                        <SectionCard variant="coaching" padded title="Coaching Impact" subtitle="This period vs the previous one.">
                           <div className="grid grid-cols-3 gap-3">
                             <StatCard label="Completed" value={commandCentre.coachingImpact.completedAssignments} subtext="assignments" size="sm" />
                             <StatCard
@@ -2392,7 +2392,7 @@ export default function CoachingPage() {
                       )}
 
                       {/* Tier 2A Day 105 — Recent Sparring */}
-                      <SectionCard variant="coaching" title="Recent Sparring" subtitle="Completed sessions · last 30 days.">
+                      <SectionCard variant="coaching" padded title="Recent Sparring" subtitle="Completed sessions · last 30 days.">
                         {sparringLoading && <LoadingText text="Loading recent sparring…" />}
                         {sparringError && !sparringLoading && (
                           <div className="text-sm text-red-300">Could not load recent sparring.</div>
@@ -2441,7 +2441,7 @@ export default function CoachingPage() {
                       </SectionCard>
 
                       {/* Tier 2B Day 114 — Whisperer Insights */}
-                      <SectionCard variant="ai" title="Whisperer Insights" subtitle="Live coaching activity · last 30 days.">
+                      <SectionCard variant="ai" padded title="Whisperer Insights" subtitle="Live coaching activity · last 30 days.">
                         {whispererLoading && <LoadingText text="Loading Whisperer activity…" />}
                         {whispererError && !whispererLoading && (
                           <div className="text-sm text-red-300">Could not load Whisperer sessions.</div>
@@ -2609,7 +2609,7 @@ export default function CoachingPage() {
 
                       {/* Tier 2B Day 130 — Suggested Trigger Candidates (read-only) */}
                       <span id="ai-discovery" className="block scroll-mt-4" aria-hidden="true" />
-                      <SectionCard variant="ai" title="AI Discovery" subtitle="Suggested triggers from recent sessions — nothing activates without manager approval.">
+                      <SectionCard variant="ai" padded title="AI Discovery" subtitle="Suggested triggers from recent sessions — nothing activates without manager approval.">
                         {/* Day 146 — discovery coverage counters (read-only). Hides when summary absent. */}
                         {(() => {
                           const s = candidateSummary
@@ -2919,7 +2919,7 @@ export default function CoachingPage() {
 
                       {/* Tier 2B Day 119 — Custom Triggers */}
                       <div id="custom-triggers" className="scroll-mt-4">
-                      <SectionCard variant="ai" title="Custom Triggers" subtitle="Team-defined Whisperer objections & responses.">
+                      <SectionCard variant="ai" padded title="Custom Triggers" subtitle="Team-defined Whisperer objections & responses.">
                         {triggerNotice && (
                           <div className="mb-2 text-xs text-neutral-400">{triggerNotice}</div>
                         )}
@@ -3062,7 +3062,7 @@ export default function CoachingPage() {
                       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                       .slice(0, 3)
                     return (
-                      <SectionCard variant="coaching" title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
+                      <SectionCard variant="coaching" padded title="Queue-assigned sparring" subtitle="Sparring drills assigned from the Coaching Queue, with completion follow-through.">
                         <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                           <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                             <div className="text-base font-semibold text-white tabular-nums">{openCount}</div>
@@ -3155,7 +3155,7 @@ export default function CoachingPage() {
                                         type="button"
                                         onClick={() => markSparringComplete(a.id, match)}
                                         disabled={markingCompleteId === a.id}
-                                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                        className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
                                       >
                                         {markingCompleteId === a.id ? 'Marking…' : 'Mark complete'}
                                       </button>
@@ -3181,7 +3181,7 @@ export default function CoachingPage() {
                     const topDrill = byDrill[0] ?? null
                     const improvedRep = byRep.find((r) => r.trend === 'improving') ?? null
                     return (
-                      <SectionCard variant="coaching" title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
+                      <SectionCard variant="coaching" padded title="Sparring score trend" subtitle="Proof-backed scores from completed manager-assigned sparring drills.">
                         {proofRows.length === 0 ? (
                           <div className="space-y-1">
                             <EmptyRow message="No proof-backed sparring scores yet." />
@@ -3571,7 +3571,7 @@ export default function CoachingPage() {
                       onClick={() => setRepFilter(f)}
                       className={`rounded-xl border px-3 py-1.5 text-xs transition-all ${
                         repFilter === f
-                          ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                          ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200'
                           : 'border-neutral-800 bg-black/30 text-neutral-400 hover:border-neutral-700'
                       }`}
                     >
@@ -3742,7 +3742,7 @@ export default function CoachingPage() {
 
       {/* ── ASSIGNMENTS ── */}
       {tab === 'assignments' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <FilterBar
             options={ASSIGNMENT_FILTERS}
             value={assignmentFilter}
@@ -3831,7 +3831,7 @@ export default function CoachingPage() {
 
       {/* ── REPLAY QUEUE ── */}
       {tab === 'replay' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center gap-3">
             <span className="text-xs text-neutral-500">Show calls scored</span>
             <FilterBar
@@ -3895,7 +3895,7 @@ export default function CoachingPage() {
 
       {/* ── REVIEW QUEUE (Sprint 4 Day 91) ── */}
       {tab === 'review' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {reviewNotice && (
             <div
               className={`rounded-xl border px-4 py-3 text-sm ${
@@ -3969,7 +3969,7 @@ export default function CoachingPage() {
                       <button
                         type="button"
                         onClick={() => openAssignCoaching(item)}
-                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                        className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors"
                       >
                         Assign Coaching
                       </button>
