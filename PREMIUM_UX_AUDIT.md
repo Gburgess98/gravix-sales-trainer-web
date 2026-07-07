@@ -993,6 +993,67 @@ white/emerald/cyan action buttons, and any remaining "CRM ·" eyebrow prefixes.
 
 ---
 
+## §22 — CRM rep detail button-system pass (Day 192)
+
+WEB-only, patch mode. No API, no migrations, no new features, no behaviour
+change. UK spelling. Followed §21's Day 192 recommendation.
+
+**Route audit (active vs orphaned)**
+- **Active:** `/crm/reps/[id]` (rep profile). Heavily linked inbound — from
+  `/coaching` (×7), `/crm/overview`, `/crm/actions`, `/crm/accounts/[id]`, and
+  `/crm/Leaderboard`. All data loads through `/api/proxy` (rep-summary,
+  manager/nudges, reps/…/intelligence, crm/actions). No direct-backend fetches.
+- **Orphaned (out of scope, left untouched):** `src/app/reps/[id]/page.tsx` and
+  `src/app/admin/reps/page.tsx` — the non-CRM rep routes have no inbound page
+  links (only `/v1/reps/*` API calls share the string). Not part of the CRM
+  sweep; deliberately not touched.
+
+**Header decision (deliberately not forced)**
+- The rep header already matches the intentional CRM *detail* pattern used by
+  `/crm/accounts/[id]` (§16): a `← CRM` back link above a `text-xl` title with a
+  `text-xs` subtitle. `PageHeader` was **not** forced here — it renders no
+  back-link slot and would move the RiskBadge + primary CTA, diverging from the
+  sibling detail page. Header left as-is (already premium-calm, `text-xl`).
+- The only `text-2xl` in the file is the **risk-score metric value** inside the
+  risk card — a data figure, not a page heading — so it was left unchanged
+  (same call as prior metric-value cases).
+- No "CRM ·" eyebrow prefix present; the `← CRM` breadcrumb mirrors
+  `← Accounts` on `/crm/accounts/[id]` and was kept.
+
+**Changes made (CTA colour calm only)**
+- Header **AI Sparring →** CTA: **emerald** → calm **indigo**
+  (`border-indigo-500/30 bg-indigo-500/10 text-indigo-200`), matching the app
+  accent for the primary page action.
+- Overview **Top Account → Open** link: **cyan** → neutral bordered (secondary
+  navigation, not a status).
+- Overview quick-actions row: **Open CRM Actions →** (**amber** action) → neutral
+  bordered; **AI Sparring →** (**emerald**) → indigo, matching the header CTA.
+- Coaching tab **+ Follow-up** create button: **emerald** → indigo (green
+  reserved for success/status only, not a create action). Completion logic and
+  the `createFollowUp`/`completeAction` handlers untouched.
+- Activity tab **Account** inline link: **cyan** text → neutral (calmer, still an
+  underlined link).
+
+**Green kept for status/success only (unchanged)**
+- Risk-band card border/text (`healthy`→emerald, `watch`→amber, `at_risk`→red),
+  the **Completed** action count (`text-emerald-400`), and **Due Soon**
+  (`text-amber-300`) are all status indicators — left as-is. RiskBadge / ScorePill
+  / StatCard success-warning-danger variants preserved.
+
+**Preserved (behaviour untouched)**
+- Rep profile data, KPI strip, CRM risk card, top account, linked actions,
+  coaching intelligence, filters/cards/tables, empty states, and navigation
+  between CRM surfaces. No task/action completion logic changed, no
+  auto-complete, no approval gates touched, no new API calls.
+
+**Day 193 recommendation**
+CRM rep-detail surface is now consistent. Next: sweep the non-CRM rep routes
+(`/reps/[id]`, `/reps/[id]/sparring`, `/admin/reps`) — decide active vs
+retire/redirect — or continue the button-system pass into `/dashboard` and the
+`/coaching` sub-tabs for any residual emerald/cyan/white action buttons.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1014,4 +1075,6 @@ proxy-bypass sweep. Companion validator:
 button-system pass. Companion validator:
 `scripts/validate-premium-ux-day-190.sh`. Day 191 — CRM dead client component
 cleanup (above). Companion validator:
-`scripts/validate-premium-ux-day-191.sh`.*
+`scripts/validate-premium-ux-day-191.sh`. Day 192 — CRM rep detail
+button-system pass (above). Companion validator:
+`scripts/validate-premium-ux-day-192.sh`.*

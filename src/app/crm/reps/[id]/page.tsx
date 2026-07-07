@@ -260,7 +260,7 @@ export default function RepProfilePage() {
           {riskBand && <RiskBadge band={riskBand} size="md" />}
           <Link
             href={`/sparring?repId=${encodeURIComponent(String(repId ?? ""))}&persona=price_sensitive`}
-            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 transition-colors"
+            className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20 transition-colors"
           >
             AI Sparring →
           </Link>
@@ -394,7 +394,7 @@ export default function RepProfilePage() {
               </div>
               <Link
                 href={`/crm/accounts/${data.topAccount.id}`}
-                className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-500/20 transition-colors shrink-0"
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900 transition-colors shrink-0"
               >
                 Open →
               </Link>
@@ -405,13 +405,13 @@ export default function RepProfilePage() {
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/crm/actions?repId=${encodeURIComponent(String(repId ?? ""))}&status=open`}
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 hover:bg-amber-500/20 transition-colors"
+              className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-900 transition-colors"
             >
               Open CRM Actions →
             </Link>
             <Link
               href={`/sparring?repId=${encodeURIComponent(String(repId ?? ""))}&persona=price_sensitive`}
-              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 hover:bg-emerald-500/20 transition-colors"
+              className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-500/20 transition-colors"
             >
               AI Sparring →
             </Link>
@@ -484,7 +484,7 @@ export default function RepProfilePage() {
                         type="button"
                         onClick={createFollowUp}
                         disabled={creatingFollowUp}
-                        className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-60"
+                        className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-60"
                       >
                         {creatingFollowUp ? "Creating…" : "+ Follow-up"}
                       </button>
@@ -658,7 +658,7 @@ export default function RepProfilePage() {
                         {c.account_id && (
                           <Link
                             href={`/crm/accounts/${c.account_id}`}
-                            className="ml-1 text-cyan-500 hover:underline"
+                            className="ml-1 text-neutral-400 hover:text-neutral-200 hover:underline"
                           >
                             Account
                           </Link>
