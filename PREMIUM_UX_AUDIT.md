@@ -959,6 +959,40 @@ CTAs remain there.
 
 ---
 
+## §21 — CRM dead client component cleanup (Day 191)
+
+WEB-only, patch mode. No API, no migrations, no new features, no behaviour change.
+Followed §20's Day 191 recommendation (dead-code tidy).
+
+**Re-audit (zero imports/callers proven repo-wide):**
+- `src/app/crm/actions/ActionsClient.tsx` — never imported. Its default export
+  is `ActionsClient`; the only occurrence of that name anywhere was its own
+  definition line. The live `/crm/actions` route is the self-contained
+  `actions/page.tsx` (§20).
+- `src/app/crm/pipeline/PipelineClient.tsx` — never imported. Its default export
+  is actually named `CrmPipelinePage` (a legacy duplicate of the live page), so
+  the string `PipelineClient` appeared *nowhere* in the repo — not even inside
+  its own file. The live `/crm/pipeline` route is the self-contained
+  `pipeline/page.tsx` (§17).
+- A repo-wide grep for both basenames (import paths, `import()` dynamic imports,
+  path strings) across `*.ts/tsx/js/json` returned no external references.
+
+**Changes made**
+- Deleted both files. Post-deletion each directory contains only its live
+  `page.tsx`; a follow-up grep confirms zero stale references remain.
+
+**Preserved (behaviour untouched)**
+- Active `/crm/actions` and `/crm/pipeline` pages and all their behaviour
+  (filters, completion/update flows, drag/scope, empty states, `/api/proxy`
+  data loading). No task/action completion logic touched.
+
+**Day 192 recommendation**
+Extend the button-system/header consistency pass to `/crm/reps/[id]` (rep
+profile) — the last un-swept CRM surface — checking for `text-2xl` headers,
+white/emerald/cyan action buttons, and any remaining "CRM ·" eyebrow prefixes.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -977,5 +1011,7 @@ route retirement. Companion validator:
 `scripts/validate-premium-ux-day-188.sh`. Day 189 — direct backend fetch /
 proxy-bypass sweep. Companion validator:
 `scripts/validate-premium-ux-day-189.sh`. Day 190 — CRM tasks/actions
-button-system pass (above). Companion validator:
-`scripts/validate-premium-ux-day-190.sh`.*
+button-system pass. Companion validator:
+`scripts/validate-premium-ux-day-190.sh`. Day 191 — CRM dead client component
+cleanup (above). Companion validator:
+`scripts/validate-premium-ux-day-191.sh`.*
