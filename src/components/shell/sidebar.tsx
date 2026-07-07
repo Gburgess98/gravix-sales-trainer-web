@@ -85,13 +85,13 @@ export function Sidebar({
           )}
         >
           {effectiveCollapsed ? (
-            <Zap size={16} className="text-emerald-400" />
+            <Zap size={16} className="text-indigo-400" />
           ) : (
             <Link
               href="/dashboard"
               className="flex items-center gap-2 text-white hover:text-neutral-200 transition-colors"
             >
-              <Zap size={14} className="text-emerald-400" />
+              <Zap size={14} className="text-indigo-400" />
               <span className="text-sm font-semibold tracking-tight">Gravix</span>
             </Link>
           )}

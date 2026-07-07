@@ -7,7 +7,7 @@ const BORDER_CLASS: Record<StatVariant, string> = {
   danger: 'border-red-500/20 bg-red-500/5',
   warning: 'border-amber-500/20 bg-amber-500/5',
   success: 'border-emerald-500/20 bg-emerald-500/5',
-  ai: 'border-fuchsia-500/20 bg-fuchsia-500/5',
+  ai: 'border-indigo-500/20 bg-indigo-500/5',
   info: 'border-cyan-500/20 bg-cyan-500/5',
 }
 
@@ -16,7 +16,7 @@ const VALUE_CLASS: Record<StatVariant, string> = {
   danger: 'text-red-300',
   warning: 'text-amber-300',
   success: 'text-emerald-300',
-  ai: 'text-fuchsia-300',
+  ai: 'text-indigo-300',
   info: 'text-cyan-300',
 }
 

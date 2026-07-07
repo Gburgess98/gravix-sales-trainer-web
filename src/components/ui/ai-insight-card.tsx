@@ -10,9 +10,9 @@ interface InsightStyle {
 
 const STYLES: Record<InsightType, InsightStyle> = {
   summary: {
-    border: 'border-fuchsia-500/20 bg-fuchsia-500/5',
-    eyebrow: 'text-fuchsia-300',
-    dot: 'bg-fuchsia-500',
+    border: 'border-indigo-500/20 bg-indigo-500/5',
+    eyebrow: 'text-indigo-300',
+    dot: 'bg-indigo-500',
   },
   recommendation: {
     border: 'border-cyan-500/20 bg-cyan-500/5',

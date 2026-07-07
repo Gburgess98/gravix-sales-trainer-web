@@ -87,16 +87,16 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Impersonation banner — shown globally when a SuperAdmin is acting as another user */}
         {impersonation && (
-          <div className="flex items-center justify-between gap-3 border-b border-fuchsia-500/30 bg-fuchsia-950/60 px-4 py-2">
-            <div className="flex items-center gap-2 text-sm text-fuchsia-200">
-              <span className="h-2 w-2 rounded-full bg-fuchsia-400 animate-pulse" />
+          <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-950/50 px-4 py-2">
+            <div className="flex items-center gap-2 text-sm text-amber-200">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
               <span>
                 Impersonating{' '}
-                <span className="font-semibold text-fuchsia-100">
+                <span className="font-semibold text-amber-100">
                   {impersonation.targetName ?? impersonation.targetUserId.slice(0, 8)}
                 </span>
                 {impersonation.targetTier && (
-                  <span className="ml-1.5 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] text-fuchsia-300">
+                  <span className="ml-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
                     {impersonation.targetTier}
                   </span>
                 )}
@@ -105,7 +105,7 @@ export function AppShell({ children }: AppShellProps) {
             <button
               type="button"
               onClick={handleExitImpersonation}
-              className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200 hover:bg-fuchsia-500/20 transition-colors"
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200 hover:bg-amber-500/20 transition-colors"
             >
               Exit Impersonation
             </button>

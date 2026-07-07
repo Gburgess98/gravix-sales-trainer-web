@@ -1107,6 +1107,122 @@ exports.
 
 ---
 
+## §24 — "Gravix Command Centre" visual direction + system pass (Day 194)
+
+Scope: WEB-only, patch mode. Names the premium visual direction the Day 177–193
+passes have been converging on, and applies the remaining system-level colour
+corrections on shared components and the lighthouse demo path. No behaviour,
+route, API or feature changes.
+
+### Visual direction — Gravix Command Centre
+
+The target feel is a **dark AI command centre for sales teams**: calm
+intelligence, manager-first trust, professional B2B SaaS. "Jarvis-esque" in
+composure — quiet dark surfaces, one clear accent, information density without
+noise — never gamer UI.
+
+**Colour roles (canonical):**
+
+| Role | Colour | Use |
+| --- | --- | --- |
+| Base | neutral-950 / neutral-900 | page + card surfaces |
+| Structure | neutral-800 borders | prefer fewer borders; use `/60`–`/80` opacities |
+| Text | white → neutral-300 → neutral-500 | three-step hierarchy |
+| **Primary action / AI / brand** | **indigo** | all primary CTAs, AI surfaces (`SectionCard variant="ai"`, `StatCard variant="ai"`, `AiInsightCard summary`), nav active state, brand mark |
+| Accent (sparing) | cyan | secondary informational accents only — never a CTA, never a border-heavy block |
+| Success / status | emerald | status pills, health bands, positive deltas only — never buttons, never brand |
+| Warning / caution | amber | warnings, watch bands, impersonation banner |
+| Risk / error | red | errors, at-risk, overdue |
+| ~~Banned~~ | fuchsia, purple, pink, violet, sky | removed from shared components + demo path; not part of the system |
+
+**Card rules:** `rounded-xl border` on neutral-950; tinted variants stay at
+`/20` border + `/5` background (already the SectionCard/StatCard convention —
+no glows, no gradients, no heavy shadows). Progress bars are solid single-hue
+fills, not gradients.
+
+**Spacing rules:** `PageContainer` (`p-6 space-y-6`) is the page shell;
+`px-4/5 py-3/4` card headers; `text-[10px] uppercase tracking-[0.12–0.14em]`
+eyebrows. Compact density, consistent rhythm.
+
+**CTA rules:** one primary indigo CTA per view (`bg-indigo-600
+hover:bg-indigo-500` family); secondary actions are neutral outline
+(`border-neutral-700` + hover); destructive red only. No emerald, cyan or
+white-on-black action buttons.
+
+**Status colour rules:** green/amber/red are *status-only* (pills, badges,
+deltas, band accents). If it's clickable, it isn't green.
+
+**Motion rules:** `transition-colors`/`transition-all` on hover only;
+`animate-pulse` reserved for genuinely-live indicators (live Whisperer);
+no confetti, no bounce, no glow.
+
+### Implemented (Day 194)
+
+Shared shell + components:
+- `shell/nav-item.tsx` — active accent bar + active icon emerald → **indigo**
+  (nav active state is a primary-accent role, not a status).
+- `shell/sidebar.tsx` — brand `Zap` mark emerald → indigo (both collapsed and
+  expanded states).
+- `shell/app-shell.tsx` — impersonation banner fuchsia → **amber** (it is a
+  caution state; also dropped its `animate-pulse` dot — nothing is "live").
+- `ui/stat-card.tsx` — `ai` variant fuchsia → indigo (now matches
+  `SectionCard variant="ai"`).
+- `ui/ai-insight-card.tsx` — `summary` type fuchsia → indigo.
+- `layout/page-header.tsx` — `tracking-tight` on the h1 for a tighter
+  premium title setting.
+- Deleted `components/XpProgress.tsx` — orphaned (zero imports) arcade
+  XP-bar component.
+
+Demo-path surfaces (mechanical colour-role swaps only):
+- `/dashboard` — AI Daily Briefing card fuchsia → indigo (matches the ai
+  variant convention); XP progress bar emerald→cyan **gradient** replaced
+  with a solid indigo fill.
+- `/calls/[id]` — coach-panel deep-link notice purple → indigo.
+- `/crm/accounts/[id]` — "AI CRM Memory" block + Save Memory button fuchsia
+  → indigo.
+
+### Theme-readiness notes (for future white-label themes)
+
+No theme switcher was built (deliberate). What Day 194 sets up:
+
+1. **Semantic variants over raw hues.** The shared components
+   (`SectionCard`, `StatCard`, `StatusBadge`, `AiInsightCard`) already map
+   *semantic* variants (`ai`, `warning`, `danger`, `success`) to colour
+   classes in single `Record` maps at the top of each file. These maps are
+   the natural seam for theme tokens — a future theme provider swaps the
+   map values (or the Tailwind theme colours behind them) without touching
+   call sites.
+2. **Indigo is now the single primary.** With fuchsia/purple gone and
+   emerald demoted to status, "brand colour" appears in far fewer places —
+   a future `--color-primary` token replaces one hue, not four.
+3. **Where tokens should live:** first step is Tailwind theme extension
+   (`primary`, `accent`, `success`, `warning`, `danger`, `surface`,
+   `border`) in `tailwind.config`, aliased to the current palette; shared
+   components adopt token classes first, routes follow route-by-route.
+4. **Remaining hardcoded clusters** (not migrated, candidates for the token
+   pass): `/coaching` band colour maps (~line 469), `/dashboard`
+   `TIER_COLORS`, `/admin/users` role-badge map (still fuchsia —
+   SuperAdmin-only surface, off the demo path, left for Day 195),
+   `HealthBadge`, `DashboardKpis`, `SparringStartButton`.
+
+### Deferred (documented, not done)
+
+- `/admin/users` fuchsia role badges + hover states (off demo path).
+- `PageContainer` max-width clamp (`max-w-[1400px] mx-auto`) — would improve
+  ultra-wide reading but is a layout change across every shell page; needs
+  its own pass with screenshots.
+- The dashboard XP/rank/streak module is product behaviour (not styling) —
+  whether an enterprise coaching tool should show an XP ladder at all is a
+  Day 195+ product decision, not a patch.
+- Tailwind theme-token extraction (step 3 above) — Day 195 candidate.
+
+**Day 195 recommendation:** either (a) the token pass — add semantic colours
+to `tailwind.config` and migrate the shared `ui/` components onto them, or
+(b) continue route-by-route cleanup (`/admin/users` fuchsia, `/coaching`
+sub-tab residual cyan CTAs, `HealthBadge`/`DashboardKpis` colour maps).
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1131,4 +1247,6 @@ cleanup (above). Companion validator:
 `scripts/validate-premium-ux-day-191.sh`. Day 192 — CRM rep detail
 button-system pass (above). Companion validator:
 `scripts/validate-premium-ux-day-192.sh`. Day 193 — orphaned rep route cleanup
-(above). Companion validator: `scripts/validate-premium-ux-day-193.sh`.*
+(above). Companion validator: `scripts/validate-premium-ux-day-193.sh`.
+Day 194 — Gravix Command Centre visual direction + system pass (above).
+Companion validator: `scripts/validate-premium-ux-day-194.sh`.*

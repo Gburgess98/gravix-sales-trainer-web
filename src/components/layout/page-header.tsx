@@ -11,7 +11,7 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
   return (
     <div className={clsx('flex items-start justify-between gap-4', className)}>
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold text-white">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-white">{title}</h1>
         {subtitle && (
           <p className="mt-0.5 text-sm text-neutral-400">{subtitle}</p>
         )}

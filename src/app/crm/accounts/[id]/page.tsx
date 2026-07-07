@@ -1547,10 +1547,10 @@ export default function AccountPage() {
       {tab === 'intelligence' && (
         <div className="space-y-4">
           {/* AI Memory */}
-          <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-fuchsia-500/10">
+          <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-indigo-500/10">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-300">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-indigo-300">
                   AI CRM Memory
                 </div>
                 <div className="mt-1 text-base font-semibold text-white">
@@ -1569,7 +1569,7 @@ export default function AccountPage() {
                   type="button"
                   disabled={summarySaving}
                   onClick={saveAccountSummary}
-                  className="rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-xs text-fuchsia-200 hover:bg-fuchsia-500/20 disabled:opacity-60"
+                  className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-60"
                 >
                   {summarySaving ? 'Saving…' : 'Save Memory'}
                 </button>

@@ -365,11 +365,11 @@ export default function DashboardPage() {
       )}
 
       {/* ── Section 1: AI Daily Briefing — Jarvis-style structured card ── */}
-      <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 overflow-hidden">
+      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 overflow-hidden">
         {/* Header row */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-fuchsia-500/10">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-indigo-500/10">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-fuchsia-400 font-medium">AI Daily Briefing</span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-indigo-400 font-medium">AI Daily Briefing</span>
             {!hasAnyData && (
               <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-500">Awaiting first scored call</span>
             )}
@@ -388,7 +388,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Structured signal grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-0 divide-y divide-x divide-fuchsia-500/10">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-0 divide-y divide-x divide-indigo-500/10">
           {/* Voice Score */}
           <div className="px-4 py-3">
             <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Voice Score</div>
@@ -453,8 +453,8 @@ export default function DashboardPage() {
 
         {/* Motivation message if present */}
         {briefing.motivationMessage && (
-          <div className="border-t border-fuchsia-500/10 px-4 py-2">
-            <p className="text-[11px] text-fuchsia-300/70 italic">"{briefing.motivationMessage}"</p>
+          <div className="border-t border-indigo-500/10 px-4 py-2">
+            <p className="text-[11px] text-indigo-300/70 italic">"{briefing.motivationMessage}"</p>
           </div>
         )}
       </div>
@@ -669,7 +669,7 @@ export default function DashboardPage() {
               </div>
               <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all"
+                  className="h-full rounded-full bg-indigo-500 transition-all"
                   style={{ width: `${xpInfo.pct}%` }}
                 />
               </div>

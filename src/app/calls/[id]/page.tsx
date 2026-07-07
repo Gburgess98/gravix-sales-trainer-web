@@ -2200,7 +2200,7 @@ export default function CallPage() {
         </section>
 
         {coachOpen && assignOpen && (
-          <div className="rounded border border-purple-400/30 bg-purple-500/10 p-3 text-sm text-purple-200">
+          <div className="rounded border border-indigo-400/30 bg-indigo-500/10 p-3 text-sm text-indigo-200">
             Coach panel opened via deep link — “Assign Drill” preset is active.
           </div>
         )}
