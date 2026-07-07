@@ -1054,6 +1054,59 @@ retire/redirect — or continue the button-system pass into `/dashboard` and the
 
 ---
 
+## §23 — Orphaned rep route cleanup (Day 193)
+
+WEB-only, patch mode. No API, no migrations, no new features, no behaviour
+change. UK spelling. Followed §22's Day 193 recommendation.
+
+**Route audit + classification (inbound refs proven repo-wide)**
+- **`/reps/[id]`** — *orphaned → redirected.* A large legacy standalone client
+  rep profile (1346 lines, recharts/XP) predating the CRM workspace. The only
+  inbound page link anywhere was from its own `/reps/[id]/sparring` child; no
+  external page links (`/v1/reps/*` matches are API calls, not page routes). The
+  active, param-compatible equivalent is `/crm/reps/[id]` (§22).
+- **`/reps/[id]/sparring`** — *orphaned → redirected.* A read-only sparring
+  session list reachable **only** from `/reps/[id]` — a closed orphan loop.
+- **`/admin/reps`** — *active → kept + documented.* Linked from the root
+  `HomeLanding` (`src/app/page.tsx` → `HomeLanding.tsx`) as a **manager-gated**
+  "Admin · Reps — Manage team members and roles" card. Loads through
+  `/api/proxy/v1/admin/*` (no direct-backend bypass). It is the live team-member
+  admin surface — **not** touched (preserving the manager journey and gating).
+
+**Changes made (redirects only, no UI)**
+- Replaced `src/app/reps/[id]/page.tsx` with a server redirect →
+  `/crm/reps/${id}` (id preserved, `encodeURIComponent`).
+- Replaced `src/app/reps/[id]/sparring/page.tsx` with a server redirect →
+  `/crm/reps/${id}`. Deliberately funnelled to the active rep surface rather
+  than deep-linking `/sparring?repId=…` — the latter risks launching a sparring
+  session, which would change sparring behaviour. Both legacy routes now land on
+  the single active rep profile whose Coaching tab already carries the sparring
+  score trend + AI Sparring entry points.
+- Both kept as redirects (not deletions), matching the Day 184 stub pattern, so
+  any stray/bookmarked `/reps/*` link resolves to the real path instead of a 404.
+
+**Deliberately not done**
+- `/admin/reps` left untouched (active, referenced, manager-gated). Its legacy
+  header-based identity pattern is a separate concern outside this cleanup.
+- No `lib/api.ts` exports removed even though `getRepOverview` / `getRewards` /
+  `getSparringSessionsByRep` etc. may now be unused — out of scope (no broad
+  refactor); harmless dead exports flagged for a future tidy.
+
+**Pre-existing observation (not changed)**
+- `tests/e2e/smoke.spec.ts` lists `{ path: '/reps', name: 'Reps list' }`, but no
+  `/reps` **index** route exists (`src/app/reps/` only holds `[id]/…`). That test
+  entry predates this work and is unaffected by the `[id]` redirects; noted for a
+  future test tidy, not touched here.
+
+**Day 194 recommendation**
+Rep routes are now consolidated on `/crm/reps/[id]`. Next: either continue the
+button-system/consistency pass into `/dashboard` and the `/coaching` sub-tabs
+(residual emerald/cyan/white action buttons), or tidy the stale
+`tests/e2e/smoke.spec.ts` `/reps` entry and any now-unused `lib/api.ts` rep
+exports.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1077,4 +1130,5 @@ button-system pass. Companion validator:
 cleanup (above). Companion validator:
 `scripts/validate-premium-ux-day-191.sh`. Day 192 — CRM rep detail
 button-system pass (above). Companion validator:
-`scripts/validate-premium-ux-day-192.sh`.*
+`scripts/validate-premium-ux-day-192.sh`. Day 193 — orphaned rep route cleanup
+(above). Companion validator: `scripts/validate-premium-ux-day-193.sh`.*
