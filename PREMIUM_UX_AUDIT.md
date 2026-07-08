@@ -1581,6 +1581,72 @@ that all demo-path surfaces sit on the shared system.
 
 ---
 
+## §30 — Day 200 visual milestone: full QA sweep + CRM workspace adoption
+
+**Scope:** consistency sweep across the upgraded app to close the
+Days 194–199 visual sprint. WEB-only, patch mode, behaviour-preserving.
+This is the **Day 200 visual milestone**: every core demo-path surface
+now sits on the Command Centre system (Geist, near-black shell, indigo
+action colour, SectionCard elevation, shared Button recipes, green/amber/red
+reserved for status).
+
+### Pages checked
+
+/dashboard, /coaching, /calls/[id] (source), /call-library (+ ?tab=sparring),
+/upload, /crm/accounts, /crm/accounts/[id], /crm/reps/[id], /crm/manager,
+/crm/tasks, /crm/actions — audited by source grep for white-active chips,
+hand-copied recipes, emerald/cyan action colours, fuchsia/purple/pink,
+and light-theme outliers; representative routes opened in the dev preview.
+
+### Fixed now (low-risk, visual-only)
+
+- `/crm/accounts/[id]` rescue-tasks urgency filter: the **white-active**
+  "All" chip (last one in the app's active surfaces) → indigo tonal.
+  The red/amber/cyan actives stay — they mirror the urgency semantics.
+- `/crm/accounts/[id]`: rep-performance link and contact "Open →" off
+  cyan → neutral; 4× cyan form focus rings → indigo.
+- `/crm/accounts`: "Default View" sort toggle active cyan → indigo tonal
+  ("Needs Intervention" stays red — semantic); 7× cyan focus rings →
+  indigo; account cards' hover border + title hover cyan → indigo;
+  owner-role pill cyan → neutral; "Open →" pill cyan → indigo tonal.
+- `/dashboard`: "Upload a call →" action link cyan → indigo.
+- Deleted **both** orphaned, never-imported, light-theme
+  `ContactHealthClient.tsx` components (`crm/accounts/[id]/` and
+  `crm/contacts/[id]/` — `bg-white`/`slate-50`/`emerald-50` outliers;
+  zero references remained). Day 191 dead-client pattern.
+
+### Deferred to Day 201+ (documented, untouched)
+
+- `/dashboard` full Command Centre pass — the page keeps arcade-leaning
+  elements (XP/tier colours incl. `diamond: text-cyan-300`, "missions"
+  strip, cyan stat accents, cyan chart stroke). Needs its own day, not
+  a drive-by. Highest-value next candidate — it's a first-screen surface.
+- Cyan "medium" urgency (UrgencyPill + matching filter chip active on
+  `/crm/accounts/[id]`) — semantic pair; changing it means picking a
+  proper medium-urgency colour across CRM in one pass.
+- `/crm/Leaderboard` — still orphaned/light-theme (Day 187 note stands).
+- Literal indigo recipes on `/crm/accounts`, `/crm/tasks`, `/crm/actions`
+  stay hand-copied for now: day-182/190 validators pin those exact
+  strings, so Button adoption there should come with a validator-refresh
+  day, not a drive-by (same policy as the day-196/197 pins in Day 198).
+- Semantic colour-token pass (`indigo-600` → named action token) remains
+  open — recipes are centralised in `ui/button.tsx`, so it is now cheap.
+
+### Behaviour preserved
+
+Colour-class-only edits plus deletion of two never-imported files. All
+handlers (`setRescueFilter`, `setSortMode`, search inputs, unlink,
+create-account/contact forms), hrefs, disabled states, and empty states
+untouched. Day-182/186/187/190/192 validator pins checked before every
+edit — the pinned strings are negative cyan checks or recipes this
+sweep did not touch.
+
+**Day 201 recommendation:** `/dashboard` Command Centre pass (retire the
+arcade XP/tier/mission styling, adopt SectionCard/StatCard rhythm), then
+the colour-token pass with a validator-pin refresh.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1619,4 +1685,6 @@ visual pass (above). Companion validator:
 primitive + call-detail dead helper cleanup (above). Companion validator:
 `scripts/validate-premium-ux-day-198.sh`. Day 199 — call library /
 sparring visual pass (above). Companion validator:
-`scripts/validate-premium-ux-day-199.sh`.*
+`scripts/validate-premium-ux-day-199.sh`. Day 200 — visual milestone:
+full QA sweep + CRM workspace adoption (above). Companion validator:
+`scripts/validate-premium-ux-day-200.sh`.*

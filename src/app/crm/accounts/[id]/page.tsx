@@ -1005,7 +1005,7 @@ export default function AccountPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Link
                               href={`/crm/reps/${rep.rep_id}`}
-                              className="hover:underline text-cyan-300 text-xs"
+                              className="hover:underline text-neutral-200 text-xs"
                             >
                               {rep.rep_id.slice(0, 8)}…
                             </Link>
@@ -1187,7 +1187,7 @@ export default function AccountPage() {
                       >
                         Unlink
                       </button>
-                      <span className="text-xs text-cyan-300">Open →</span>
+                      <span className="text-xs text-neutral-400">Open →</span>
                     </div>
                   </Link>
                 ))
@@ -1233,7 +1233,7 @@ export default function AccountPage() {
                         value={addContactForm.first_name}
                         onChange={(e) => setAddContactForm((p) => ({ ...p, first_name: e.target.value }))}
                         placeholder="Jane"
-                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                       />
                     </div>
                     <div>
@@ -1243,7 +1243,7 @@ export default function AccountPage() {
                         value={addContactForm.last_name}
                         onChange={(e) => setAddContactForm((p) => ({ ...p, last_name: e.target.value }))}
                         placeholder="Smith"
-                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                        className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                       />
                     </div>
                   </div>
@@ -1254,7 +1254,7 @@ export default function AccountPage() {
                       value={addContactForm.email}
                       onChange={(e) => setAddContactForm((p) => ({ ...p, email: e.target.value }))}
                       placeholder="jane@company.com"
-                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                     />
                   </div>
                   <div>
@@ -1264,7 +1264,7 @@ export default function AccountPage() {
                       value={addContactForm.role}
                       onChange={(e) => setAddContactForm((p) => ({ ...p, role: e.target.value }))}
                       placeholder="VP Sales"
-                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                     />
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-1">
@@ -1365,7 +1365,7 @@ export default function AccountPage() {
                           ? 'border-amber-400 bg-amber-500/20 text-amber-200'
                           : f === 'medium'
                             ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200'
-                            : 'border-neutral-100 bg-neutral-100 text-neutral-900'
+                            : 'border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200'
                       : 'border-neutral-700 text-neutral-400 hover:bg-neutral-800'
                   }`}
                 >

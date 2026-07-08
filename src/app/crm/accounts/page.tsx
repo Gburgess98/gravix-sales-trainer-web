@@ -260,7 +260,7 @@ export default function CrmAccountsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search accounts or domains"
-            className="w-full max-w-md rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none transition-all focus:border-cyan-500/40"
+            className="w-full max-w-md rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none transition-all focus:border-indigo-500/50"
           />
 
           <div className="flex items-center gap-3">
@@ -268,7 +268,7 @@ export default function CrmAccountsPage() {
               type="button"
               onClick={() => setSortMode('default')}
               className={`rounded-xl border px-3 py-2 text-xs transition-all ${sortMode === 'default'
-                ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200'
                 : 'border-neutral-800 bg-black/30 text-neutral-400 hover:border-neutral-700'
                 }`}
             >
@@ -358,7 +358,7 @@ export default function CrmAccountsPage() {
                     value={contactCreateForm.first_name}
                     onChange={(e) => setContactCreateForm((p) => ({ ...p, first_name: e.target.value }))}
                     placeholder="Jane"
-                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                   />
                 </div>
                 <div>
@@ -368,7 +368,7 @@ export default function CrmAccountsPage() {
                     value={contactCreateForm.last_name}
                     onChange={(e) => setContactCreateForm((p) => ({ ...p, last_name: e.target.value }))}
                     placeholder="Smith"
-                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                   />
                 </div>
               </div>
@@ -379,7 +379,7 @@ export default function CrmAccountsPage() {
                   value={contactCreateForm.email}
                   onChange={(e) => setContactCreateForm((p) => ({ ...p, email: e.target.value }))}
                   placeholder="jane@company.com"
-                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                 />
               </div>
               <div>
@@ -398,7 +398,7 @@ export default function CrmAccountsPage() {
                   value={contactCreateForm.role}
                   onChange={(e) => setContactCreateForm((p) => ({ ...p, role: e.target.value }))}
                   placeholder="VP Sales"
-                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                 />
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -452,7 +452,7 @@ export default function CrmAccountsPage() {
                   value={createForm.name}
                   onChange={(e) => updateCreateForm('name', e.target.value)}
                   placeholder="Acme Corp"
-                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                 />
               </div>
               <div>
@@ -462,7 +462,7 @@ export default function CrmAccountsPage() {
                   value={createForm.domain}
                   onChange={(e) => updateCreateForm('domain', e.target.value)}
                   placeholder="acme.com"
-                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600"
                 />
               </div>
               <div>
@@ -500,11 +500,11 @@ export default function CrmAccountsPage() {
             <Link
               key={account.id}
               href={`/crm/accounts/${account.id}`}
-              className="group rounded-2xl border border-neutral-800 bg-neutral-950 p-5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-neutral-900/70"
+              className="group rounded-2xl border border-neutral-800 bg-neutral-950 p-5 transition-all duration-200 hover:border-indigo-500/40 hover:bg-neutral-900/70"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-lg font-semibold text-white transition-colors group-hover:text-cyan-200">
+                  <div className="text-lg font-semibold text-white transition-colors group-hover:text-indigo-200">
                     {account.name}
                   </div>
 
@@ -520,7 +520,7 @@ export default function CrmAccountsPage() {
                     </div>
 
                     {account.owner?.role ? (
-                      <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+                      <div className="rounded-full border border-neutral-700 bg-black/40 px-2 py-1 text-neutral-300">
                         {account.owner.role}
                       </div>
                     ) : null}
@@ -598,7 +598,7 @@ export default function CrmAccountsPage() {
                     <StatusBadge status="at_risk" label="Needs Intervention" />
                   ) : null}
 
-                  <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-200">
+                  <div className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-200">
                     Open →
                   </div>
                 </div>

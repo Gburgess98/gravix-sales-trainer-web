@@ -618,7 +618,7 @@ export default function DashboardPage() {
           ) : (
             <div className="h-36 flex flex-col items-center justify-center gap-2 border border-dashed border-neutral-800 rounded-lg">
               <div className="text-sm text-neutral-600">Awaiting first scored call</div>
-              <Link href="/upload" className="text-xs text-cyan-500/70 hover:text-cyan-400 transition-colors">Upload a call →</Link>
+              <Link href="/upload" className="text-xs text-indigo-300 hover:text-indigo-200 transition-colors">Upload a call →</Link>
             </div>
           )}
         </div>
