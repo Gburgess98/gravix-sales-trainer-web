@@ -9,6 +9,7 @@ import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
 import { RiskBadge, ScorePill, StatusBadge, UrgencyBadge } from '@/components/ui/status-badge'
 import { SectionCard } from '@/components/ui/section-card'
+import { buttonClasses } from '@/components/ui/button'
 import { EmptyRow } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { FilterBar, FilterOption } from '@/components/ui/filter-bar'
@@ -2047,7 +2048,7 @@ export default function CoachingPage() {
                                     <Link
                                       key={act.label}
                                       href={act.href}
-                                      className="rounded-md border border-indigo-500/30 bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                      className={buttonClasses('secondary')}
                                     >
                                       {act.label}
                                     </Link>
@@ -2146,7 +2147,7 @@ export default function CoachingPage() {
                                   </button>
                                   <Link
                                     href={`/crm/reps/${rep.repId}`}
-                                    className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                    className={buttonClasses('secondary')}
                                   >
                                     Open Rep
                                   </Link>
@@ -2177,7 +2178,7 @@ export default function CoachingPage() {
                               <div className="flex items-center gap-2">
                                 <Link
                                   href={`/calls/${call.callId}`}
-                                  className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                                  className={buttonClasses('secondary')}
                                 >
                                   Review Call
                                 </Link>
@@ -3399,7 +3400,7 @@ export default function CoachingPage() {
                           <div className="text-xs font-medium text-amber-300">{action}</div>
 
                           <div className="flex gap-2 pt-0.5">
-                            <Link href={`/crm/reps/${rep.rep_id}`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                            <Link href={`/crm/reps/${rep.rep_id}`} className={buttonClasses('secondary')}>
                               View rep
                             </Link>
                             <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
@@ -3506,7 +3507,7 @@ export default function CoachingPage() {
 
                           <Link
                             href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`}
-                            className="inline-block rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                            className={buttonClasses('secondary')}
                           >
                             Assign drill →
                           </Link>
@@ -3639,7 +3640,7 @@ export default function CoachingPage() {
                                     <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
                                       Actions
                                     </Link>
-                                    <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                                    <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=coaching`} className={buttonClasses('secondary')}>
                                       Assign
                                     </Link>
                                   </div>
@@ -3722,7 +3723,7 @@ export default function CoachingPage() {
                                   <Link href={`/crm/actions?repId=${encodeURIComponent(rep.rep_id)}&status=open`} className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
                                     Actions
                                   </Link>
-                                  <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=interventions`} className="rounded-md bg-indigo-600/20 px-2 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors">
+                                  <Link href={`/admin/assignments?repId=${encodeURIComponent(rep.rep_id)}&repName=${encodeURIComponent(rep.rep_name)}&source=interventions`} className={buttonClasses('secondary')}>
                                     Assign
                                   </Link>
                                 </div>
@@ -3954,7 +3955,7 @@ export default function CoachingPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <Link
                         href={`/calls/${item.callId}`}
-                        className="rounded-md bg-indigo-600/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
+                        className={buttonClasses('secondary')}
                       >
                         Review Call
                       </Link>

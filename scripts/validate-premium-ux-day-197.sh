@@ -37,7 +37,9 @@ check "active section pill is indigo (not white)" $?
 check "white active pill removed" $?
 
 # --- SectionCard adoption ---
-grep -q 'import { SectionCard } from "@/components/ui"' "$PAGE" 2>/dev/null
+# Day 198 loosened this from the exact named-import list to the intent
+# (SectionCard imported from the ui barrel) — Day 198 added Button imports.
+grep -qE 'import \{[^}]*SectionCard[^}]*\} from "@/components/ui"' "$PAGE" 2>/dev/null
 check "SectionCard imported" $?
 CARDS=$(grep -c '<SectionCard' "$PAGE" 2>/dev/null || echo 0)
 [[ "$CARDS" -ge 5 ]]

@@ -14,7 +14,7 @@ import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
 import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
-import { SectionCard } from "@/components/ui";
+import { SectionCard, Button, buttonClasses } from "@/components/ui";
 
 import {
   listPins,
@@ -1389,20 +1389,20 @@ export default function CallPage() {
               </div>
             )}
             <CopyLinkButton href={`/calls/${callId}?panel=crm`} size="md" />
-            <button onClick={openCrm} className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+            <Button onClick={openCrm}>
               Link CRM
-            </button>
+            </Button>
             {managerCheckDone && isManager && (
-              <button onClick={() => openCoach(true)} className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+              <Button onClick={() => openCoach(true)}>
                 Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-60">({assignmentCount})</span>}
-              </button>
+              </Button>
             )}
             {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
               <a
                 href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-xl border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800"
+                className={buttonClasses()}
                 title="Preview Slack payload"
               >
                 Preview Slack
@@ -1530,28 +1530,26 @@ export default function CallPage() {
                       )}
                     </span>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
                       onClick={markCallReviewed}
                       disabled={markingReviewed}
-                      className="rounded-md bg-indigo-600/20 px-2.5 py-1 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
                     >
                       {markingReviewed ? "Marking…" : "Mark Reviewed"}
-                    </button>
+                    </Button>
                   )}
                   {coachingAssigned ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
                       Coaching assigned ✓
                     </span>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
                       onClick={assignCoachingFromCall}
                       disabled={assigningCoaching}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                      className="bg-neutral-900 font-semibold text-neutral-200"
                     >
                       {assigningCoaching ? "Assigning…" : "Assign Coaching"}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -1900,13 +1898,14 @@ export default function CallPage() {
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-neutral-500"
                       style={{ minWidth: 220 }}
                     />
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="md"
                       onClick={onCreatePin}
                       disabled={creating}
-                      className="rounded-md bg-indigo-600/20 px-3 py-1 text-sm font-medium text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
                     >
                       {creating ? 'Pinning…' : `Pin at ${fmt(t)}`}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1943,12 +1942,9 @@ export default function CallPage() {
                       </button>
                       {p.note && <span className="ml-2 text-neutral-400">— {p.note}</span>}
                     </div>
-                    <button
-                      onClick={() => onDelete(p.id)}
-                      className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
-                    >
+                    <Button onClick={() => onDelete(p.id)}>
                       Delete
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -2073,12 +2069,9 @@ export default function CallPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => deleteAssignment(id)}
-                            className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
-                          >
+                          <Button onClick={() => deleteAssignment(id)}>
                             Delete
-                          </button>
+                          </Button>
                         </div>
                       </li>
                     );
@@ -2114,7 +2107,8 @@ export default function CallPage() {
                   </select>
                 </div>
                 <div className="mt-2">
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={async () => {
                       if (!quickDrill || !assignee) return;
                       setAssignBusy(true);
@@ -2141,10 +2135,9 @@ export default function CallPage() {
                       }
                     }}
                     disabled={assignBusy}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
                   >
                     {assignBusy ? "Assigning…" : "Assign to rep"}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -2157,9 +2150,9 @@ export default function CallPage() {
             eyebrow="CRM"
             title="Linked records"
             actions={
-              <button onClick={openCrm} className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+              <Button onClick={openCrm}>
                 Open CRM panel
-              </button>
+              </Button>
             }
             padded
           >
@@ -2353,13 +2346,14 @@ export default function CallPage() {
                   placeholder="name@company.com"
                   className="flex-1 rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
                 />
-                <button
+                <Button
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={linkLoading || !linkEmail.includes("@")}
-                  className="rounded-xl px-3 py-2 bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors disabled:opacity-50"
                 >
                   {linkLoading ? "Linking…" : "Link"}
-                </button>
+                </Button>
               </form>
               {linkMsg && <div className="text-green-400 text-xs">{linkMsg}</div>}
             </div>
@@ -2597,12 +2591,14 @@ export default function CallPage() {
 
                 {assignError && <ErrorBox msg={assignError} />}
 
-                <button
+                <Button
+                  variant="primary"
+                  size="md"
                   onClick={onSaveAssign}
                   disabled={assignSaving || !assigneeUserId || !drillId}
-                  className="px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50">
+                >
                   {assignSaving ? "Saving…" : "Save Assignment"}
-                </button>
+                </Button>
               </div>
             )}
 
@@ -2625,7 +2621,8 @@ export default function CallPage() {
                             <span className="font-medium">{drillLabel}</span>
                             <span className="opacity-60">{createdLabel}</span>
                           </div>
-                          <button
+                          <Button
+                            variant="danger"
                             onClick={async () => {
                               try {
                                 await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
@@ -2635,10 +2632,9 @@ export default function CallPage() {
                                 toast(e?.message || "Failed to remove.");
                               }
                             }}
-                            className="px-2 py-1 rounded border border-red-500/30 text-xs text-red-300 hover:bg-red-500/10 transition-colors"
                           >
                             Remove
-                          </button>
+                          </Button>
                         </li>
                       );
                     })}

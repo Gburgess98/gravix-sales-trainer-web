@@ -1437,6 +1437,85 @@ tab surfaces inside /coaching.
 
 ---
 
+## §28 — Shared Button primitive + call-detail dead helper cleanup (Day 198)
+
+Followed §27's Day 198 recommendation (both options: the button primitive
+AND the orphaned helper deletion). WEB-only, behaviour-preserving — no
+handler, route, form-type, or data change. UK spelling.
+
+### The primitive — `src/components/ui/button.tsx`
+
+Days 195–197 hand-copied four Tailwind button recipes per call site.
+The new primitive canonicalises them:
+
+- `Button` — `forwardRef` button; spreads all native props (onClick,
+  disabled, aria-*, title); **defaults `type="button"`** so drawer/form
+  buttons can't accidentally submit (the CRM drawer "Link" passes
+  `type="submit"` explicitly).
+- `buttonClasses(variant, size, className?)` — class-only helper so
+  `<Link>`/`<a>` elements share the recipes without changing element
+  semantics (no behavioural wrapper around Next.js Link).
+- Variants: `primary` (solid indigo), `secondary` (indigo tonal
+  `bg-indigo-600/20`), `ghost` (neutral bordered — the default),
+  `danger` (bordered red). Sizes: `sm` (px-2.5 py-1 text-xs),
+  `md` (px-3.5 py-1.5 text-sm). Uses `clsx` (already a dependency).
+  Exported from the `@/components/ui` barrel.
+
+### Migration scope (deliberately narrow)
+
+**`/calls/[id]`** — 13 simple elements: header Link CRM / Assign Drill
+(ghost), Preview Slack anchor (via `buttonClasses()`), Mark Reviewed
+(secondary), Assign Coaching (ghost), Pin at (secondary md), Pins Delete
++ assignments Delete (ghost), Assign to rep (primary), Open CRM panel
+(ghost), drawer Link submit + Save Assignment (primary md), coach-drawer
+Remove (danger).
+
+**`/coaching`** — the 8 copy-pasted indigo-tonal `<Link>` recipes
+(Review Call/call, Open Rep, Assign drill →, queue actions) moved to
+`buttonClasses('secondary')`; ~42 rendered elements share one recipe now.
+
+**Deliberately NOT migrated (validator-pinned or stateful):**
+
+- `/coaching` Upload Call CTA and the six `hover:bg-indigo-500/20`
+  assign/complete buttons — their literal class strings are contract
+  checks in `validate-premium-ux-day-196.sh`.
+- `/calls/[id]` "Practice this now →" CTA — pinned by
+  `validate-premium-ux-day-197.sh`.
+- Conditional/stateful chips (section nav pills, moment outcome chips,
+  filter chips), search-result rows, plain-link Close/Review-another-call
+  anchors. These carry state-dependent class logic; converting them is
+  not a string swap and stays out of scope.
+
+### Dead helper cleanup
+
+`src/app/calls/[id]/PinButton.tsx`, `PinList.tsx`, and `score-box.tsx`
+deleted after proving **zero references** across `src/`, `tests/`,
+`scripts/`, and config (grep for `PinButton|PinList|score-box|ScoreBox`
+excluding the files themselves — empty). The live pin UI in `page.tsx`
+never imported them. Note: `score-box.tsx` was the sole consumer of
+`setScore` in `lib/api` — that export is now dead code (future tidy,
+same bucket as the Day 193 dead rep exports).
+
+### Behaviour preserved
+
+All onClick handlers, disabled expressions, labels, aria attributes, and
+the submit type moved verbatim onto `Button` props; `Button` spreads
+native props so nothing is filtered. Live-proofed as Dana: /calls/[id]
+header buttons render from the primitive, Assign Drill still opens the
+coach drawer, Save Assignment renders as primary and stays enabled/disabled
+correctly; /coaching Overview renders with the tonal links on the
+primitive recipe and the pinned Upload CTA untouched. No console errors.
+
+**Day 199 recommendation:** extend Button adoption route-group by
+route-group (CRM surfaces next — `/crm/accounts`, `/crm/reps/[id]` carry
+the same hand-copied recipes), or the semantic colour-token pass
+(`indigo-600` → named action token) now that recipes live in one file,
+or tidy the dead `lib/api` exports (`setScore` + Day 193's rep exports).
+
+---
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1469,4 +1548,6 @@ Day 195 — global Command Centre shell upgrade (above). Companion validator:
 visual pass (above). Companion validator:
 `scripts/validate-premium-ux-day-196.sh`. Day 197 — call review workspace
 visual pass (above). Companion validator:
-`scripts/validate-premium-ux-day-197.sh`.*
+`scripts/validate-premium-ux-day-197.sh`. Day 198 — shared Button
+primitive + call-detail dead helper cleanup (above). Companion validator:
+`scripts/validate-premium-ux-day-198.sh`.*
