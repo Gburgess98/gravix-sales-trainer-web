@@ -1353,6 +1353,90 @@ Queue surfaces.
 
 ---
 
+## §27 — Call review workspace visual pass (Day 197)
+
+Followed §26's Day 197 recommendation (route-group pass to `/calls/[id]`).
+WEB-only, visual-only — no data fetching, scoring, audio, assignment,
+review, transcript, or timeline behaviour changed. UK spelling.
+
+The call detail page is the manager's core review surface, but it predated
+the Command Centre system: no width clamp, a white "active" pill in the
+section nav, flat cards up top and completely bare sections (plain `h2` +
+colourless borders) for Player, Pins, Whisperer Moments, Coach assignments,
+and CRM at the bottom.
+
+### Layout & shell alignment
+
+- `<main>` now clamps to the shell width: `mx-auto max-w-[1400px] px-6
+  py-6 lg:px-8` (matches PageContainer; the sticky nav's negative-margin
+  full-bleed gained matching `lg:-mx-8 lg:px-8`).
+- Sticky section nav background aligned to the Day 195 shell
+  (`bg-[#060609]/90 backdrop-blur-md`); the active pill went white →
+  indigo (`bg-indigo-500/20 text-indigo-200`), matching WorkspaceTabs.
+
+### Call intelligence hierarchy
+
+- Summary band: hero score circle enlarged (h-14 → h-16) and now
+  status-tinted by band (emerald ≥80 / amber ≥60 / red below — status
+  colour only, matching ScorePill), card gained the standard
+  `shadow-md shadow-black/20` depth.
+- Processing banner picked up a pulsing indigo activity dot (non-failed
+  states) and the standard card treatment.
+- Review Bot, Post-action, Rubric, and Transcript cards gained the same
+  depth shadow — the page now reads as one elevated console.
+
+### SectionCard adoption (Day 196 `padded` prop)
+
+The five bare bottom sections were converted to the shared `SectionCard`
+with `padded` bodies, keeping their `<section id>` anchors for the
+sticky-nav scroll and IntersectionObserver:
+
+- **Player** → eyebrow "Playback" / title "Call recording"; pin ticks on
+  the seek bar went white → indigo, pin input/button styled to the system
+  (indigo-tinted Pin action), "No audio" empty state calmed red → neutral.
+- **Pins** → eyebrow "Moments"; pin count in header actions; timestamps
+  are indigo jump-links; delete is a neutral bordered button.
+- **Whisperer Moments** → `variant="ai"` (indigo tint, matching the
+  /coaching Whisperer panels); selected outcome chip emerald → indigo
+  (it marks a manager selection, not a success state).
+- **Coach assignments** → eyebrow "Coaching"; item count in header
+  actions; quick-assign inputs normalised to `bg-neutral-900`; "Assign to
+  rep" is now a canonical indigo primary.
+- **CRM** → eyebrow "CRM" / title "Linked records"; "Open CRM panel"
+  moved into header actions; zinc chips normalised to neutral.
+
+### Noisy colour cleanup
+
+- "Practice this now →" white/black button → canonical `bg-indigo-600`.
+- Transcript Rep speaker label emerald → indigo (identity, not status).
+- CRM drawer: white "Link" button → indigo; "Create contact" action
+  emerald → indigo; colourless borders/dividers → neutral-800.
+- Coach drawer: solid `bg-red-600` "Remove" → calm bordered
+  `border-red-500/30 text-red-300 hover:bg-red-500/10` (red kept, as
+  destructive is a status role); borderless cards → neutral-800.
+- Both drawers gained `shadow-2xl shadow-black/50` panel depth.
+- Fixed a latent `border-top` typo class (→ `border-t`) in the CRM drawer.
+
+### Not changed (verified fine)
+
+All handlers, deep links (`?panel=crm`, `a`/`c` shortcuts), drawer
+open/close state, pin create/delete, moment outcome marking, quick-assign,
+mark-reviewed, and CRM link/unlink flows untouched. Green/amber/red remain
+status-only (score bands, urgency chips, Reviewed ✓, transcript
+availability). `PinButton.tsx`, `PinList.tsx`, `score-box.tsx` in the
+route folder are orphaned (never imported) — left for a dead-code tidy.
+
+Live-proofed as Dana on the seeded "Daniel Cormier — Objection Coaching
+Call" (79/100): route renders, drawers open, no console errors.
+
+**Day 198 recommendation:** the shared `ui/button.tsx` primitive +
+semantic-token pass (§26's deferred option — Day 197 again hand-copied
+the indigo recipe several times), or delete the three orphaned
+`calls/[id]` helper components, or extend the pass to the Review Queue
+tab surfaces inside /coaching.
+
+---
+
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
 Day 179 — layout consistency + trust pass 2. Day 180 — coaching Overview diet.
 Day 181 — coaching Overview final cleanup. Day 182 — CRM + Upload consistency
@@ -1383,4 +1467,6 @@ Companion validator: `scripts/validate-premium-ux-day-194.sh`.
 Day 195 — global Command Centre shell upgrade (above). Companion validator:
 `scripts/validate-premium-ux-day-195.sh`. Day 196 — coaching Command Centre
 visual pass (above). Companion validator:
-`scripts/validate-premium-ux-day-196.sh`.*
+`scripts/validate-premium-ux-day-196.sh`. Day 197 — call review workspace
+visual pass (above). Companion validator:
+`scripts/validate-premium-ux-day-197.sh`.*

@@ -14,6 +14,7 @@ import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
 import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
+import { SectionCard } from "@/components/ui";
 
 import {
   listPins,
@@ -1363,7 +1364,7 @@ export default function CallPage() {
 
   return (
     <AuthGate>
-      <main className="px-6 py-6 space-y-6">
+      <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6">
         <div className="flex items-start gap-3 flex-wrap">
           <h1 className="text-xl font-semibold break-words flex items-center gap-3">
             {loadingCall ? (
@@ -1411,7 +1412,7 @@ export default function CallPage() {
         </div>
 
         {/* Section nav — sticky */}
-        <div className="sticky top-0 z-10 -mx-6 px-6 bg-neutral-950/95 backdrop-blur-sm border-b border-neutral-800">
+        <div className="sticky top-0 z-10 -mx-6 px-6 lg:-mx-8 lg:px-8 bg-[#060609]/90 backdrop-blur-md border-b border-neutral-800/80">
           <div className="flex items-center gap-1 overflow-x-auto py-2">
             {[
               { id: "summary", label: "Summary" },
@@ -1426,7 +1427,7 @@ export default function CallPage() {
                 onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" })}
                 className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
                   activeSection === item.id
-                    ? "bg-neutral-100 text-neutral-900"
+                    ? "bg-indigo-500/20 text-indigo-200"
                     : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
                 }`}
               >
@@ -1444,7 +1445,10 @@ export default function CallPage() {
 
         {/* Processing status banner */}
         {callMeta && callMeta.status !== 'scored' && (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm flex items-center gap-2">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-3 text-sm flex items-center gap-2">
+            {callMeta.status !== "failed" && (
+              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-400 animate-pulse" />
+            )}
             {callMeta.status === "queued" && (
               <span>Transcribing call…</span>
             )}
@@ -1473,10 +1477,20 @@ export default function CallPage() {
 
 
         {/* Summary header band (score + duration + summary + flags) */}
-        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 sm:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           {/* Left: score + status + duration */}
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-neutral-600 text-lg font-semibold tabular-nums">
+            <div
+              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold tabular-nums ${
+                overall == null
+                  ? "border-neutral-700 text-neutral-400"
+                  : overall >= 80
+                    ? "border-emerald-500/50 text-emerald-300"
+                    : overall >= 60
+                      ? "border-amber-500/50 text-amber-300"
+                      : "border-red-500/50 text-red-300"
+              }`}
+            >
               {overall != null ? overall : "—"}
             </div>
             <div className="space-y-1 text-sm">
@@ -1586,7 +1600,7 @@ export default function CallPage() {
         </section>
 
         {/* Review Bot */}
-        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review Bot</div>
@@ -1659,7 +1673,7 @@ export default function CallPage() {
         </section>
 
         {postAction ? (
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+          <section className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
               Post-action summary
             </div>
@@ -1690,7 +1704,7 @@ export default function CallPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               {momentumNext && momentumNext.focus && (
                 <button
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
                   onClick={() => {
                     const params = new URLSearchParams();
                     params.set("focus", momentumNext.focus);
@@ -1722,7 +1736,7 @@ export default function CallPage() {
               if (!sec) return null;
               const s = typeof sec.score === 'number' ? Math.round(Number(sec.score)) : null;
               return (
-                <div key={k} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div key={k} className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium capitalize">{k}</h3>
                     {s != null ? (
@@ -1738,7 +1752,7 @@ export default function CallPage() {
           </section>
         ) : null}
 
-        <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 sm:px-5">
+        <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Transcript</div>
@@ -1819,7 +1833,7 @@ export default function CallPage() {
                       <div className="flex-1">
                         <span
                           className={`font-semibold mr-2 ${speaker === "Rep"
-                            ? "text-emerald-300"
+                            ? "text-indigo-300"
                             : "text-blue-300"
                             }`}
                         >
@@ -1852,98 +1866,109 @@ export default function CallPage() {
         </section>
 
         {/* Player */}
-        <section id="player" className="space-y-3">
-          <h2 className="text-lg font-medium">Player</h2>
-          {loadingCall ? (
-            <p className="text-sm opacity-70">Loading call…</p>
-          ) : audioUrl ? (
-            <>
-              <audio ref={audioRef} src={audioUrl} controls className="w-full" />
-              {duration > 0 && (
-                <div className="relative h-2 bg-neutral-700 rounded w-full">
-                  {pins.map((p) => {
-                    const pct = Math.max(0, Math.min(100, (p.t / duration) * 100));
-                    return (
-                      <button
-                        key={p.id}
-                        title={`${fmt(p.t)}${p.note ? ' • ' + p.note : ''}`}
-                        className="absolute top-0 h-2 w-[2px] bg-white/90 hover:h-3 hover:-top-0.5 transition"
-                        style={{ left: `${pct}%` }}
-                        onClick={() => seek(p.t)}
-                        aria-label={`Jump to ${fmt(p.t)}`}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <div className="text-sm opacity-70">Current: {fmt(t)}</div>
-                <div className="ml-auto flex items-center gap-2">
-                  <input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Optional note…"
-                    className="border rounded px-2 py-1 text-sm bg-transparent"
-                    style={{ minWidth: 220 }}
-                  />
-                  <button
-                    onClick={onCreatePin}
-                    disabled={creating}
-                    className="border rounded px-3 py-1 text-sm"
-                  >
-                    {creating ? 'Pinning…' : `Pin at ${fmt(t)}`}
-                  </button>
+        <section id="player">
+          <SectionCard eyebrow="Playback" title="Call recording" padded>
+            {loadingCall ? (
+              <p className="text-sm text-neutral-400">Loading call…</p>
+            ) : audioUrl ? (
+              <div className="space-y-3">
+                <audio ref={audioRef} src={audioUrl} controls className="w-full" />
+                {duration > 0 && (
+                  <div className="relative h-2 bg-neutral-800 rounded w-full">
+                    {pins.map((p) => {
+                      const pct = Math.max(0, Math.min(100, (p.t / duration) * 100));
+                      return (
+                        <button
+                          key={p.id}
+                          title={`${fmt(p.t)}${p.note ? ' • ' + p.note : ''}`}
+                          className="absolute top-0 h-2 w-[2px] bg-indigo-400 hover:h-3 hover:-top-0.5 transition"
+                          style={{ left: `${pct}%` }}
+                          onClick={() => seek(p.t)}
+                          aria-label={`Jump to ${fmt(p.t)}`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm text-neutral-400">Current: <span className="text-neutral-200 tabular-nums">{fmt(t)}</span></div>
+                  <div className="ml-auto flex items-center gap-2">
+                    <input
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Optional note…"
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-neutral-500"
+                      style={{ minWidth: 220 }}
+                    />
+                    <button
+                      onClick={onCreatePin}
+                      disabled={creating}
+                      className="rounded-md bg-indigo-600/20 px-3 py-1 text-sm font-medium text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-50"
+                    >
+                      {creating ? 'Pinning…' : `Pin at ${fmt(t)}`}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </>
-          ) : (
-            <p className="text-sm text-red-600">No audio available for this call.</p>
-          )}
+            ) : (
+              <p className="text-sm text-neutral-400">No audio available for this call.</p>
+            )}
+          </SectionCard>
         </section>
 
         {/* Pins */}
-        <section id="pins" className="space-y-2">
-          <h2 className="text-lg font-medium">Pins</h2>
-          {pinsErr ? <p className="text-sm text-red-400">{pinsErr}</p> : null}
-          {loadingPins ? (
-            <p className="text-sm opacity-70">Loading pins…</p>
-          ) : pins.length === 0 ? (
-            <p className="text-sm opacity-70">No pinned coaching notes yet.</p>
-          ) : (
-            <ul className="divide-y border rounded">
-              {pins.map((p) => (
-                <li key={p.id} className="flex items-center justify-between px-3 py-2">
-                  <div className="text-sm">
+        <section id="pins">
+          <SectionCard
+            eyebrow="Moments"
+            title="Pins"
+            actions={pins.length > 0 ? <span className="text-xs text-neutral-400">{pins.length} pin{pins.length === 1 ? "" : "s"}</span> : undefined}
+            padded
+          >
+            {pinsErr ? <p className="text-sm text-red-400 mb-2">{pinsErr}</p> : null}
+            {loadingPins ? (
+              <p className="text-sm text-neutral-400">Loading pins…</p>
+            ) : pins.length === 0 ? (
+              <p className="text-sm text-neutral-400">No pinned coaching notes yet.</p>
+            ) : (
+              <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+                {pins.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between px-3 py-2">
+                    <div className="text-sm">
+                      <button
+                        onClick={() => seek(p.t)}
+                        className="text-indigo-300 underline underline-offset-2 hover:text-indigo-200 tabular-nums"
+                        title="Jump"
+                      >
+                        {fmt(p.t)}
+                      </button>
+                      {p.note && <span className="ml-2 text-neutral-400">— {p.note}</span>}
+                    </div>
                     <button
-                      onClick={() => seek(p.t)}
-                      className="underline underline-offset-2"
-                      title="Jump"
+                      onClick={() => onDelete(p.id)}
+                      className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
                     >
-                      {fmt(p.t)}
+                      Delete
                     </button>
-                    {p.note && <span className="ml-2 opacity-70">— {p.note}</span>}
-                  </div>
-                  <button
-                    onClick={() => onDelete(p.id)}
-                    className="border rounded px-2 py-1 text-xs"
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
         </section>
 
         {/* Whisperer Moments (Tier 2B Day 115) — live coaching moments linked to this call */}
-        <section id="whisperer-moments" className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium">Whisperer Moments</h2>
-            {whispererMoments.length > 0 && (
-              <span className="text-xs text-neutral-400">{whispererMoments.length} moment{whispererMoments.length === 1 ? "" : "s"}</span>
-            )}
-          </div>
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+        <section id="whisperer-moments">
+          <SectionCard
+            variant="ai"
+            eyebrow="Live coaching"
+            title="Whisperer Moments"
+            actions={
+              whispererMoments.length > 0 ? (
+                <span className="text-xs text-neutral-400">{whispererMoments.length} moment{whispererMoments.length === 1 ? "" : "s"}</span>
+              ) : undefined
+            }
+            padded
+          >
             {whispererMomentsError ? (
               <div className="text-sm text-red-400">Could not load Whisperer moments.</div>
             ) : whispererMoments.length === 0 ? (
@@ -2000,7 +2025,7 @@ export default function CallPage() {
                             type="button"
                             onClick={() => markMomentOutcome(m.triggerId, b.value)}
                             disabled={momentOutcomeBusyId === m.triggerId}
-                            className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${selected ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800"}`}
+                            className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${selected ? "border-indigo-400/40 bg-indigo-500/10 text-indigo-200" : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800"}`}
                           >
                             {b.label}{selected ? " ✓" : ""}
                           </button>
@@ -2011,20 +2036,21 @@ export default function CallPage() {
                 ))}
               </div>
             )}
-          </div>
+          </SectionCard>
         </section>
 
         {/* Coach assignments (main panel) */}
-        <section id="coach" className="space-y-3">
-          <h2 className="text-lg font-medium">Coach assignments</h2>
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium">Assignments</div>
-              <div className="text-xs text-neutral-400">
+        <section id="coach">
+          <SectionCard
+            eyebrow="Coaching"
+            title="Coach assignments"
+            actions={
+              <span className="text-xs text-neutral-400">
                 {assignmentsLoading ? "Loading…" : `${assignments.length} item${assignments.length === 1 ? "" : "s"}`}
-              </div>
-            </div>
-
+              </span>
+            }
+            padded
+          >
             {(!Array.isArray(assignments) || assignments.filter(Boolean).length === 0) && !assignmentsLoading && (
               <div className="text-sm text-neutral-500">No assignments yet.</div>
             )}
@@ -2069,7 +2095,7 @@ export default function CallPage() {
                     value={quickDrill}
                     onChange={(e) => setQuickDrill(e.target.value)}
                     placeholder="e.g. Objection: Budget"
-                    className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
+                    className="sm:col-span-2 w-full bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm outline-none focus:border-neutral-500"
                   />
                 </div>
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
@@ -2077,7 +2103,7 @@ export default function CallPage() {
                   <select
                     value={assignee}
                     onChange={(e) => setAssignee(e.target.value)}
-                    className="sm:col-span-2 w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
+                    className="sm:col-span-2 w-full bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm outline-none focus:border-neutral-500"
                   >
                     <option value="">{usersLoading ? 'Loading users…' : 'Select a user'}</option>
                     {users.map(u => (
@@ -2115,24 +2141,32 @@ export default function CallPage() {
                       }
                     }}
                     disabled={assignBusy}
-                    className="text-xs px-3 py-1.5 rounded border border-neutral-700"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
                   >
                     {assignBusy ? "Assigning…" : "Assign to rep"}
                   </button>
                 </div>
               </>
             )}
-          </div>
+          </SectionCard>
         </section>
 
         {/* CRM summary chips (quick glance) */}
-        <section id="crm" className="space-y-2">
-          <h2 className="text-lg font-medium">CRM</h2>
-
+        <section id="crm">
+          <SectionCard
+            eyebrow="CRM"
+            title="Linked records"
+            actions={
+              <button onClick={openCrm} className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800">
+                Open CRM panel
+              </button>
+            }
+            padded
+          >
           <div className="flex flex-wrap gap-2 text-sm">
             {/* Contact */}
             {contactChip ? (
-              <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
                 <button
                   type="button"
                   onClick={openContact}
@@ -2155,12 +2189,12 @@ export default function CallPage() {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Contact: none</span>
+              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Contact: none</span>
             )}
 
             {/* Account */}
             {accountChip ? (
-              <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
                 <button
                   type="button"
                   onClick={openAccount}
@@ -2183,20 +2217,17 @@ export default function CallPage() {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Account: none</span>
+              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Account: none</span>
             )}
 
             {/* Opportunity (placeholder only for now) */}
             {opportunityChip ? (
-              <span className="px-2 py-0.5 rounded-full border bg-white/5 text-zinc-200">Opportunity: {opportunityChip}</span>
+              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-200">Opportunity: {opportunityChip}</span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Opportunity: none</span>
+              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Opportunity: none</span>
             )}
           </div>
-
-          <button onClick={openCrm} className="rounded-xl border px-3 py-1.5 text-sm">
-            Open CRM panel
-          </button>
+          </SectionCard>
         </section>
 
         {coachOpen && assignOpen && (
@@ -2227,7 +2258,7 @@ export default function CallPage() {
         />
         {/* Panel */}
         <div
-          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 p-5 transform transition-transform ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
+          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">CRM Link</h2>
@@ -2238,12 +2269,12 @@ export default function CallPage() {
 
           <div className="mt-4 space-y-3 text-sm">
             {/* Current links */}
-            <div className="rounded-xl border p-3">
+            <div className="rounded-xl border border-neutral-800 p-3">
               <div className="opacity-70 text-xs mb-2">Current links</div>
 
               <div className="flex flex-wrap gap-2">
                 {contactChip ? (
-                  <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
                     <button
                       type="button"
                       onClick={openContact}
@@ -2266,11 +2297,11 @@ export default function CallPage() {
                     </button>
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Contact: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Contact: none</span>
                 )}
 
                 {accountChip ? (
-                  <span className="px-2 py-0.5 rounded-full border inline-flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
                     <button
                       type="button"
                       onClick={openAccount}
@@ -2293,18 +2324,18 @@ export default function CallPage() {
                     </button>
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Account: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Account: none</span>
                 )}
 
                 {opportunityChip ? (
-                  <span className="px-2 py-0.5 rounded-full border bg-white/5 text-zinc-200">Opportunity: {opportunityChip}</span>
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-200">Opportunity: {opportunityChip}</span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border bg-zinc-700/30 text-zinc-400">Opportunity: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Opportunity: none</span>
                 )}
               </div>
             </div>
 
-            <div className="border-top border-neutral-800 pt-3 mt-2" />
+            <div className="border-t border-neutral-800 pt-3 mt-2" />
 
             {/* Link by email */}
             <div className="space-y-2">
@@ -2325,7 +2356,7 @@ export default function CallPage() {
                 <button
                   type="submit"
                   disabled={linkLoading || !linkEmail.includes("@")}
-                  className="rounded-xl px-3 py-2 bg-white text-black disabled:opacity-50"
+                  className="rounded-xl px-3 py-2 bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors disabled:opacity-50"
                 >
                   {linkLoading ? "Linking…" : "Link"}
                 </button>
@@ -2349,7 +2380,7 @@ export default function CallPage() {
               {searchErr && <div className="text-xs text-red-400">{searchErr}</div>}
               {q && (
                 <div
-                  className="rounded-xl border divide-y max-h-56 overflow-auto"
+                  className="rounded-xl border border-neutral-800 divide-y divide-neutral-800 max-h-56 overflow-auto"
                   role="listbox"
                   aria-label="Contacts"
                 >
@@ -2390,7 +2421,7 @@ export default function CallPage() {
                             }
                           }}
                           disabled={busy}
-                          className="w-full text-left p-3 hover:bg-neutral-900 border-t border-neutral-800 text-emerald-400"
+                          className="w-full text-left p-3 hover:bg-neutral-900 border-t border-neutral-800 text-indigo-300"
                         >
                           Create contact: {q}
                         </button>
@@ -2442,7 +2473,7 @@ export default function CallPage() {
                 onChange={(e) => debouncedSearchAccounts(e.target.value)}
               />
               {accountQ && (
-                <div className="rounded-xl border divide-y max-h-56 overflow-auto">
+                <div className="rounded-xl border border-neutral-800 divide-y divide-neutral-800 max-h-56 overflow-auto">
                   {accountResults.length === 0 ? (
                     <div className="p-3 text-xs opacity-70">No account results</div>
                   ) : (
@@ -2496,7 +2527,7 @@ export default function CallPage() {
         />
         {/* Panel */}
         <div
-          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 p-5 transform transition-transform ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
+          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">Coach</h2>
@@ -2515,7 +2546,7 @@ export default function CallPage() {
               return (
                 <span
                   key={id}
-                  className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs opacity-80"
+                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs opacity-80"
                 >
                   <span>{drillLabel}</span>
                   <span className="opacity-60">· {createdLabel}</span>
@@ -2576,7 +2607,7 @@ export default function CallPage() {
             )}
 
             {/* Assignments list (remove) */}
-            <div className="rounded-xl border p-3 space-y-2">
+            <div className="rounded-xl border border-neutral-800 p-3 space-y-2">
               <h3 className="font-medium">Assignments</h3>
               {assignments.length === 0 ? (
                 <div className="text-sm opacity-70">No assignments yet.</div>
@@ -2604,7 +2635,7 @@ export default function CallPage() {
                                 toast(e?.message || "Failed to remove.");
                               }
                             }}
-                            className="px-2 py-1 rounded bg-red-600 hover:bg-red-500"
+                            className="px-2 py-1 rounded border border-red-500/30 text-xs text-red-300 hover:bg-red-500/10 transition-colors"
                           >
                             Remove
                           </button>
@@ -2619,7 +2650,7 @@ export default function CallPage() {
           </div>
 
           {/* Coaching notes */}
-          <div className="rounded-xl border p-3">
+          <div className="rounded-xl border border-neutral-800 p-3">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-medium">Notes</h3>
               {notesSaving && <span className="text-xs opacity-70">Saving…</span>}
