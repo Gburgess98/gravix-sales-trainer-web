@@ -3,6 +3,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type SparringPersonaPreset = {
   id: string;
@@ -190,7 +191,7 @@ export default function SparringStartButton({
                         type="button"
                         onClick={() => setMode("standard")}
                         className={`rounded-full border px-3 py-1 text-xs ${mode === "standard"
-                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200"
                           : "border-neutral-700 bg-neutral-900 text-neutral-300"
                           }`}
                       >
@@ -201,7 +202,7 @@ export default function SparringStartButton({
                         type="button"
                         onClick={() => setMode("time_trial")}
                         className={`rounded-full border px-3 py-1 text-xs ${mode === "time_trial"
-                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200"
                           : "border-neutral-700 bg-neutral-900 text-neutral-300"
                           }`}
                       >
@@ -212,7 +213,7 @@ export default function SparringStartButton({
                         type="button"
                         onClick={() => setMode("close_2m")}
                         className={`rounded-full border px-3 py-1 text-xs ${mode === "close_2m"
-                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200"
                           : "border-neutral-700 bg-neutral-900 text-neutral-300"
                           }`}
                       >
@@ -235,7 +236,7 @@ export default function SparringStartButton({
                             }
                           }}
                           className={`flex w-full flex-col items-start rounded-2xl border px-4 py-3 text-left text-xs transition ${selected
-                            ? "border-emerald-500/80 bg-emerald-500/5"
+                            ? "border-indigo-500/60 bg-indigo-500/5"
                             : "border-neutral-800 bg-neutral-950 hover:border-neutral-600"
                             }`}
                         >
@@ -294,7 +295,7 @@ export default function SparringStartButton({
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
                     placeholder="e.g. VP of Sales, CFO, Founder"
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-500"
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -306,7 +307,7 @@ export default function SparringStartButton({
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
                     placeholder="e.g. SaaS, Real estate, Automotive"
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-500"
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -317,7 +318,7 @@ export default function SparringStartButton({
                   <select
                     value={companySize}
                     onChange={(e) => setCompanySize(e.target.value)}
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-500"
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-indigo-500"
                   >
                     <option value="">Random</option>
                     <option value="1-10">1–10 employees</option>
@@ -366,21 +367,10 @@ export default function SparringStartButton({
               {err && <p className="text-xs text-red-400">{err}</p>}
 
               <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="rounded border border-neutral-600 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={beginSession}
-                  disabled={busy}
-                  className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-black hover:bg-emerald-500 disabled:opacity-50"
-                >
+                <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+                <Button variant="primary" onClick={beginSession} disabled={busy}>
                   {busy ? "Starting…" : "Begin"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

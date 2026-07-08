@@ -7,7 +7,9 @@ import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import SparringStartButton from "@/components/SparringStartButton";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import { ScorePill } from "@/components/ui/status-badge";
+import { SectionCard, EmptyState, Button, buttonClasses } from "@/components/ui";
 import { formatCallDisplayTitle } from "@/lib/callDisplay";
 
 // Shape returned by /api/proxy/v1/calls/paged
@@ -674,44 +676,21 @@ export default function CallLibraryPage() {
             placeholder="Search past conversations and training sessions…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-56 md:w-80 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+            className="w-56 md:w-80 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/40"
           />
         }
       />
 
-      {/* Tabs */}
-      <div className="border-b border-neutral-800 flex gap-6 text-sm">
-        <button
-          type="button"
-          onClick={() => setTab("live")}
-          className={`pb-2 border-b-2 -mb-px transition-colors ${tab === "live"
-            ? "border-neutral-100 text-neutral-100"
-            : "border-transparent text-neutral-400 hover:text-neutral-200"
-            }`}
-        >
-          Live Calls
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("sparring")}
-          className={`pb-2 border-b-2 -mb-px transition-colors ${tab === "sparring"
-            ? "border-neutral-100 text-neutral-100"
-            : "border-transparent text-neutral-400 hover:text-neutral-200"
-            }`}
-        >
-          AI Sparring
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("upload")}
-          className={`pb-2 border-b-2 -mb-px transition-colors ${tab === "upload"
-            ? "border-neutral-100 text-neutral-100"
-            : "border-transparent text-neutral-400 hover:text-neutral-200"
-            }`}
-        >
-          Call Uploads
-        </button>
-      </div>
+      {/* Tabs — Day 199: shared WorkspaceTabs (indigo active) to match /coaching */}
+      <WorkspaceTabs<Tab>
+        tabs={[
+          { id: "live", label: "Live Calls" },
+          { id: "sparring", label: "AI Sparring" },
+          { id: "upload", label: "Call Uploads" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
 
       {/* Status / score + rep filters for live calls */}
       {tab === "live" && (
@@ -736,7 +715,7 @@ export default function CallLibraryPage() {
                   }}
                   className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${
                     active
-                      ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                      ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
                       : isDisabled
                       ? "border-neutral-700 bg-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
                       : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
@@ -771,7 +750,7 @@ export default function CallLibraryPage() {
                   type="button"
                   onClick={() => setStatusFilter(opt.id as StatusFilter)}
                   className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${statusFilter === opt.id
-                    ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                    ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
                     : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
                     }`}
                 >
@@ -894,20 +873,16 @@ export default function CallLibraryPage() {
 
       {/* LIVE CALLS */}
       {tab === "live" && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-            <div className="flex items-center gap-2 text-sm text-neutral-400">
-              <span>Latest analysed calls</span>
-              {assignmentsLoading && (
-                <span className="text-[11px] text-neutral-500">Checking assignments…</span>
-              )}
-            </div>
+        <SectionCard
+          title="Latest analysed calls"
+          subtitle={assignmentsLoading ? "Checking assignments…" : undefined}
+          actions={
             <div className="flex items-center gap-2 text-xs text-neutral-400">
               <span>Sort by</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortBy)}
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
               >
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
@@ -917,7 +892,8 @@ export default function CallLibraryPage() {
                 <option value="durationLow">Shortest duration</option>
               </select>
             </div>
-          </div>
+          }
+        >
 
           {debouncedSearch && !loading && !error && (
             <div className="px-4 pt-2 text-xs text-neutral-500">
@@ -940,8 +916,8 @@ export default function CallLibraryPage() {
                   key={opt.id}
                   type="button"
                   onClick={() => setScoreFilter(opt.id as ScoreFilter)}
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 ${active
-                    ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 transition ${active
+                    ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
                     : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
                     }`}
                 >
@@ -962,13 +938,24 @@ export default function CallLibraryPage() {
           )}
 
           {!loading && !error && sortedCalls.length === 0 && (
-            <div className="px-4 py-6 text-sm text-neutral-500">
-              {calls.length === 0
-                ? "No calls found yet."
-                : debouncedSearch
-                  ? "No calls match this search yet."
-                  : "No calls match this filter."}
-            </div>
+            calls.length === 0 ? (
+              <EmptyState
+                className="py-10"
+                message="No calls in your library yet."
+                sub="Upload a recording or run a live call to start building your training library."
+                action={{ label: "Upload a call", href: "/upload" }}
+              />
+            ) : (
+              <EmptyState
+                className="py-10"
+                message={
+                  debouncedSearch
+                    ? "No calls match this search yet."
+                    : "No calls match this filter."
+                }
+                sub="Try widening the score range or resetting the filters above."
+              />
+            )
           )}
 
           {!loading && !error && sortedCalls.length > 0 && (
@@ -989,7 +976,7 @@ export default function CallLibraryPage() {
                   return (
                     <div
                       key={c.id}
-                      className="px-4 py-3 flex items-center justify-between gap-4"
+                      className="px-4 py-3 flex items-center justify-between gap-4 transition-colors hover:bg-neutral-900/40"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1051,7 +1038,7 @@ export default function CallLibraryPage() {
                         <ScorePill score={score} />
                         <Link
                           href={`/calls/${c.id}`}
-                          className="text-xs text-neutral-200 underline hover:text-white whitespace-nowrap"
+                          className={buttonClasses("secondary", "sm", "whitespace-nowrap")}
                         >
                           Open
                         </Link>
@@ -1066,85 +1053,81 @@ export default function CallLibraryPage() {
                 {moreError && (
                   <span className="text-xs text-red-300">{moreError}</span>
                 )}
-                <button
-                  type="button"
+                <Button
                   onClick={loadMore}
                   disabled={!cursor || loadingMore}
-                  className="ml-auto text-xs rounded border border-neutral-700 px-3 py-1.5 disabled:opacity-40"
+                  className="ml-auto"
                 >
                   {loadingMore
                     ? "Loading…"
                     : cursor
                       ? "Load older calls"
                       : "No more calls"}
-                </button>
+                </Button>
               </div>
             </>
           )}
-        </div>
+        </SectionCard>
       )}
 
       {/* SPARRING TAB (LIVE WIRED DATA) */}
       {tab === "sparring" && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950">
-          {/* Header: persona + difficulty + start button */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 gap-4">
-            <div className="flex flex-col gap-1">
-              <div className="text-sm text-neutral-400">
-                Recent sparring sessions
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                <span className="opacity-70">Preset:</span>
-                <select
-                  value={sparPersona}
-                  onChange={(e) => setSparPersona(e.target.value)}
-                  className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none"
-                >
-                  {sparPersonas.length > 0 ? (
-                    sparPersonas.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      {/* Fallback options if API fails or no config yet */}
-                      <option value="price_sensitive">Price-sensitive buyer</option>
-                      <option value="stalling">Stalling / “think about it”</option>
-                      <option value="gatekeeper">Gatekeeper / screening</option>
-                    </>
-                  )}
-                </select>
-
-                <span className="opacity-70 ml-2">Difficulty:</span>
-                <select
-                  value={sparDifficulty}
-                  onChange={(e) => setSparDifficulty(e.target.value)}
-                  className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="normal">Normal</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
-
-              {sparPersonasLoading && (
-                <span className="text-[10px] text-neutral-500">
-                  Loading personas…
-                </span>
-              )}
-              {sparPersonasError && !sparPersonasLoading && (
-                <span className="text-[10px] text-red-400">
-                  {sparPersonasError}
-                </span>
-              )}
-            </div>
-
-            {/* One-click start sparring with chosen persona/difficulty */}
+        <SectionCard
+          title="Recent sparring sessions"
+          subtitle="Practise live objection handling against AI opponents."
+          actions={
+            /* One-click start sparring with chosen persona/difficulty */
             <SparringStartButton
               personaId={sparPersona}
               difficulty={sparDifficulty}
             />
+          }
+        >
+          {/* Persona + difficulty presets for the next round */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-5 py-3 text-[11px] text-neutral-400">
+            <span className="opacity-70">Preset:</span>
+            <select
+              value={sparPersona}
+              onChange={(e) => setSparPersona(e.target.value)}
+              className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"
+            >
+              {sparPersonas.length > 0 ? (
+                sparPersonas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))
+              ) : (
+                <>
+                  {/* Fallback options if API fails or no config yet */}
+                  <option value="price_sensitive">Price-sensitive buyer</option>
+                  <option value="stalling">Stalling / “think about it”</option>
+                  <option value="gatekeeper">Gatekeeper / screening</option>
+                </>
+              )}
+            </select>
+
+            <span className="opacity-70 ml-2">Difficulty:</span>
+            <select
+              value={sparDifficulty}
+              onChange={(e) => setSparDifficulty(e.target.value)}
+              className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"
+            >
+              <option value="easy">Easy</option>
+              <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
+            </select>
+
+            {sparPersonasLoading && (
+              <span className="text-[10px] text-neutral-500">
+                Loading personas…
+              </span>
+            )}
+            {sparPersonasError && !sparPersonasLoading && (
+              <span className="text-[10px] text-red-400">
+                {sparPersonasError}
+              </span>
+            )}
           </div>
 
           {/* Body: list / loading / errors */}
@@ -1159,9 +1142,11 @@ export default function CallLibraryPage() {
           )}
 
           {!loadingSparring && !sparringError && sparring.length === 0 && (
-            <div className="px-4 py-6 text-sm text-neutral-500">
-              No sparring sessions found.
-            </div>
+            <EmptyState
+              className="py-10"
+              message="No sparring sessions yet."
+              sub="Pick a persona and difficulty above, then start your first round."
+            />
           )}
 
           {!loadingSparring && !sparringError && sparring.length > 0 && (
@@ -1185,7 +1170,7 @@ export default function CallLibraryPage() {
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="text-sm text-neutral-100 truncate">
+                          <div className="text-sm font-medium text-neutral-100 truncate">
                             Sparring session
                           </div>
                         </div>
@@ -1225,16 +1210,23 @@ export default function CallLibraryPage() {
               })}
             </div>
           )}
-        </div>
+        </SectionCard>
       )}
 
       {/* UPLOADS TAB */}
       {tab === "upload" && (
-        <div className="rounded-lg border border-neutral-800 p-4 text-sm text-neutral-300">
+        <SectionCard
+          title="Uploaded calls"
+          subtitle="Recordings added through the upload workflow."
+          padded
+        >
           {uploads.length === 0 && (
-            <div className="py-4 text-neutral-500">
-              No uploaded calls found.
-            </div>
+            <EmptyState
+              className="py-8"
+              message="No uploaded calls yet."
+              sub="Upload a recording to have it analysed and added to your library."
+              action={{ label: "Upload a call", href: "/upload" }}
+            />
           )}
 
           {uploads.length > 0 &&
@@ -1242,11 +1234,11 @@ export default function CallLibraryPage() {
               <Link
                 key={c.id}
                 href={`/calls/${c.id}`}
-                className="block rounded-lg border border-neutral-700 hover:bg-neutral-800 p-4 mb-3 transition"
+                className="block rounded-lg border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-900/40 p-4 mb-3 transition"
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <div className="font-medium text-neutral-100">
+                    <div className="text-sm font-medium text-neutral-100">
                       {c.filename || `Upload ${c.id.slice(0, 8)}…`}
                     </div>
                     <div className="text-xs text-neutral-500">
@@ -1255,23 +1247,21 @@ export default function CallLibraryPage() {
                   </div>
 
                   <div className="flex items-center gap-2 text-xs">
-                    <button
-                      type="button"
+                    <Button
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         window.location.href = `/calls/${c.id}?crm=1`;
                       }}
-                      className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-200 hover:bg-neutral-800"
                     >
                       Open + link CRM
-                    </button>
+                    </Button>
                     <span className="text-neutral-400">Open →</span>
                   </div>
                 </div>
               </Link>
             ))}
-        </div>
+        </SectionCard>
       )}
     </PageContainer>
   );

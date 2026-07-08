@@ -1514,6 +1514,73 @@ or tidy the dead `lib/api` exports (`setScore` + Day 193's rep exports).
 
 ---
 
+## §29 — Call Library / Sparring visual pass (Day 199)
+
+**Scope:** `/call-library` (all three tabs — Live Calls, AI Sparring,
+Call Uploads) plus its `SparringStartButton` opponent modal (only
+imported by this route). WEB-only, visual-only; no behaviour change.
+
+### What was flat / noisy
+
+- Hand-rolled tab bar with a **white** active underline — every other
+  workspace (coaching, CRM detail) had moved to `WorkspaceTabs` with the
+  indigo active state on Day 195.
+- Filter chips (View, status, score band) inverted to **solid white**
+  when active — the loudest element on the page and off-system.
+- All three tab bodies sat in flat `rounded-lg border` boxes with no
+  elevation — pre-Day-195 card language.
+- Row "Open" links were underlined text; the load-more and
+  "Open + link CRM" buttons were one-off hand-rolled recipes.
+- Empty states were bare left-aligned grey sentences with no next step.
+- The sparring opponent modal carried the old **emerald** arcade accent
+  on mode chips, preset selection, input focus rings, and the Begin CTA.
+
+### Changes
+
+- Tabs → shared `WorkspaceTabs<Tab>` (indigo active underline, same
+  rhythm as /coaching). Deep-link `?tab=` handling untouched (same
+  `setTab` state, same mount-time query read).
+- Active filter chips: white inversion → indigo tonal
+  (`border-indigo-500/40 bg-indigo-500/15 text-indigo-200`); disabled
+  and idle states unchanged.
+- All three tab bodies → `SectionCard` (elevation, rounded-xl, header
+  divider). Live tab: title "Latest analysed calls", sort select as
+  header action, "Checking assignments…" as conditional subtitle.
+  Sparring tab: title + subtitle + `SparringStartButton` as header
+  action, persona/difficulty presets in a calm config row below the
+  header. Uploads tab: `padded` SectionCard with title/subtitle.
+- Empty states → shared `EmptyState` with a sub-line and, where it
+  helps, an "Upload a call" → `/upload` action (live-empty + uploads).
+- Day 198 Button adoption: row "Open" links → `buttonClasses('secondary')`,
+  load-more → `Button` (ghost), uploads "Open + link CRM" → `Button`
+  (ghost, handler verbatim), modal Cancel/Begin → `Button` ghost/primary.
+- Search input + sort/preset selects: neutral focus ring → indigo.
+- `SparringStartButton` modal: emerald mode chips / preset borders /
+  focus rings → indigo; emerald Begin → primary Button. Emerald now
+  appears on this route only as the scored/completed status dot.
+- Live call rows gained a quiet `hover:bg-neutral-900/40`; upload cards
+  calmed to `border-neutral-800` with hover border/bg.
+
+### Behaviour preserved
+
+Tab state + `?tab=` deep link, search debounce, scope/visibility
+forcing, status/score/rep/tag filters, sort, cursor pagination
+(`loadMore` disabled expression verbatim), assignment badge enrichment,
+5s processing poll, sparring session/persona loads with their error
+strings, `SparringStartButton` session POST body and redirect — all
+untouched. Browser-proofed on the dev preview: all three tabs render,
+`?tab=sparring` selects the sparring tab (indigo active), modal opens
+with indigo Begin/ghost Cancel and zero emerald, empty/error states
+render inside the new cards (unauthenticated preview shows the expected
+`missing_user` error styling).
+
+**Day 200 recommendation:** CRM workspace Button/`WorkspaceTabs`
+adoption (`/crm/accounts`, `/crm/reps/[id]` still carry hand-copied
+recipes and white-active chips), or the semantic colour-token pass now
+that all demo-path surfaces sit on the shared system.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1550,4 +1617,6 @@ visual pass (above). Companion validator:
 visual pass (above). Companion validator:
 `scripts/validate-premium-ux-day-197.sh`. Day 198 — shared Button
 primitive + call-detail dead helper cleanup (above). Companion validator:
-`scripts/validate-premium-ux-day-198.sh`.*
+`scripts/validate-premium-ux-day-198.sh`. Day 199 — call library /
+sparring visual pass (above). Companion validator:
+`scripts/validate-premium-ux-day-199.sh`.*
