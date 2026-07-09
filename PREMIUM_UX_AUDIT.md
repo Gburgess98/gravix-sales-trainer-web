@@ -1647,6 +1647,99 @@ the colour-token pass with a validator-pin refresh.
 
 ---
 
+## §31 — Dashboard Command Centre pass (Day 201)
+
+**Scope:** `/dashboard` only — the Day 200 milestone's named highest-value
+holdout. WEB-only, visual/copy pass, strict behaviour preservation: all
+data fetches, calculations, handlers, hrefs, disabled states and
+conditional rendering untouched.
+
+### Audited (arcade/gamified areas found)
+
+- XP language throughout: "XP & Progression" panel, "Today's XP" stat,
+  "Total XP", "+N XP today", "No XP yet … unlock badges" empty state.
+- Gamer rank ladder (`RANK_NAMES`: Novice → Trainee → Prospect → Closer →
+  Performer → Elite → Legend) shown in the header chip and progression bar.
+- Mission language ("Today's Mission" strip, "Mission Centre").
+- Cyan off status duty: `diamond: text-cyan-300` tier colour, Expected
+  Impact `text-cyan-300`, mission time `text-cyan-400/80`, cyan chart
+  stroke `#22d3ee`, cyan `info` StatCard variant on Streak, two cyan
+  `recommendation` AiInsightCards.
+- Emerald off status duty: "Today's XP" success tint, mission impact
+  `text-emerald-400/80`, "+N XP today" `text-emerald-400/70`, "all clear"
+  success tint on zero open assignments.
+- Five hand-rolled `rounded-xl border` card shells (pre-SectionCard
+  template feel, px-4 py-3 headers, no elevation).
+- No fuchsia/purple/pink found (Day 194 already cleared these).
+
+### Language reframed (professional sales-performance vocabulary)
+
+- "XP & Progression" → **Development Progress**; "Current Rank" →
+  **Performance Level**; "Total XP" → **Progress Points**; "Today's XP"
+  stat → **Progress Today** ("points earned today"); progress bar copy
+  "N / 100 XP — M to next rank" → "N / 100 points — M to next level";
+  "Tier:" row → **Operating level:**.
+- Rank ladder renamed to a professional development ladder (Foundation,
+  Developing I–III, Emerging I–III, Established I–III, Advanced I–III,
+  Expert I–III, Principal). Cosmetic array only — same length, same
+  `xpLevel()` maths, no backend change.
+- "What should I do next?" card → **Next Best Action** (matches the
+  AiInsightCard vocabulary); mission impact strings "XP + coaching
+  compliance" / "XP + streak" → "Coaching compliance" / "Coaching
+  momentum".
+- Empty state "No XP yet … earn XP, build your rank, and unlock badges"
+  → "No progress recorded yet … build your performance level and reach
+  your next milestone" (rewards → milestones).
+
+### Colour calmed (green/amber/red = status only, indigo = action/AI)
+
+- `diamond` tier colour cyan → indigo; Expected Impact cyan → neutral;
+  mission Impact emerald / Time cyan → neutral; voice-trend chart stroke
+  `#22d3ee` → indigo `#818cf8`.
+- KPI strip: Progress Today and Streak stats → `default` (earning points
+  is not a status); Open Assignments amber/emerald states → `danger`
+  only when overdue, otherwise neutral. Voice Score keeps its
+  success/warning/danger banding — genuine performance status.
+- Development Progress: streak amber → white; "+N points today" emerald
+  → neutral. AI briefing keeps amber weakest / emerald strongest /
+  red overdue — real signals.
+- "Getting Started" and no-data feedback AiInsightCards: cyan
+  `recommendation` type → indigo `summary` (labels unchanged).
+
+### Structure / primitives
+
+- Five hand-rolled card shells → **SectionCard** (AI Daily Briefing on
+  `variant="ai"` with the urgency/trend chips as header actions and the
+  awaiting-data chip as subtitle; Next Best Action; Skill Momentum;
+  Performance Progress with latest-avg + trend chip as actions;
+  Development Progress). Uniform px-5 py-4 header rhythm + shadow
+  elevation from the shared primitive.
+- "Start now →" CTA → `buttonClasses('secondary', 'md')`; footer quick
+  links → `buttonClasses('ghost', 'sm')`.
+
+### Behaviour preserved
+
+All four proxyFetch endpoints (`/v1/reps/me`, `/v1/assignments`,
+`/v1/dashboard/voice-score-trend?days=30`, `/v1/reps/:id/daily-feed`),
+`nextAction`/`computeBriefingData` logic, `hasAnyData`/`totalXp`/`mission`
+conditional branches, the EmptyState upload onClick, recharts wiring and
+all hrefs untouched. Day-179/194/200 dashboard validator pins re-checked:
+the pinned `href="/upload"` indigo link literal is retained verbatim.
+
+### Deferred
+
+- Semantic colour-token pass (indigo-600 → named action token) — still
+  the cheapest global win; needs a validator-pin refresh day.
+- Day-182/190 pinned CRM recipes (Button adoption there still blocked).
+- `/crm/Leaderboard` orphan and the cyan "medium" urgency pair (Day 200
+  notes stand).
+
+**Day 202 recommendation:** the colour-token pass with validator-pin
+refresh, or the `/assignments` workspace visual pass (next most-visited
+rep surface still on the old rhythm).
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1687,4 +1780,6 @@ primitive + call-detail dead helper cleanup (above). Companion validator:
 sparring visual pass (above). Companion validator:
 `scripts/validate-premium-ux-day-199.sh`. Day 200 — visual milestone:
 full QA sweep + CRM workspace adoption (above). Companion validator:
-`scripts/validate-premium-ux-day-200.sh`.*
+`scripts/validate-premium-ux-day-200.sh`. Day 201 — dashboard Command
+Centre pass (above). Companion validator:
+`scripts/validate-premium-ux-day-201.sh`.*

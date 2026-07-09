@@ -9,6 +9,8 @@ import { AiInsightCard, AiInsightItem } from '@/components/ui/ai-insight-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { PageContainer } from '@/components/layout/page-container'
+import { SectionCard } from '@/components/ui/section-card'
+import { buttonClasses } from '@/components/ui/button'
 
 // ── Chart imports (dynamic — avoid SSR hydration issues) ─────────────────────
 const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false })
@@ -92,18 +94,18 @@ const TIER_COLORS: Record<string, string> = {
   silver: 'text-slate-300',
   gold: 'text-yellow-300',
   platinum: 'text-indigo-300',
-  diamond: 'text-cyan-300',
+  diamond: 'text-indigo-200',
 }
 
-// Rank names per XP level — purely cosmetic, no backend change needed
+// Performance-level names per progress level — purely cosmetic, no backend change needed
 const RANK_NAMES: string[] = [
-  'Novice',
-  'Trainee I', 'Trainee II', 'Trainee III',
-  'Prospect I', 'Prospect II', 'Prospect III',
-  'Closer I', 'Closer II', 'Closer III',
-  'Performer I', 'Performer II', 'Performer III',
-  'Elite I', 'Elite II', 'Elite III',
-  'Legend',
+  'Foundation',
+  'Developing I', 'Developing II', 'Developing III',
+  'Emerging I', 'Emerging II', 'Emerging III',
+  'Established I', 'Established II', 'Established III',
+  'Advanced I', 'Advanced II', 'Advanced III',
+  'Expert I', 'Expert II', 'Expert III',
+  'Principal',
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,7 +184,7 @@ function computeBriefingData(
   const strongestArea = feed?.strongest_area?.category ?? null
   const weakestScore = feed?.weakest_area?.score ?? null
   const recommendedAction = feed?.recommended_drill ?? summary?.today_focus?.title ?? (open > 0 ? assignments.find(a => a.status === 'open' || a.status === 'assigned')?.title ?? null : null)
-  const expectedImpact = weakestArea ? `${weakestArea} improvement` : open > 0 ? 'XP + coaching compliance' : null
+  const expectedImpact = weakestArea ? `${weakestArea} improvement` : open > 0 ? 'Coaching compliance' : null
 
   return {
     voiceScore,
@@ -206,12 +208,12 @@ function nextAction(
   feed: DailyFeed | null,
 ): { label: string; detail: string; impact: string; time: string; href: string } | null {
   const overdue = assignments.find(a => a.due_at && new Date(a.due_at) < new Date() && a.status !== 'completed')
-  if (overdue) return { label: overdue.title || 'Complete overdue assignment', detail: 'Past due — completing it keeps your streak and coaching score intact.', impact: 'Coaching compliance +', time: '10–20 min', href: '/assignments' }
+  if (overdue) return { label: overdue.title || 'Complete overdue assignment', detail: 'Past due — completing it keeps your streak and coaching score intact.', impact: 'Coaching compliance', time: '10–20 min', href: '/assignments' }
   if (feed?.recommended_drill) return { label: feed.recommended_drill, detail: feed.coaching_summary || 'Your coach recommends this based on recent call patterns.', impact: feed.weakest_area?.category ? `${feed.weakest_area.category} improvement` : 'Performance improvement', time: '15–25 min', href: '/assignments' }
   const focus = summary?.today_focus
-  if (focus) return { label: focus.title || "Today's assignment", detail: "Queued as today's coaching priority.", impact: 'XP + coaching compliance', time: '10–20 min', href: '/assignments' }
+  if (focus) return { label: focus.title || "Today's assignment", detail: "Queued as today's coaching priority.", impact: 'Coaching compliance', time: '10–20 min', href: '/assignments' }
   const topOpen = assignments.find(a => a.status === 'open' || a.status === 'assigned')
-  if (topOpen) return { label: topOpen.title || 'Complete open assignment', detail: 'Clear your coaching queue to maintain momentum.', impact: 'XP + streak', time: '10–20 min', href: '/assignments' }
+  if (topOpen) return { label: topOpen.title || 'Complete open assignment', detail: 'Clear your coaching queue to maintain momentum.', impact: 'Coaching momentum', time: '10–20 min', href: '/assignments' }
   if (feed?.recommended_replay?.call_id) return { label: 'Review flagged call', detail: 'Your coach recommends replaying this call for improvement patterns.', impact: 'Call quality awareness', time: '5–10 min', href: `/calls/${feed.recommended_replay.call_id}` }
   return null
 }
@@ -343,7 +345,7 @@ export default function DashboardPage() {
       {!hasAnyData && (
         <div className="space-y-3">
           <AiInsightCard
-            type="recommendation"
+            type="summary"
             label="Getting Started"
             content="Your AI coaching dashboard is ready. Upload a call, complete an assignment, or run a sparring session to activate your personalised insights below."
           />
@@ -364,17 +366,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Section 1: AI Daily Briefing — Jarvis-style structured card ── */}
-      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 overflow-hidden">
-        {/* Header row */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-indigo-500/10">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-indigo-400 font-medium">AI Daily Briefing</span>
-            {!hasAnyData && (
-              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-500">Awaiting first scored call</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
+      {/* ── Section 1: AI Daily Briefing — structured command-centre panel ── */}
+      <SectionCard
+        variant="ai"
+        eyebrow="AI Daily Briefing"
+        subtitle={!hasAnyData ? 'Awaiting first scored call' : undefined}
+        actions={
+          <>
             {briefing.urgency === 'high' && (
               <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">High Urgency</span>
             )}
@@ -384,9 +382,9 @@ export default function DashboardPage() {
             {briefing.voiceTrend === 'declining' && (
               <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">↓ Watch</span>
             )}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {/* Structured signal grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-0 divide-y divide-x divide-indigo-500/10">
           {/* Voice Score */}
@@ -445,7 +443,7 @@ export default function DashboardPage() {
           {/* Expected Impact */}
           <div className="px-4 py-3">
             <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Expected Impact</div>
-            <div className="text-sm font-semibold text-cyan-300">
+            <div className="text-sm font-semibold text-neutral-200">
               {briefing.expectedImpact ?? 'Unlock coaching profile'}
             </div>
           </div>
@@ -457,27 +455,27 @@ export default function DashboardPage() {
             <p className="text-[11px] text-indigo-300/70 italic">"{briefing.motivationMessage}"</p>
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      {/* ── Section 2: Today's Mission KPI strip ── */}
+      {/* ── Section 2: Performance KPI strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
           label="Open Assignments"
           value={openAssignments}
           subtext={summary?.overdue_count ? `${summary.overdue_count} overdue` : 'in queue'}
-          variant={openAssignments > 0 ? (summary?.overdue_count ? 'danger' : 'warning') : 'success'}
+          variant={summary?.overdue_count ? 'danger' : 'default'}
         />
         <StatCard
-          label="Today's XP"
+          label="Progress Today"
           value={todayXp}
-          subtext="earned today"
-          variant={todayXp > 0 ? 'success' : 'default'}
+          subtext="points earned today"
+          variant="default"
         />
         <StatCard
           label="Streak"
           value={streak === 0 ? '—' : streak}
           subtext={streak === 1 ? 'day' : streak === 0 ? 'start today' : 'days'}
-          variant={streak >= 3 ? 'success' : streak > 0 ? 'info' : 'default'}
+          variant="default"
         />
         <StatCard
           label="Voice Score"
@@ -487,16 +485,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Section 3 + 4: Mission Centre + Skill Momentum (2-col) ── */}
+      {/* ── Section 3 + 4: Next Best Action + Skill Momentum (2-col) ── */}
       <div className="grid gap-4 xl:grid-cols-2">
 
-        {/* Mission Centre — What should I do next? */}
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-          <div className="border-b border-neutral-800 px-4 py-3">
-            <div className="text-sm font-semibold text-neutral-100">What should I do next?</div>
-            <div className="text-xs text-neutral-500">Your highest-impact action right now.</div>
-          </div>
-          <div className="p-4">
+        {/* Next Best Action — what should I do next? */}
+        <SectionCard title="Next Best Action" subtitle="Your highest-impact action right now.">
+          <div className="px-5 py-4">
             {mission ? (
               <div className="space-y-3">
                 <div>
@@ -510,17 +504,14 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center gap-4 text-xs">
                   <div>
                     <span className="text-neutral-500">Impact: </span>
-                    <span className="text-emerald-400/80 font-medium">{mission.impact}</span>
+                    <span className="text-neutral-300 font-medium">{mission.impact}</span>
                   </div>
                   <div>
                     <span className="text-neutral-500">Time: </span>
-                    <span className="text-cyan-400/80 font-medium">{mission.time}</span>
+                    <span className="text-neutral-300 font-medium">{mission.time}</span>
                   </div>
                 </div>
-                <Link
-                  href={mission.href}
-                  className="inline-block rounded-lg bg-indigo-600/20 border border-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/30 transition-colors"
-                >
+                <Link href={mission.href} className={buttonClasses('secondary', 'md')}>
                   Start now →
                 </Link>
               </div>
@@ -532,15 +523,11 @@ export default function DashboardPage() {
               />
             )}
           </div>
-        </div>
+        </SectionCard>
 
         {/* Skill Momentum Board */}
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-          <div className="border-b border-neutral-800 px-4 py-3">
-            <div className="text-sm font-semibold text-neutral-100">Skill Momentum</div>
-            <div className="text-xs text-neutral-500">Coaching signals from recent calls.</div>
-          </div>
-          <div className="p-4 space-y-4">
+        <SectionCard title="Skill Momentum" subtitle="Coaching signals from recent calls.">
+          <div className="px-5 py-4 space-y-4">
             {SKILL_CATEGORIES.map(({ key, label }) => {
               const noData = !feed && trend.length === 0
               const status = noData ? 'stable' : skillStatus(key, feed)
@@ -572,17 +559,15 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
-        </div>
+        </SectionCard>
       </div>
 
       {/* ── Section 3 (Progress): Performance Progress chart ── */}
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-          <div>
-            <div className="text-sm font-semibold text-neutral-100">Performance Progress</div>
-            <div className="text-xs text-neutral-500">Voice score — last 30 days</div>
-          </div>
-          <div className="flex items-center gap-3">
+      <SectionCard
+        title="Performance Progress"
+        subtitle="Voice score — last 30 days"
+        actions={
+          <>
             {latestAvg !== null && (
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Latest avg</div>
@@ -598,9 +583,10 @@ export default function DashboardPage() {
                 {briefing.voiceTrend === 'improving' ? '↑ Improving' : briefing.voiceTrend === 'declining' ? '↓ Declining' : '→ Stable'}
               </div>
             )}
-          </div>
-        </div>
-        <div className="px-4 pb-4 pt-2">
+          </>
+        }
+      >
+        <div className="px-5 pb-4 pt-2">
           {trend.length > 0 ? (
             <div className="h-36">
               <ResponsiveContainer width="100%" height="100%">
@@ -611,7 +597,7 @@ export default function DashboardPage() {
                     contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #262626', borderRadius: 8, fontSize: 11 }}
                     labelStyle={{ color: '#737373' }}
                   />
-                  <Line type="monotone" dataKey="voice_score" stroke="#22d3ee" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: '#22d3ee', strokeWidth: 0 }} />
+                  <Line type="monotone" dataKey="voice_score" stroke="#818cf8" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: '#818cf8', strokeWidth: 0 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -622,50 +608,47 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </div>
+      </SectionCard>
 
       {/* ── Section 5: Recent AI Feedback ── */}
       <div className="space-y-2">
         <div className="text-xs font-medium text-neutral-400 uppercase tracking-[0.1em]">Recent AI Feedback</div>
         {feed?.coaching_summary
           ? <AiInsightCard type="summary" label="Coaching Summary" content={feed.coaching_summary} />
-          : <AiInsightCard type="recommendation" label="No coaching data yet" content="Your AI feedback will appear here after your first scored call or sparring session. Upload a call to get started." />
+          : <AiInsightCard type="summary" label="No coaching data yet" content="Your AI feedback will appear here after your first scored call or sparring session. Upload a call to get started." />
         }
         {feed?.regression_warnings?.map((w, i) => (
           <AiInsightItem key={i} content={w} type="flag" />
         ))}
       </div>
 
-      {/* ── Section 6: XP & Progression ── */}
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-        <div className="border-b border-neutral-800 px-4 py-3">
-          <div className="text-sm font-semibold text-neutral-100">XP & Progression</div>
-        </div>
+      {/* ── Section 6: Development Progress ── */}
+      <SectionCard title="Development Progress">
         {totalXp > 0 ? (
-          <div className="p-4 space-y-4">
-            {/* Rank + XP summary */}
+          <div className="px-5 py-4 space-y-4">
+            {/* Level + progress summary */}
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-0.5">
-                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Current Rank</div>
+                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Performance Level</div>
                 <div className="text-lg font-semibold text-white">{xpInfo.rank}</div>
               </div>
               <div className="text-right space-y-0.5">
-                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Total XP</div>
+                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Progress Points</div>
                 <div className="text-lg font-semibold text-white">{totalXp.toLocaleString()}</div>
               </div>
               {streak > 0 && (
                 <div className="text-right space-y-0.5">
                   <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Streak</div>
-                  <div className="text-lg font-semibold text-amber-300">{streak}</div>
+                  <div className="text-lg font-semibold text-white">{streak}</div>
                 </div>
               )}
             </div>
 
-            {/* Progress bar to next rank */}
+            {/* Progress bar to next level */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-neutral-500">
                 <span>Level {xpInfo.level} — {xpInfo.rank}</span>
-                <span className="text-neutral-400">Next: {xpInfo.nextRank}</span>
+                <span className="text-neutral-400">Next level: {xpInfo.nextRank}</span>
               </div>
               <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
@@ -673,34 +656,34 @@ export default function DashboardPage() {
                   style={{ width: `${xpInfo.pct}%` }}
                 />
               </div>
-              <div className="text-xs text-neutral-600">{xpInfo.pct} / 100 XP — {100 - xpInfo.pct} to next rank</div>
+              <div className="text-xs text-neutral-600">{xpInfo.pct} / 100 points — {100 - xpInfo.pct} to next level</div>
             </div>
 
-            {/* Next milestone hint */}
+            {/* Operating level ── real backend tier, presentation only */}
             {me?.tier && (
               <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-400">
-                <span className="text-neutral-300 font-medium">Tier: </span>
+                <span className="text-neutral-300 font-medium">Operating level: </span>
                 <span className={TIER_COLORS[tierKey] ?? 'text-neutral-300'}>{me.tier}</span>
-                {todayXp > 0 && <span className="ml-3 text-emerald-400/70">+{todayXp} XP today</span>}
+                {todayXp > 0 && <span className="ml-3 text-neutral-400">+{todayXp} points today</span>}
               </div>
             )}
           </div>
         ) : (
           <div className="px-4 py-5">
             <EmptyState
-              message="No XP yet"
-              sub="Complete assignments and calls to earn XP, build your rank, and unlock badges."
+              message="No progress recorded yet"
+              sub="Complete assignments and calls to build your performance level and reach your next milestone."
             />
           </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* ── Quick links ── */}
       <div className="flex flex-wrap items-center gap-2 pb-2">
-        <Link href="/assignments" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Assignments</Link>
-        <Link href="/call-library" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Call Library</Link>
-        <Link href="/call-library?tab=sparring" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Sparring</Link>
-        <Link href="/upload" className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200 transition-colors">Upload Call</Link>
+        <Link href="/assignments" className={buttonClasses('ghost', 'sm')}>Assignments</Link>
+        <Link href="/call-library" className={buttonClasses('ghost', 'sm')}>Call Library</Link>
+        <Link href="/call-library?tab=sparring" className={buttonClasses('ghost', 'sm')}>Sparring</Link>
+        <Link href="/upload" className={buttonClasses('ghost', 'sm')}>Upload Call</Link>
       </div>
 
     </PageContainer>
