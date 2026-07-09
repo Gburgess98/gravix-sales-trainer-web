@@ -5,6 +5,10 @@ import Link from "next/link";
 import { proxyFetch } from "@/lib/api";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button, buttonClasses } from "@/components/ui/button";
 
 type Assignment = {
   id: string;
@@ -251,7 +255,7 @@ function assignmentOriginBadge(a: Assignment) {
     origin.tone === "critical"
       ? "border-red-500/40 bg-red-500/10 text-red-200"
       : origin.tone === "auto"
-        ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+        ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200"
         : origin.tone === "flagged"
           ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
           : "border-neutral-700 bg-neutral-900 text-neutral-300";
@@ -292,8 +296,8 @@ function isOverdue(a: Assignment) {
 
 function openCardClass(a: Assignment) {
   // Rep view: strong urgency for overdue (red wash + left bar)
-  const base = "rounded-xl border bg-neutral-950 p-4 transition-colors duration-150";
-  if (!isOverdue(a)) return `${base} border-neutral-800 hover:border-neutral-700`;
+  const base = "rounded-xl border p-4 transition-colors duration-150";
+  if (!isOverdue(a)) return `${base} border-neutral-800 bg-black/30 hover:border-neutral-700`;
   return `${base} border-red-500/40 bg-red-500/10 border-l-4 border-l-red-500/70`;
 }
 
@@ -341,9 +345,17 @@ function focusMeta(a: Assignment | null) {
 
 function nextBestAction(a: Assignment | null) {
   if (!a) return "";
-  if (a.type === "sparring") return "Next best action: Run this drill now (5 mins)";
-  if (a.type === "call_review") return "Next best action: Score one call (2 mins)";
-  return "Next best action: Mark complete when done";
+  if (a.type === "sparring") return "Next step: run this sparring drill";
+  if (a.type === "call_review") return "Next step: review and score the call";
+  return "Next step: mark complete once done";
+}
+
+function typeLabel(t: Assignment["type"] | string) {
+  const s = String(t || "").toLowerCase();
+  if (s === "sparring") return "Sparring drill";
+  if (s === "call_review") return "Call review";
+  if (s === "custom") return "Coaching task";
+  return s ? s.replace(/_/g, " ") : "Assignment";
 }
 
 const SNOOZE_KEY = "gst:snoozedAssignments";
@@ -676,7 +688,7 @@ export default function AssignmentsClient() {
 
     // Warn if they have open work, have a streak, and haven't completed today.
     if (open.length > 0 && streak.streak > 0 && !streak.hasCompletedToday) {
-      setStreakWarn("Finish one task to keep your streak alive");
+      setStreakWarn("Complete one assignment today to keep your practice streak going");
     } else {
       setStreakWarn(null);
     }
@@ -703,7 +715,7 @@ export default function AssignmentsClient() {
         !streak.hasCompletedToday;
 
       if (broke) {
-        setStreakResetMsg("Streak reset. Let’s restart strong today.");
+        setStreakResetMsg("Practice streak reset — complete an assignment today to start a new one.");
       } else {
         setStreakResetMsg(null);
       }
@@ -752,8 +764,8 @@ export default function AssignmentsClient() {
         { method: "PATCH" }
       );
 
-      showToast("success", "Completed ✓ (+XP soon)");
-      bumpAssignmentsRefresh("Assignment completed ✓");
+      showToast("success", "Assignment completed");
+      bumpAssignmentsRefresh("Assignment completed");
       lastCompletedIdRef.current = id;
 
       // Local streak/progress: record today immediately (even if server write is delayed)
@@ -794,173 +806,169 @@ export default function AssignmentsClient() {
 
   return (
     <PageContainer>
-      <div className="flex items-center justify-between">
-        <div>
-          <PageHeader
-            title="My Assignments"
-            subtitle="Clear tasks, fast wins. Keep your streak alive."
-          />
+      <PageHeader
+        title="My Assignments"
+        subtitle="Your coaching queue — drills, call reviews and follow-ups from your manager."
+        actions={
+          <>
+            <Button variant="ghost" size="md" onClick={load}>
+              Refresh
+            </Button>
+            <Link href="/crm/overview" className={buttonClasses("ghost", "md")}>
+              ← Back
+            </Link>
+          </>
+        }
+      />
 
-          <div className="mt-2 space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
-                Streak:{" "}
-                <span className="font-semibold text-neutral-100">{streak.streak}</span>
-                <span className="text-neutral-500">{" "}day{streak.streak === 1 ? "" : "s"}</span>
-              </span>
+      <div className="mt-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+            Practice streak:{" "}
+            <span className="font-semibold text-neutral-100">{streak.streak}</span>
+            <span className="text-neutral-500">{" "}day{streak.streak === 1 ? "" : "s"}</span>
+          </span>
 
-              {streak.hasCompletedToday ? (
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                  You’re back on track ✓
-                </span>
-              ) : (
-                <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
-                  Complete 1 task today to keep your streak
-                </span>
-              )}
+          {streak.hasCompletedToday ? (
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+              Completed today ✓
+            </span>
+          ) : (
+            <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-400">
+              Complete one assignment today to keep your streak
+            </span>
+          )}
 
-              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
-                Today:{" "}
-                <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
-                <span className="text-neutral-500"> / {momentum.openCount} open</span>
-              </span>
+          <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+            Today:{" "}
+            <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
+            <span className="text-neutral-500"> / {momentum.openCount} open</span>
+          </span>
 
-              <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
-                XP today: <span className="font-semibold text-neutral-100">{xp?.today ?? 0}</span>
-                <span className="text-neutral-500"> · total {xp?.total ?? 0}</span>
-              </span>
+          <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300">
+            Progress today: <span className="font-semibold text-neutral-100">{xp?.today ?? 0}</span>
+            <span className="text-neutral-500"> pts · total {xp?.total ?? 0}</span>
+          </span>
 
-              {hasActiveSnoozes && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    writeSnoozes({});
-                    setSnoozes({});
-                    showToast("success", "Cleared snoozed tasks");
-                  }}
-                  className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
-                  title="Clear snoozed custom tasks"
-                >
-                  Snoozed: {activeSnoozedCount} (clear)
-                </button>
-              )}
-            </div>
-
-            <div className="h-2 w-full overflow-hidden rounded-full border border-neutral-800 bg-black">
-              <div
-                className="h-full rounded-full bg-white/60"
-                style={{
-                  width:
-                    momentum.openCount > 0
-                      ? `${Math.min(100, Math.round((momentum.completedTodayCount / momentum.openCount) * 100))}%`
-                      : momentum.completedTodayCount > 0
-                        ? "100%"
-                        : "0%",
-                }}
-              />
-            </div>
-            {!loading && (
-              <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Daily Win</div>
-                    <div className="mt-1 text-xs text-neutral-500">Next best action (takes 2 mins)</div>
-
-                    {streakWarn ? (
-                      <div className="mt-2 rounded-lg border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
-                        {streakWarn}
-                      </div>
-                    ) : null}
-
-                    {streakResetMsg ? (
-                      <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200">
-                        {streakResetMsg}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
-                        ✅ Completed today: <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
-                        <span className="text-neutral-500"> / {momentum.assignedTodayCount}</span>
-                      </span>
-
-                      <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
-                        🔥 Streak: <span className="font-semibold text-neutral-100">{streak.streak}</span>
-                        <span className="text-neutral-500"> day{streak.streak === 1 ? "" : "s"}</span>
-                      </span>
-
-                      {todayFocus ? (
-                        <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
-                          🎯 <span className="font-semibold text-neutral-100">{todayFocus.title || "(Untitled)"}</span>
-                          <span className="text-neutral-500"> · {focusReason(todayFocus)}</span>
-                        </span>
-                      ) : (
-                        <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-400">
-                          🎯 All done — nothing open.
-                        </span>
-                      )}
-                    </div>
-
-                    {todayFocus ? (
-                      <div className="mt-2 text-sm text-neutral-400">
-                        <span className="text-neutral-200">{nextBestAction(todayFocus)}</span>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {todayFocus ? (
-                    todayFocus.type === "sparring" ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <Link
-                          href={sparringHref(todayFocus.id, todayFocus.target_id)}
-                          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
-                          title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
-                        >
-                          Start sparring
-                        </Link>
-                        {!todayFocus.target_id ? (
-                          <div className="text-[11px] text-neutral-500">No persona · default</div>
-                        ) : null}
-                      </div>
-                    ) : todayFocus.type === "call_review" ? (
-                      <Link
-                        href={callReviewHref(todayFocus)}
-                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
-                        title={todayFocus.target_id ? undefined : "Rep can choose a call"}
-                      >
-                        {todayFocus.target_id ? "Start review" : "Pick a call"}
-                      </Link>
-                    ) : (
-                      <button
-                        onClick={() => complete(todayFocus.id)}
-                        disabled={savingId === todayFocus.id}
-                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
-                      </button>
-                    )
-                  ) : null}
-                </div>
-              </div>
-            )}
-          </div>
+          {hasActiveSnoozes && (
+            <button
+              type="button"
+              onClick={() => {
+                writeSnoozes({});
+                setSnoozes({});
+                showToast("success", "Cleared snoozed tasks");
+              }}
+              className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-neutral-300 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
+              title="Clear snoozed custom tasks"
+            >
+              Snoozed: {activeSnoozedCount} (clear)
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={load}
-            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
-          >
-            Refresh
-          </button>
-          <Link
-            href="/crm/overview"
-            className="text-sm underline text-neutral-400 hover:text-neutral-200"
-          >
-            ← Back
-          </Link>
+
+        <div className="h-1.5 w-full overflow-hidden rounded-full border border-neutral-800 bg-black">
+          <div
+            className="h-full rounded-full bg-indigo-500"
+            style={{
+              width:
+                momentum.openCount > 0
+                  ? `${Math.min(100, Math.round((momentum.completedTodayCount / momentum.openCount) * 100))}%`
+                  : momentum.completedTodayCount > 0
+                    ? "100%"
+                    : "0%",
+            }}
+          />
         </div>
       </div>
+
+      {!loading && (
+        <SectionCard
+          className="mt-6"
+          eyebrow="Today"
+          title="Next Best Action"
+          subtitle="Your highest-priority coaching step."
+          padded
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              {streakWarn ? (
+                <div className="mb-2 rounded-lg border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+                  {streakWarn}
+                </div>
+              ) : null}
+
+              {streakResetMsg ? (
+                <div className="mb-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200">
+                  {streakResetMsg}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                  Completed today: <span className="font-semibold text-neutral-100">{momentum.completedTodayCount}</span>
+                  <span className="text-neutral-500"> / {momentum.assignedTodayCount}</span>
+                </span>
+
+                <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                  Streak: <span className="font-semibold text-neutral-100">{streak.streak}</span>
+                  <span className="text-neutral-500"> day{streak.streak === 1 ? "" : "s"}</span>
+                </span>
+
+                {todayFocus ? (
+                  <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300">
+                    Focus: <span className="font-semibold text-neutral-100">{todayFocus.title || "(Untitled)"}</span>
+                    <span className="text-neutral-500"> · {focusReason(todayFocus)}</span>
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-400">
+                    All clear — nothing open.
+                  </span>
+                )}
+              </div>
+
+              {todayFocus ? (
+                <div className="mt-2 text-sm text-neutral-400">
+                  <span className="text-neutral-200">{nextBestAction(todayFocus)}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {todayFocus ? (
+              todayFocus.type === "sparring" ? (
+                <div className="flex flex-col items-end gap-2">
+                  <Link
+                    href={sparringHref(todayFocus.id, todayFocus.target_id)}
+                    className={buttonClasses("primary", "md")}
+                    title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
+                  >
+                    Start sparring
+                  </Link>
+                  {!todayFocus.target_id ? (
+                    <div className="text-[11px] text-neutral-500">No persona · default</div>
+                  ) : null}
+                </div>
+              ) : todayFocus.type === "call_review" ? (
+                <Link
+                  href={callReviewHref(todayFocus)}
+                  className={buttonClasses("primary", "md")}
+                  title={todayFocus.target_id ? undefined : "Rep can choose a call"}
+                >
+                  {todayFocus.target_id ? "Start review" : "Pick a call"}
+                </Link>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => complete(todayFocus.id)}
+                  disabled={savingId === todayFocus.id}
+                >
+                  {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
+                </Button>
+              )
+            ) : null}
+          </div>
+        </SectionCard>
+      )}
 
       {toast && (
         <div
@@ -978,7 +986,7 @@ export default function AssignmentsClient() {
           id={focusIdAttr(todayFocus.id)}
           data-todays-focus="true"
           data-assignment-id={todayFocus.id}
-          className={`mt-6 rounded-xl border p-4 border-l-4 ${focus.bgClass} ${focus.accentClass}`}
+          className={`mt-6 rounded-xl border p-4 border-l-4 shadow-md shadow-black/20 ${focus.bgClass} ${focus.accentClass}`}
         >
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -1008,7 +1016,7 @@ export default function AssignmentsClient() {
               <div className="flex flex-col items-end gap-2">
                 <Link
                   href={sparringHref(todayFocus.id, todayFocus.target_id)}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                  className={buttonClasses("primary", "md")}
                   title={todayFocus.target_id ? undefined : "No persona set on this assignment — using default."}
                 >
                   Start now
@@ -1020,24 +1028,26 @@ export default function AssignmentsClient() {
             ) : todayFocus.type === "call_review" ? (
               <Link
                 href={callReviewHref(todayFocus)}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                className={buttonClasses("primary", "md")}
                 title={todayFocus.target_id ? undefined : "Rep can choose a call"}
               >
                 {todayFocus.target_id ? "Review call" : "Pick a call"}
               </Link>
             ) : (
               <div className="flex items-center gap-2">
-                <button
+                <Button
+                  variant="primary"
+                  size="md"
                   onClick={() => complete(todayFocus.id)}
                   disabled={savingId === todayFocus.id}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
                 >
                   {savingId === todayFocus.id ? "Saving…" : "Mark complete"}
-                </button>
+                </Button>
 
                 {todayFocus.type === "custom" ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="md"
                     onClick={() => {
                       const until = Date.now() + 24 * 60 * 60 * 1000;
                       const next = { ...readSnoozes(), [todayFocus.id]: until };
@@ -1045,10 +1055,9 @@ export default function AssignmentsClient() {
                       setSnoozes(next);
                       showToast("success", "Snoozed for 24h");
                     }}
-                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
                   >
                     Snooze 24h
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             )}
@@ -1057,67 +1066,33 @@ export default function AssignmentsClient() {
       )}
 
       {!loading && (
-        <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
-                Momentum
-              </div>
-              <div className="mt-1 text-sm text-neutral-400">
-                Keep the loop tight: clear today’s focus, then chip away at the open list.
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-xs text-neutral-500">7d completion rate</div>
-              <div className="text-lg font-semibold text-neutral-200">{momentum.completionRate7d}%</div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
-              <div className="text-[11px] text-neutral-500">Open</div>
-              <div className="text-sm font-semibold text-neutral-200">{momentum.openCount}</div>
-            </div>
-
-            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
-              <div className="text-[11px] text-neutral-500">Overdue</div>
-              <div className={"text-sm font-semibold " + (momentum.overdueCount > 0 ? "text-red-200" : "text-neutral-200")}>
-                {momentum.overdueCount}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
-              <div className="text-[11px] text-neutral-500">Due today</div>
-              <div className={"text-sm font-semibold " + (momentum.dueTodayCount > 0 ? "text-neutral-100" : "text-neutral-200")}>
-                {momentum.dueTodayCount}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
-              <div className="text-[11px] text-neutral-500">Completed</div>
-              <div className="text-sm font-semibold text-neutral-200">
-                {momentum.completedTodayCount > 0 ? (
-                  <>
-                    {momentum.completed7d} <span className="text-[11px] text-neutral-500">(7d)</span>
-                    <span className="ml-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
-                      +{momentum.completedTodayCount} today
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {momentum.completed7d} <span className="text-[11px] text-neutral-500">(7d)</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label="Open" value={momentum.openCount} size="sm" />
+          <StatCard
+            label="Overdue"
+            value={momentum.overdueCount}
+            variant={momentum.overdueCount > 0 ? "danger" : "default"}
+            size="sm"
+          />
+          <StatCard
+            label="Due today"
+            value={momentum.dueTodayCount}
+            variant={momentum.dueTodayCount > 0 ? "warning" : "default"}
+            size="sm"
+          />
+          <StatCard
+            label="Completed (7d)"
+            value={momentum.completed7d}
+            subtext={momentum.completedTodayCount > 0 ? `+${momentum.completedTodayCount} today` : undefined}
+            size="sm"
+          />
+          <StatCard label="Completion rate (7d)" value={`${momentum.completionRate7d}%`} size="sm" />
         </div>
       )}
 
       {err && (
         <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-          {err}
+          <span className="font-medium">Something went wrong.</span> {err}
         </div>
       )}
 
@@ -1129,25 +1104,22 @@ export default function AssignmentsClient() {
           <SkeletonCard />
         </div>
       ) : (
-        <div className="mt-6 space-y-8 transition-opacity duration-200 opacity-100">
-          <section>
-            <h2 className="text-sm font-semibold text-neutral-200">Open</h2>
-            <div className="mt-3 space-y-3">
-              {open.length === 0 ? (
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-300">
-                  <div className="font-semibold">No assignments right now</div>
-                  <div className="mt-1 text-neutral-500">When your manager assigns a drill or review, it’ll appear here.</div>
-                  <div className="mt-3">
-                    <Link
-                      href="/sparring"
-                      className="inline-flex rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-colors duration-150 active:scale-[0.98]"
-                    >
-                      Go to Sparring
-                    </Link>
-                  </div>
-                </div>
-              ) : (
-                open.map((a) => (
+        <div className="mt-6 space-y-6 transition-opacity duration-200 opacity-100">
+          <SectionCard
+            title="Open"
+            subtitle="Assigned coaching work, prioritised by due date."
+            actions={<span className="text-xs text-neutral-500">{open.length} open</span>}
+            padded
+          >
+            {open.length === 0 ? (
+              <EmptyState
+                message="No assignments right now"
+                sub="When your manager assigns a drill or call review, it will appear here."
+                action={{ label: "Go to Sparring", href: "/sparring" }}
+              />
+            ) : (
+              <div className="space-y-3">
+                {open.map((a) => (
                   <div
                     key={a.id}
                     id={focusIdAttr(a.id)}
@@ -1157,7 +1129,7 @@ export default function AssignmentsClient() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-sm text-neutral-400">{a.type}</div>
+                          <div className="text-xs text-neutral-500">{typeLabel(a.type)}</div>
                           {pill(a.status)}
                           {assignmentOriginBadge(a)}
                         </div>
@@ -1190,7 +1162,7 @@ export default function AssignmentsClient() {
                         <div className="flex flex-col items-end gap-1">
                           <Link
                             href={sparringHref(a.id, a.target_id)}
-                            className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                            className={buttonClasses("primary", "md")}
                             title={a.target_id ? undefined : "No persona set on this assignment — using default."}
                           >
                             Start sparring
@@ -1202,42 +1174,47 @@ export default function AssignmentsClient() {
                       ) : a.type === "call_review" ? (
                         <Link
                           href={callReviewHref(a)}
-                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98]"
+                          className={buttonClasses("primary", "md")}
                           title={a.target_id ? undefined : "Rep can choose a call"}
                         >
                           {a.target_id ? "Open call review" : "Pick a call"}
                         </Link>
                       ) : a.type === "custom" ? (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="md"
                           onClick={() => complete(a.id)}
                           disabled={savingId === a.id}
-                          className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors duration-150 active:scale-[0.98] disabled:opacity-50"
                         >
                           {savingId === a.id ? "Saving…" : "Mark complete"}
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            )}
+          </SectionCard>
 
-          <section>
-            <h2 className="text-sm font-semibold text-neutral-200">Completed</h2>
-            <div className="mt-3 space-y-3">
-              {done.length === 0 ? (
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-300">
-                  <div className="font-semibold">No completions yet</div>
-                  <div className="mt-1 text-neutral-500">Finish one task to start your streak and see progress here.</div>
-                </div>
-              ) : (
-                done.map((a) => (
-                  <div key={a.id} className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-4">
+          <SectionCard
+            title="Completed"
+            subtitle="Recent completions and follow-through."
+            actions={<span className="text-xs text-neutral-500">{done.length} completed</span>}
+            padded
+          >
+            {done.length === 0 ? (
+              <EmptyState
+                message="No completions yet"
+                sub="Complete an assignment to start your streak and see it here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {done.map((a) => (
+                  <div key={a.id} className="rounded-xl border border-neutral-800/60 bg-black/20 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-sm text-neutral-500">{a.type}</div>
+                          <div className="text-xs text-neutral-500">{typeLabel(a.type)}</div>
                           {pill(a.status)}
                           {assignmentOriginBadge(a)}
                         </div>
@@ -1255,10 +1232,10 @@ export default function AssignmentsClient() {
                       </div>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            )}
+          </SectionCard>
         </div>
       )}
     </PageContainer>

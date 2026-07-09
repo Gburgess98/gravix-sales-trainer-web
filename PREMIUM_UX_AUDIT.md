@@ -1740,6 +1740,107 @@ rep surface still on the old rhythm).
 
 ---
 
+## §32 — Assignments workspace pass (Day 202)
+
+**Scope:** `/assignments` only (`src/app/assignments/AssignmentsClient.tsx`)
+— the rep-side coaching follow-through surface, last touched structurally
+on Day 179 (PageContainer only). WEB-only, visual/copy pass, strict
+behaviour preservation: all data fetches, completion/snooze/streak logic,
+handlers, hrefs, disabled states and conditional rendering untouched.
+
+### Audited (task-list/arcade areas found)
+
+- Task-list header copy: "Clear tasks, fast wins. Keep your streak
+  alive." subtitle; "Daily Win" panel with emoji chips (✅ 🔥 🎯) and
+  "(takes 2 mins)" framing.
+- Arcade toast copy: "Completed ✓ (+XP soon)"; raw "XP today" chip.
+- Streak copy in task language ("Finish one task…", "Streak reset.
+  Let's restart strong today.").
+- Seven hand-copied white CTA recipes (`bg-white text-black`) — the
+  pre-Day-198 primary button, retired everywhere else on Day 200.
+- White progress bar fill (`bg-white/60`).
+- Sky (cyan-family) "Auto-created" origin badge.
+- Raw internal values rendered to reps: `a.type` shown as
+  `call_review`/`custom`; raw error codes shown bare.
+- Pre-Day-195 flat card shells: "Daily Win", "Momentum", plain `h2`
+  Open/Completed sections, hand-rolled empty states, no elevation.
+- Duplicate Tailwind bg classes on the overdue card recipe
+  (`bg-neutral-950` + `bg-red-500/10`).
+- No fuchsia/purple/pink found.
+
+### Language reframed (coaching follow-through vocabulary)
+
+- Subtitle → "Your coaching queue — drills, call reviews and follow-ups
+  from your manager." (kept the `My Assignments` h1 — pinned by
+  `tests/e2e/assignments.spec.ts`).
+- "Daily Win" panel → **Next Best Action** SectionCard (matches the
+  Day 201 dashboard vocabulary); emoji chips stripped; "Next best
+  action: Run this drill now (5 mins)" family → "Next step: run this
+  sparring drill" / "review and score the call" / "mark complete once
+  done".
+- "XP today: N · total M" chip → "Progress today: N pts · total M"
+  (Day 201 points vocabulary); "Streak" chip → "Practice streak";
+  "You're back on track ✓" → "Completed today ✓"; streak warn/reset
+  copy moved from task language to practice-streak language.
+- Toast "Completed ✓ (+XP soon)" → "Assignment completed" (also the
+  cross-tab BroadcastChannel reason string — copy-only).
+- Raw `a.type` → `typeLabel()` (Sparring drill / Call review / Coaching
+  task); bare error codes now prefixed "Something went wrong."
+- Empty states reworded calm ("When your manager assigns a drill or
+  call review, it will appear here.").
+
+### Colour calmed (green/amber/red = status only, indigo = action)
+
+- All seven white `bg-white text-black` CTAs →
+  `buttonClasses('primary', 'md')` / `<Button variant="primary">`
+  (Start sparring, Start review / Pick a call, Mark complete ×3,
+  Start now, Review call); Snooze 24h + Refresh → ghost recipe.
+- Progress bar fill white → indigo-500; "Auto-created" origin badge
+  sky → indigo.
+- Kept: emerald COMPLETED pill + "Completed today ✓" chip (genuine
+  success), amber flagged-call badge + streak warning (genuine
+  attention), red overdue wash/badges/critical (genuine risk).
+
+### Structure / primitives
+
+- Header: awkward outer flex (Refresh/Back vertically centred against
+  the tall left column) → `PageHeader` `actions` slot (ghost Refresh
+  Button + ghost Back link, href preserved).
+- "Next Best Action" → **SectionCard** (eyebrow "Today", padded).
+- "Momentum" hand-rolled panel → five **StatCard**s (Open; Overdue
+  `danger` when > 0; Due today `warning` when > 0; Completed 7d with
+  "+N today" subtext; Completion rate 7d). Same `momentum` maths.
+- Open / Completed plain `h2` sections → **SectionCard padded** with
+  count in the actions slot; hand-rolled empty states → **EmptyState**
+  (Go to Sparring href preserved).
+- Today's Focus card kept hand-rolled (dynamic overdue red wash +
+  left accent bar) but gains the shared `shadow-md shadow-black/20`
+  elevation; overdue duplicate-bg recipe fixed (single bg per state).
+
+### Behaviour preserved
+
+`/v1/assignments`, `/v1/reps/me` and the `PATCH /v1/assignments/:id/complete`
+optimistic flow untouched; snooze read/write/clear, localStorage streak
+state, BroadcastChannel/storage/visibility refresh listeners, auto-focus
+scroll + highlight ring, `sparringHref`/`callReviewHref`/`/sparring`/
+`/crm/overview` hrefs, title attrs, disabled states and all conditional
+rendering intact. Day-179 pin (PageContainer) and the e2e-pinned
+"My Assignments" heading retained.
+
+### Deferred
+
+- Semantic colour-token pass — still the standing recommendation.
+- Streak/snooze localStorage mechanics are client-only trust debt
+  (server knows nothing of snoozes) — product decision, not visual.
+- `/admin/assignments/*` manager surfaces — separate lane.
+- Day-182/190 pinned CRM recipes (unchanged).
+
+**Day 203 recommendation:** the colour-token pass with validator-pin
+refresh, or `/admin/assignments` + `/coaching?tab=assignments` manager
+assignment surfaces for cross-side consistency.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1782,4 +1883,6 @@ sparring visual pass (above). Companion validator:
 full QA sweep + CRM workspace adoption (above). Companion validator:
 `scripts/validate-premium-ux-day-200.sh`. Day 201 — dashboard Command
 Centre pass (above). Companion validator:
-`scripts/validate-premium-ux-day-201.sh`.*
+`scripts/validate-premium-ux-day-201.sh`. Day 202 — assignments
+workspace pass (above). Companion validator:
+`scripts/validate-premium-ux-day-202.sh`.*
