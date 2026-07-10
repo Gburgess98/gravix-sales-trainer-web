@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { Button, buttonClasses } from "@/components/ui/button";
 
 type Rep = {
   id: string;
@@ -66,11 +69,12 @@ type StuckSignal = {
 
 // Helper for stuck state pills
 function stuckPill(sig: StuckSignal) {
+  // Day 204 — status/risk pills via semantic tokens (danger/warning), neutral otherwise.
   const cls =
     sig.tone === "danger"
-      ? "border-red-500/30 bg-red-500/10 text-red-200"
+      ? "border-danger-500/30 bg-danger-500/10 text-danger-200"
       : sig.tone === "warn"
-        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+        ? "border-warning-500/30 bg-warning-500/10 text-warning-200"
         : "border-neutral-700 bg-neutral-900 text-neutral-200";
 
   return (
@@ -84,10 +88,10 @@ function stuckSectionClass(tone: StuckSignal["tone"]) {
   // Keep the page calm: only a subtle accent border for stuck reps.
   // The row itself already highlights overdue items.
   if (tone === "danger") {
-    return "border-red-500/35 bg-neutral-950";
+    return "border-danger-500/35 bg-neutral-950";
   }
   if (tone === "warn") {
-    return "border-amber-500/35 bg-neutral-950";
+    return "border-warning-500/35 bg-neutral-950";
   }
   return "border-neutral-800 bg-neutral-950";
 }
@@ -167,14 +171,14 @@ function statusPill(status: string, overdue: boolean) {
   const s = String(status || "").toLowerCase();
   if (s === "completed") {
     return (
-      <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-200">
+      <span className="inline-flex items-center rounded-full border border-success-500/30 bg-success-500/10 px-2 py-0.5 text-xs font-semibold text-success-200">
         COMPLETED
       </span>
     );
   }
   if (overdue) {
     return (
-      <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-200">
+      <span className="inline-flex items-center rounded-full border border-danger-500/30 bg-danger-500/10 px-2 py-0.5 text-xs font-semibold text-danger-200">
         OVERDUE
       </span>
     );
@@ -201,13 +205,15 @@ function assignmentOrigin(a: Assignment) {
 
 function assignmentOriginBadge(a: Assignment) {
   const origin = assignmentOrigin(a);
+  // Day 204 — critical/flagged keep status colours via tokens (danger/warning).
+  // "Auto-created" is an origin, not a status → neutral (retires the off-palette sky, cf. Day 202).
   const cls =
     origin.tone === "critical"
-      ? "border-red-500/40 bg-red-500/10 text-red-200"
+      ? "border-danger-500/40 bg-danger-500/10 text-danger-200"
       : origin.tone === "auto"
-        ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+        ? "border-neutral-700 bg-neutral-900 text-neutral-300"
         : origin.tone === "flagged"
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+          ? "border-warning-500/40 bg-warning-500/10 text-warning-200"
           : "border-neutral-700 bg-neutral-900 text-neutral-300";
 
   return (
@@ -1362,43 +1368,31 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
   }, [reps, rowsByRep, signals]);
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] p-6 flex min-h-screen flex-col">
-      {/* Debug: confirms the correct component is rendering */}
-      <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-neutral-800 bg-neutral-950 px-3 py-1 text-xs text-neutral-400">
-        <span className="font-semibold text-neutral-200">AdminAssignmentsClient</span>
-        <span>v2</span>
-        <span className="text-neutral-600">•</span>
-        <span className="text-neutral-500">has Show/Expand controls</span>
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Admin · Assignments</h1>
-          <p className="text-sm text-neutral-400">What you’ve assigned, what’s outstanding, what’s overdue.</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={load}
-            className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
-          >
-            Refresh
-          </button>
-
-          <Link href="/crm/overview" className="text-sm underline text-neutral-400 hover:text-neutral-200">
-            ← Back
-          </Link>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-[1400px] p-6 flex min-h-screen flex-col">
+      <PageHeader
+        title="Assignments"
+        subtitle="What you’ve assigned, what’s outstanding, what’s overdue."
+        actions={
+          <>
+            <Button variant="ghost" size="md" onClick={load}>
+              Refresh
+            </Button>
+            <Link href="/crm/overview" className={buttonClasses("ghost", "md")}>
+              ← Back
+            </Link>
+          </>
+        }
+      />
 
       {/* Day 25: Admin IA split (Overview / Queue / Create) */}
+      {/* Day 204 — active tab uses the brand tonal chip recipe (was arcade white). */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Link
           href="/admin/assignments"
           className={
             "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
             (view === "overview"
-              ? "bg-white text-black hover:brightness-95"
+              ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
               : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
           }
         >
@@ -1410,7 +1404,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
           className={
             "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
             (view === "queue"
-              ? "bg-white text-black hover:brightness-95"
+              ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
               : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
           }
         >
@@ -1422,20 +1416,16 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
           className={
             "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-all duration-150 active:scale-[0.98] " +
             (view === "create"
-              ? "bg-white text-black hover:brightness-95"
+              ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
               : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900")
           }
         >
           Create
         </Link>
-
-        <div className="ml-auto text-xs text-neutral-500">
-          View: <span className="text-neutral-200">{view}</span>
-        </div>
       </div>
 
       {err && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="mt-4 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-sm text-danger-200">
           {err === "forbidden_not_manager" ? "You don’t have manager access for this page." : err}
         </div>
       )}
@@ -1458,25 +1448,24 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <div className="text-sm font-semibold">Create assignment</div>
+                  <div className="text-sm font-semibold text-white">Create assignment</div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Prefills from <span className="text-neutral-300">?rep_id=</span> / <span className="text-neutral-300">?repId=</span> and focuses title on
-                    <span className="text-neutral-300"> #create-assignment</span>.
+                    Assign a sparring drill, call review or follow-up task to a rep.
                   </div>
                   {sourceFromUrl === "control-centre" && preferredRepIdFromUrl ? (
-                    <div className="mt-2 inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-200">
+                    <div className="mt-2 inline-flex items-center rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[11px] font-semibold text-brand-200">
                       Prefilled from Control Centre{repNameFromUrl ? ` · ${repNameFromUrl}` : ""}
                     </div>
                   ) : null}
                 </div>
 
                 <div className="text-xs text-neutral-500">
-                  Tip: sparring/call_review can carry an optional target id (persona id / call id).
+                  Tip: sparring and call reviews can point at a specific persona or call (optional).
                 </div>
               </div>
 
               {createErr && (
-                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                <div className="mt-3 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-sm text-danger-200">
                   {createErr === "pick_rep"
                     ? "Pick a rep"
                     : createErr === "title_required"
@@ -1487,7 +1476,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                 </div>
               )}
               {createTargetValidation.invalid ? (
-                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                <div className="mt-3 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-sm text-danger-200">
                   {createTargetValidation.message}
                 </div>
               ) : null}
@@ -1522,9 +1511,9 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       }}
                       className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                     >
-                      <option value="custom">custom</option>
-                      <option value="sparring">sparring</option>
-                      <option value="call_review">call_review</option>
+                      <option value="custom">Custom</option>
+                      <option value="sparring">Sparring</option>
+                      <option value="call_review">Call review</option>
                     </select>
                     {createType === "sparring" ? (
                       <div className="mt-1 text-[11px] text-neutral-500">
@@ -1550,7 +1539,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                     />
                     {duplicateTitleWarning ? (
-                      <div className="mt-1 text-[11px] text-amber-300">
+                      <div className="mt-1 text-[11px] text-warning-300">
                         ⚠️ Similar assignment was created for this rep in the last 24h.
                       </div>
                     ) : null}
@@ -1592,7 +1581,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                 <div className="mt-4 flex items-center justify-between gap-2">
                   <div className="text-xs">
                     {createdOk ? (
-                      <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-200">
+                      <span className="rounded-md border border-success-500/30 bg-success-500/10 px-2 py-1 font-semibold text-success-200">
                         Created ✓
                       </span>
                     ) : null}
@@ -1616,7 +1605,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       type="button"
                       disabled={creating || !createRepId || !createTitle.trim() || createTargetValidation.invalid}
                       onClick={createAssignment}
-                      className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                      className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-500 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                     >
                       {creating ? "Creating…" : "Create"}
                     </button>
@@ -1629,30 +1618,18 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
               {view === "overview" ? (
                 <>
                   <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                      <div className="text-xs text-neutral-500">Assigned (visible)</div>
-                      <div className="mt-1 text-2xl font-semibold">{totals.assigned}</div>
-                    </div>
-
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                      <div className="text-xs text-neutral-500">Completed (visible)</div>
-                      <div className="mt-1 text-2xl font-semibold">{totals.completed}</div>
-                    </div>
-
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                      <div className="text-xs text-neutral-500">Overdue (visible)</div>
-                      <div className="mt-1 text-2xl font-semibold">{totals.overdue}</div>
-                    </div>
-
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                      <div className="text-xs text-neutral-500">Completion rate (7d)</div>
-                      <div className="mt-1 text-2xl font-semibold">
-                        {signals ? `${Math.round((signals.completion_rate_7d || 0) * 100)}%` : "—"}
-                      </div>
-                      <div className="mt-1 text-xs text-neutral-500">
-                        {signals ? `${signals.completed_7d}/${signals.assigned_7d} completed` : ""}
-                      </div>
-                    </div>
+                    <StatCard label="Assigned" value={totals.assigned} />
+                    <StatCard label="Completed" value={totals.completed} />
+                    <StatCard
+                      label="Overdue"
+                      value={totals.overdue}
+                      variant={totals.overdue > 0 ? "danger" : "default"}
+                    />
+                    <StatCard
+                      label="Completion rate (7d)"
+                      value={signals ? `${Math.round((signals.completion_rate_7d || 0) * 100)}%` : "—"}
+                      subtext={signals ? `${signals.completed_7d}/${signals.assigned_7d} completed` : undefined}
+                    />
                   </div>
 
                   {/* Trust Dashboard v2 */}
@@ -1677,25 +1654,10 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                        <div className="text-xs text-neutral-500">Completion rate (24h)</div>
-                        <div className="mt-1 text-2xl font-semibold">{trust ? `${Math.round(completion24h * 100)}%` : "—"}</div>
-                      </div>
-
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                        <div className="text-xs text-neutral-500">Completion rate (7d)</div>
-                        <div className="mt-1 text-2xl font-semibold">{trust ? `${Math.round(completion7d * 100)}%` : "—"}</div>
-                      </div>
-
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                        <div className="text-xs text-neutral-500">Auto-completed (24h)</div>
-                        <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted24h : "—"}</div>
-                      </div>
-
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-                        <div className="text-xs text-neutral-500">Auto-completed (7d)</div>
-                        <div className="mt-1 text-2xl font-semibold">{trust ? autoCompleted7d : "—"}</div>
-                      </div>
+                      <StatCard label="Completion rate (24h)" value={trust ? `${Math.round(completion24h * 100)}%` : "—"} />
+                      <StatCard label="Completion rate (7d)" value={trust ? `${Math.round(completion7d * 100)}%` : "—"} />
+                      <StatCard label="Auto-completed (24h)" value={trust ? autoCompleted24h : "—"} />
+                      <StatCard label="Auto-completed (7d)" value={trust ? autoCompleted7d : "—"} />
                     </div>
 
                     <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
@@ -1763,7 +1725,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       </div>
 
                       {weeklyReview.repeatHelpCount >= 2 ? (
-                        <div className="mt-2 text-xs text-amber-300">
+                        <div className="mt-2 text-xs text-warning-300">
                           Heads-up: {weeklyReview.repeatHelpCount} reps have needed help 2+ days in a row.
                         </div>
                       ) : null}
@@ -1788,7 +1750,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                   <div className="text-neutral-200">{name}</div>
                                   <div className="text-neutral-400">
-                                    <span className={overdue > 0 ? "text-red-200" : "text-neutral-300"}>{overdue} overdue</span>
+                                    <span className={overdue > 0 ? "text-danger-200" : "text-neutral-300"}>{overdue} overdue</span>
                                     <span className="text-neutral-600"> · </span>
                                     <span className="text-neutral-300">{open} open</span>
                                   </div>
@@ -1797,7 +1759,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <button
                                     onClick={() => prefillSparringForRep(String(r.rep_id))}
-                                    className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                                    className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 transition-all duration-150 active:scale-[0.98]"
                                   >
                                     Assign sparring
                                   </button>
@@ -1840,7 +1802,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                         <span
                           className={
                             confidence.overdueRepCount > 0
-                              ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                              ? "rounded-full border border-danger-500/30 bg-danger-500/10 px-2 py-1 text-danger-200"
                               : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
                           }
                         >
@@ -1850,7 +1812,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                         <span
                           className={
                             confidence.staleRepCount > 0
-                              ? "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200"
+                              ? "rounded-full border border-warning-500/30 bg-warning-500/10 px-2 py-1 text-warning-200"
                               : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
                           }
                         >
@@ -1860,7 +1822,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                         <span
                           className={
                             confidence.stuckRepCount > 0
-                              ? "rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-200"
+                              ? "rounded-full border border-danger-500/30 bg-danger-500/10 px-2 py-1 text-danger-200"
                               : "rounded-full border border-neutral-800 bg-black px-2 py-1 text-neutral-300"
                           }
                         >
@@ -1887,7 +1849,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                     </div>
 
                     {confidence.stuckRepCount === 0 && (
-                      <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
+                      <div className="mt-2 rounded-lg border border-success-500/30 bg-success-500/10 p-2 text-xs text-success-200">
                         Momentum looks healthy — no reps are currently stuck. Nice work keeping the system clean.
                       </div>
                     )}
@@ -1897,7 +1859,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                       <button
                         type="button"
                         onClick={() => openBulk("assign_stale_drill")}
-                        className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95"
+                        className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500 transition-all duration-150 active:scale-[0.98]"
                       >
                         Assign 1 drill to all stale reps
                       </button>
@@ -1930,7 +1892,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                             updateUrl({ filter: "open" });
                           }}
                           className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "open"
-                            ? "bg-white text-black hover:brightness-95"
+                            ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
                             : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
                             }`}
                         >
@@ -1943,7 +1905,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                             updateUrl({ filter: "completed7d" });
                           }}
                           className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "completed7d"
-                            ? "bg-white text-black hover:brightness-95"
+                            ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
                             : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
                             }`}
                         >
@@ -1956,7 +1918,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                             updateUrl({ filter: "overdue" });
                           }}
                           className={`inline-flex items-center h-9 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${filter === "overdue"
-                            ? "bg-white text-black hover:brightness-95"
+                            ? "border border-brand-500/40 bg-brand-500/15 text-brand-200 hover:bg-brand-500/20"
                             : "border border-neutral-800 bg-neutral-950 text-neutral-200 hover:bg-neutral-900"
                             }`}
                         >
@@ -2157,7 +2119,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                   return (
                                   <tr
                                     key={a.id}
-                                    className={["border-t border-neutral-900", overdue ? "bg-red-500/5" : ""].join(" ")}
+                                    className={["border-t border-neutral-900", overdue ? "bg-danger-500/5" : ""].join(" ")}
                                   >
                                     <td className="py-2 pr-3">
                                       <div className="font-semibold text-neutral-200">
@@ -2170,7 +2132,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                       ) : null}
                                     </td>
 
-                                    <td className="py-2 pr-3 text-neutral-300">{a.type}</td>
+                                    <td className="py-2 pr-3 text-neutral-300">{safeTypeLabel(a.type)}</td>
 
                                     <td className="py-2 pr-3">
                                       <div className="flex items-center gap-2">
@@ -2215,7 +2177,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                                             type="button"
                                             disabled={actioningId === a.id}
                                             onClick={() => void markComplete(a.id)}
-                                            className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-neutral-200 transition-all duration-150 active:scale-[0.98] hover:brightness-95 disabled:opacity-50"
+                                            className="rounded-md bg-brand-600 px-2 py-1 text-xs font-semibold text-white hover:bg-brand-500 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
                                           >
                                             Force complete
                                           </button>
@@ -2290,13 +2252,13 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                 </div>
 
                 {bulkErr ? (
-                  <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  <div className="mt-3 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-sm text-danger-200">
                     {bulkErr}
                   </div>
                 ) : null}
 
                 {bulkResult ? (
-                  <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  <div className="mt-3 rounded-lg border border-success-500/30 bg-success-500/10 p-3 text-sm text-success-200">
                     Done. {bulkResult.ok} ok, {bulkResult.fail} failed.
                   </div>
                 ) : null}
@@ -2315,7 +2277,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                     type="button"
                     disabled={bulkBusy}
                     onClick={() => void runBulkAction()}
-                    className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                    className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
                   >
                     {bulkBusy ? "Running…" : "Confirm"}
                   </button>

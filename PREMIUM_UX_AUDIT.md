@@ -1928,6 +1928,91 @@ roles and begin opt-in route-file adoption of the semantic classes, or open the
 
 ---
 
+## §34 — Admin assignments manager lane visual pass (Day 204)
+
+**Scope:** `/admin/assignments`, `/admin/assignments/queue`,
+`/admin/assignments/create` — all three routes render the single
+`src/app/admin/assignments/AdminAssignmentsClient.tsx` with a different
+`initialView`. Day 202 deliberately left this lane untouched; this pass joins it
+up with the Command Centre system and the rep `/assignments` workspace. WEB-only,
+visual/copy pass. **Every** data fetch, assignment create/complete/nudge/delete/
+reschedule handler, bulk action, manager gate, filter/tab state, href, disabled
+state, confirm() and form/button type is preserved — colour-class, copy and a
+few presentational-primitive swaps only.
+
+### Active vs orphaned
+
+All three route files are active and imported (`page.tsx` → overview,
+`queue/page.tsx` → queue, `create/page.tsx` → create), each linked from
+`/coaching`, `/crm/overview` and `HomeLanding`. Nothing orphaned; no route
+retired.
+
+### Trust/clarity cleanup (raw/internal removed)
+
+- Removed the **debug badge** ("AdminAssignmentsClient · v2 · has Show/Expand
+  controls") that shipped to managers.
+- Removed the raw **"View: {view}"** indicator chip.
+- Create panel description reworded from developer copy
+  ("Prefills from `?rep_id=` / `?repId=` … `#create-assignment`") to
+  "Assign a sparring drill, call review or follow-up task to a rep."
+- Type `<select>` option labels title-cased (Custom / Sparring / Call review)
+  — `value` enums unchanged.
+- Queue table Type column now renders `safeTypeLabel(a.type)` instead of the raw
+  `call_review`/`custom` enum.
+- Header `Admin · Assignments` → **Assignments** via shared `PageHeader`.
+
+### Visual system adoption
+
+- `PageHeader` for the title/subtitle/actions row; Refresh → shared `Button`
+  (ghost), Back → `buttonClasses("ghost")` (was underlined link).
+- Container clamp `max-w-[1600px]` → `max-w-[1400px]` (shell standard); the
+  `min-h-screen` flex column + queue `max-h-[65vh]` scroll structure kept.
+- Eight stat tiles (4 overview + 4 Trust) → shared `StatCard`; Overdue tile
+  flips to the `danger` variant only when `> 0` (cf. Days 201/202).
+- Overview / Queue / Create tabs and the Assigned / Completed / Overdue queue
+  filters: active state moved from arcade `bg-white text-black` to the brand
+  tonal chip recipe (`border-brand-500/40 bg-brand-500/15 text-brand-200`).
+
+### Colour roles (Day 203 tokens)
+
+- Every arcade white primary CTA (Create, Assign sparring, bulk Assign drill,
+  bulk Confirm, Force complete) → brand primary (`bg-brand-600 … text-white
+  hover:bg-brand-500`).
+- All status/risk styling migrated to semantic tokens: `statusPill`,
+  `stuckPill`, `stuckSectionClass`, `assignmentOriginBadge`, the manager
+  confidence pills, needs-help overdue text, duplicate-title + weekly heads-up
+  warnings, momentum-healthy + created/bulk-result success banners, and every
+  error banner. Success/warning/danger stay on genuine status/risk only.
+- The off-palette **sky** "Auto-created" origin badge → neutral (origin, not a
+  status; mirrors the Day 202 sky retirement). No fuchsia/purple/pink present.
+- Two new `-200` shades (`success-200`, `warning-200`) added to the Day 203
+  `@theme` token layer (alias emerald/amber 1:1) to cover the status-pill text
+  tones this lane needs.
+
+### Behaviour preserved
+
+`createAssignment`, `markComplete` (+ its override confirm()), `setDueToday`,
+`nudgeRep`/`nudgeTopForRep`, `deleteAssignment`, `runBulkAction`
+(`assign_stale_drill` / `clear_overdue_noise`), `jumpToCreateAndPrefill`,
+`prefillSparringForRep`, `setTopOverdueDueToday`, the manager-gate probe
+(`/v1/admin/config`), reps/signals/trust loads, per-rep paged manager fetch,
+filter/search/limit URL sync, localStorage expand + help-streak state, and all
+POST/PATCH/DELETE proxy endpoints are untouched.
+
+### Deferred
+
+- Panels remain hand-rolled `div`s (not `SectionCard`) — nesting + custom
+  headers make a wrapper swap higher-risk than value; deferred.
+- The `min-h-screen`/`max-h-[65vh]` queue scroll layout was kept rather than
+  moved to `PageContainer` (would change scroll behaviour).
+- `bg-black` micro-chips left as-is (visually fine, neutral family).
+
+**Day 205 recommendation:** extend the Day 203 token layer to surface/muted
+(neutral) roles, or a `/admin` shell-consistency pass (other `/admin/*` manager
+surfaces) for cross-side polish.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1974,4 +2059,6 @@ Centre pass (above). Companion validator:
 workspace pass (above). Companion validator:
 `scripts/validate-premium-ux-day-202.sh`. Day 203 — semantic colour tokens +
 validator-pin refresh (above). Companion validator:
-`scripts/validate-premium-ux-day-203.sh`.*
+`scripts/validate-premium-ux-day-203.sh`. Day 204 — admin assignments manager
+lane visual pass (above). Companion validator:
+`scripts/validate-premium-ux-day-204.sh`.*
