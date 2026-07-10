@@ -21,7 +21,9 @@ const SHELL_ROUTES = [
   { path: '/assignments', name: 'Assignments' },
   { path: '/crm/accounts', name: 'CRM Accounts' },
   { path: '/crm/actions', name: 'CRM Actions' },
-  { path: '/reps', name: 'Reps list' },
+  // Day 205A: dropped stale '/reps' entry — no '/reps' index route exists
+  // (only '/reps/[id]', a redirect stub to '/crm/reps/[id]' from Day 193),
+  // so this asserted a 404. No live route to protect.
 ]
 
 test.describe('Smoke: shell routes render without crash', () => {

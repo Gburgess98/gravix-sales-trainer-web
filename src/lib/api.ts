@@ -290,35 +290,6 @@ export async function patchAdminConfig(
 }
 
 // -------------------------------
-// Admin: Rep management
-// -------------------------------
-
-export type AdminRepRow = {
-  id: string;
-  name: string | null;
-  tier: string | null;
-  xp: number | null;
-  created_at?: string | null;
-};
-
-export async function listAdminReps(): Promise<{ ok: true; reps: AdminRepRow[] }> {
-  const url = `${PROXY}/v1/admin/reps`;
-  return await jfetch<{ ok: true; reps: AdminRepRow[] }>(url, { method: "GET" });
-}
-
-export async function patchAdminRepTier(
-  repId: string,
-  tier: "SalesRep" | "TeamLead" | "Manager" | "Owner"
-): Promise<{ ok: true; rep: AdminRepRow }> {
-  const url = `${PROXY}/v1/admin/reps/${encodeURIComponent(repId)}`;
-  return await jfetch<{ ok: true; rep: AdminRepRow }>(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tier }),
-  });
-}
-
-// -------------------------------
 // Calls
 // -------------------------------
 
@@ -363,16 +334,6 @@ export async function getCallsPage(limit = 10, cursor?: string | null, q?: strin
     items: j.items || j.calls || [],
     nextCursor: j.nextCursor ?? null,
   } as CallsPageResp;
-}
-
-/** Manually set score (admin / debug) */
-export async function setScore(callId: string, score: number, rubric?: any) {
-  const j = await jfetch<{ ok: true; call: any }>(`${PROXY}/v1/calls/${encodeURIComponent(callId)}/score`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ score_overall: score, rubric }),
-  });
-  return j.call;
 }
 
 // -------------------------------
@@ -634,37 +595,6 @@ export async function listSparringSessions(opts?: { limit?: number }) {
 // -------------------------------
 // Sparring helpers
 // -------------------------------
-
-export type SparringSessionSummary = {
-  id: string;
-  rep_id: string | null;
-  persona_id: string | null;
-  total_score: number | null;
-  xp_awarded: number | null;
-  created_at: string;
-};
-
-export async function getSparringSessionsByRep(repId: string, limit: number = 5): Promise<SparringSessionSummary[]> {
-  if (!repId) return [];
-
-  const params = new URLSearchParams({
-    repId,
-    limit: String(limit),
-  });
-
-  const res = await apiFetchJson<{
-    ok: boolean;
-    sessions?: SparringSessionSummary[];
-    error?: string;
-  }>(`${PROXY}/v1/sparring/sessions?${params.toString()}`);
-
-  if (!res || (res as any).ok === false) {
-    const msg = (res && (res as any).error) || "Failed to load sparring sessions";
-    throw new Error(msg);
-  }
-
-  return res.sessions || [];
-}
 
 export async function scoreSparring(transcript: string, personaId: string) {
   const res = await apiFetchJson<{

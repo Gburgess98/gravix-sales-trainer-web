@@ -2061,4 +2061,10 @@ workspace pass (above). Companion validator:
 validator-pin refresh (above). Companion validator:
 `scripts/validate-premium-ux-day-203.sh`. Day 204 — admin assignments manager
 lane visual pass (above). Companion validator:
-`scripts/validate-premium-ux-day-204.sh`.*
+`scripts/validate-premium-ux-day-204.sh`. Day 205A — pre-demo hygiene
+checkpoint (not a visual pass): removed proven-dead `lib/api` exports
+(`setScore`, `listAdminReps`, `patchAdminRepTier`, `AdminRepRow`,
+`getSparringSessionsByRep`) and dropped the stale `/reps` smoke-spec entry
+(no `/reps` index route exists). Build warnings and `/crm/Leaderboard`
+documented as known non-blockers in `DEMO_VISUAL_QA_NOTES.md`. Companion
+validator: `scripts/validate-premium-ux-day-205a.sh`.*
