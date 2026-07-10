@@ -47,14 +47,23 @@ grep -q "export \* from './button'" "$BARREL" 2>/dev/null
 check "barrel exports button" $?
 
 # --- Recipes match the Days 195-197 system ---
-grep -q "primary: 'bg-indigo-600 font-semibold text-white hover:bg-indigo-500'" "$BTN" 2>/dev/null
-check "primary recipe is canonical indigo" $?
-grep -q "secondary: 'bg-indigo-600/20 font-semibold text-indigo-200 hover:bg-indigo-600/30'" "$BTN" 2>/dev/null
-check "secondary recipe is indigo tonal" $?
+# Day 203 — loosened from exact indigo/red literals to intent-level checks so
+# the Button primitive can adopt the semantic colour tokens (brand = indigo,
+# danger = red; both alias the same palette 1:1, so rendered output is
+# unchanged). The behaviour contract is still fully asserted: primary is a solid
+# brand fill with white text darkening on hover, secondary is a brand tonal
+# 600/20→600/30 fill, ghost is a neutral border, danger is a bordered red/danger
+# outline. Accepting either the raw palette word or the token keeps this pin
+# from blocking safe design-system refactors while still catching real drift
+# (e.g. an accidental emerald/cyan primary would fail).
+grep -qE "primary: 'bg-(indigo|brand)-600 font-semibold text-white hover:bg-(indigo|brand)-500'" "$BTN" 2>/dev/null
+check "primary recipe is solid brand fill (indigo/brand token)" $?
+grep -qE "secondary: 'bg-(indigo|brand)-600/20 font-semibold text-(indigo|brand)-200 hover:bg-(indigo|brand)-600/30'" "$BTN" 2>/dev/null
+check "secondary recipe is brand tonal (indigo/brand token)" $?
 grep -q "ghost: 'border border-neutral-700 text-neutral-300 hover:bg-neutral-800'" "$BTN" 2>/dev/null
 check "ghost recipe is neutral bordered" $?
-grep -q "danger: 'border border-red-500/30 text-red-300 hover:bg-red-500/10'" "$BTN" 2>/dev/null
-check "danger recipe is bordered red" $?
+grep -qE "danger: 'border border-(red|danger)-500/30 text-(red|danger)-300 hover:bg-(red|danger)-500/10'" "$BTN" 2>/dev/null
+check "danger recipe is bordered danger (red/danger token)" $?
 
 # --- Adoption in the two touched routes ---
 grep -q 'SectionCard, Button, buttonClasses } from "@/components/ui"' "$CALLS" 2>/dev/null

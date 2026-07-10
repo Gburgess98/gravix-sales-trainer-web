@@ -5,12 +5,15 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md'
 
 // Day 198 — canonical Command Centre button recipes (Days 195–197 hand-copied
-// these per call site). Indigo = action/AI, neutral = secondary, red = danger.
+// these per call site). brand = action/AI, neutral = secondary, danger = red.
+// Day 203 — recipes now use the semantic colour roles (brand/danger) instead of
+// raw indigo/red; the tokens alias the same palette so rendered output is
+// unchanged, and a white-label can retint via the token layer alone.
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: 'bg-indigo-600 font-semibold text-white hover:bg-indigo-500',
-  secondary: 'bg-indigo-600/20 font-semibold text-indigo-200 hover:bg-indigo-600/30',
+  primary: 'bg-brand-600 font-semibold text-white hover:bg-brand-500',
+  secondary: 'bg-brand-600/20 font-semibold text-brand-200 hover:bg-brand-600/30',
   ghost: 'border border-neutral-700 text-neutral-300 hover:bg-neutral-800',
-  danger: 'border border-red-500/30 text-red-300 hover:bg-red-500/10',
+  danger: 'border border-danger-500/30 text-danger-300 hover:bg-danger-500/10',
 }
 
 const SIZE: Record<ButtonSize, string> = {

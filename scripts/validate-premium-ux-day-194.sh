@@ -46,13 +46,17 @@ check "app-shell has no fuchsia" $?
 ! grep -q 'animate-pulse' "$SRC/components/shell/app-shell.tsx" 2>/dev/null
 check "impersonation banner dot no longer pulses" $?
 
-# --- Shared UI: ai variants are indigo, fuchsia is gone ---
-grep -q "ai: 'border-indigo-500/20 bg-indigo-500/5'" "$SRC/components/ui/stat-card.tsx" 2>/dev/null
-check "StatCard ai variant is indigo" $?
+# --- Shared UI: ai variants are the brand accent, fuchsia is gone ---
+# Day 203 — loosened from the exact indigo literal to intent: the AI/brand
+# variant may render via the raw indigo class OR the semantic `brand` token
+# (which aliases indigo 1:1). What matters is the tinted 500/20 + 500/5 recipe
+# in the brand family, not the literal palette word.
+grep -qE "ai: 'border-(indigo|brand)-500/20 bg-(indigo|brand)-500/5'" "$SRC/components/ui/stat-card.tsx" 2>/dev/null
+check "StatCard ai variant is brand (indigo/brand token)" $?
 ! grep -q 'fuchsia' "$SRC/components/ui/stat-card.tsx" 2>/dev/null
 check "StatCard has no fuchsia" $?
-grep -q "border: 'border-indigo-500/20 bg-indigo-500/5'" "$SRC/components/ui/ai-insight-card.tsx" 2>/dev/null
-check "AiInsightCard summary is indigo" $?
+grep -qE "border: 'border-(indigo|brand)-500/20 bg-(indigo|brand)-500/5'" "$SRC/components/ui/ai-insight-card.tsx" 2>/dev/null
+check "AiInsightCard summary is brand (indigo/brand token)" $?
 ! grep -q 'fuchsia' "$SRC/components/ui/ai-insight-card.tsx" 2>/dev/null
 check "AiInsightCard has no fuchsia" $?
 grep -q 'tracking-tight' "$SRC/components/layout/page-header.tsx" 2>/dev/null

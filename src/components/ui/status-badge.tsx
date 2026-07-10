@@ -4,10 +4,12 @@ import { clsx } from 'clsx'
 
 type RiskBand = 'healthy' | 'watch' | 'at_risk' | string
 
+// Day 203 — status colours via semantic tokens (success/warning/danger/accent).
+// Tokens alias emerald/amber/red/cyan 1:1; badges stay status-only by design.
 const RISK_STYLES: Record<string, string> = {
-  healthy: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-  watch: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  at_risk: 'border-red-500/30 bg-red-500/10 text-red-300',
+  healthy: 'border-success-500/30 bg-success-500/10 text-success-300',
+  watch: 'border-warning-500/30 bg-warning-500/10 text-warning-300',
+  at_risk: 'border-danger-500/30 bg-danger-500/10 text-danger-300',
 }
 
 const RISK_LABELS: Record<string, string> = {
@@ -45,9 +47,9 @@ export function RiskBadge({ band, score, size = 'sm', className }: RiskBadgeProp
 type UrgencyLevel = 'critical' | 'high' | 'medium' | 'low' | string
 
 const URGENCY_STYLES: Record<string, string> = {
-  critical: 'border-red-500/30 bg-red-500/10 text-red-300',
-  high: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  medium: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
+  critical: 'border-danger-500/30 bg-danger-500/10 text-danger-300',
+  high: 'border-warning-500/30 bg-warning-500/10 text-warning-300',
+  medium: 'border-accent-500/30 bg-accent-500/10 text-accent-300',
   low: 'border-neutral-700 bg-neutral-900 text-neutral-400',
 }
 
@@ -76,15 +78,15 @@ export function UrgencyBadge({ urgency, size = 'sm', className }: UrgencyBadgePr
 // ── Generic status badge (assigned / open / completed / overdue …) ──
 
 const STATUS_STYLES: Record<string, string> = {
-  assigned: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-  active: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-  completed: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-  healthy: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  assigned: 'border-success-500/30 bg-success-500/10 text-success-300',
+  active: 'border-success-500/30 bg-success-500/10 text-success-300',
+  completed: 'border-success-500/30 bg-success-500/10 text-success-300',
+  healthy: 'border-success-500/30 bg-success-500/10 text-success-300',
   open: 'border-neutral-700 bg-neutral-900 text-neutral-300',
-  unassigned: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  watch: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  overdue: 'border-red-500/30 bg-red-500/10 text-red-300',
-  at_risk: 'border-red-500/30 bg-red-500/10 text-red-300',
+  unassigned: 'border-warning-500/30 bg-warning-500/10 text-warning-300',
+  watch: 'border-warning-500/30 bg-warning-500/10 text-warning-300',
+  overdue: 'border-danger-500/30 bg-danger-500/10 text-danger-300',
+  at_risk: 'border-danger-500/30 bg-danger-500/10 text-danger-300',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -128,10 +130,11 @@ export function ScorePill({ score, className }: ScorePillProps) {
     return <span className={clsx('text-xs opacity-60', className)}>—</span>
   }
   const n = Math.round(score)
+  // Day 203 — score bands via success/warning/danger tokens (alias emerald/amber/red).
   const cls =
-    n >= 80 ? 'bg-emerald-600/20 text-emerald-400'
-      : n >= 60 ? 'bg-amber-600/20 text-amber-300'
-        : 'bg-red-600/20 text-red-300'
+    n >= 80 ? 'bg-success-600/20 text-success-400'
+      : n >= 60 ? 'bg-warning-600/20 text-warning-300'
+        : 'bg-danger-600/20 text-danger-300'
   return (
     <span className={clsx('text-xs px-2 py-1 rounded tabular-nums font-medium', cls, className)}>
       {n}

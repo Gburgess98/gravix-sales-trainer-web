@@ -31,7 +31,8 @@ export function WorkspaceTabs<T extends string = string>({
           className={clsx(
             'relative px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
             active === tab.id
-              ? 'border-indigo-400 text-white'
+              // Day 203 — brand token (aliases indigo-400); active underline unchanged.
+              ? 'border-brand-400 text-white'
               : 'border-transparent text-neutral-500 hover:text-neutral-300 hover:border-neutral-700',
           )}
         >

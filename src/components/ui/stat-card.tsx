@@ -2,22 +2,24 @@ import { clsx } from 'clsx'
 
 type StatVariant = 'default' | 'danger' | 'warning' | 'success' | 'ai' | 'info'
 
+// Day 203 — semantic colour roles (danger/warning/success/brand/accent). Tokens
+// alias the prior red/amber/emerald/indigo/cyan palette 1:1; surface stays neutral.
 const BORDER_CLASS: Record<StatVariant, string> = {
   default: 'border-neutral-800/70 bg-neutral-950',
-  danger: 'border-red-500/20 bg-red-500/5',
-  warning: 'border-amber-500/20 bg-amber-500/5',
-  success: 'border-emerald-500/20 bg-emerald-500/5',
-  ai: 'border-indigo-500/20 bg-indigo-500/5',
-  info: 'border-cyan-500/20 bg-cyan-500/5',
+  danger: 'border-danger-500/20 bg-danger-500/5',
+  warning: 'border-warning-500/20 bg-warning-500/5',
+  success: 'border-success-500/20 bg-success-500/5',
+  ai: 'border-brand-500/20 bg-brand-500/5',
+  info: 'border-accent-500/20 bg-accent-500/5',
 }
 
 const VALUE_CLASS: Record<StatVariant, string> = {
   default: 'text-white',
-  danger: 'text-red-300',
-  warning: 'text-amber-300',
-  success: 'text-emerald-300',
-  ai: 'text-indigo-300',
-  info: 'text-cyan-300',
+  danger: 'text-danger-300',
+  warning: 'text-warning-300',
+  success: 'text-success-300',
+  ai: 'text-brand-300',
+  info: 'text-accent-300',
 }
 
 interface StatCardProps {

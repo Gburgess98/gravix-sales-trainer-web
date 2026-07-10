@@ -3,32 +3,34 @@ import { ReactNode } from 'react'
 
 export type SectionVariant = 'default' | 'ai' | 'rescue' | 'coaching' | 'warning' | 'danger'
 
+// Day 203 — accent variants use semantic roles (brand/warning/danger); tokens
+// alias indigo/amber/red 1:1. default + coaching stay on the neutral surface role.
 const BORDER: Record<SectionVariant, string> = {
   default: 'border-neutral-800/70 bg-neutral-950',
-  ai: 'border-indigo-500/20 bg-indigo-500/5',
-  rescue: 'border-amber-500/20 bg-amber-500/5',
+  ai: 'border-brand-500/20 bg-brand-500/5',
+  rescue: 'border-warning-500/20 bg-warning-500/5',
   // Day 196 — coaching sections are product areas, not statuses; emerald tint retired
   coaching: 'border-neutral-800/70 bg-neutral-950',
-  warning: 'border-amber-500/20 bg-amber-500/5',
-  danger: 'border-red-500/20 bg-red-500/5',
+  warning: 'border-warning-500/20 bg-warning-500/5',
+  danger: 'border-danger-500/20 bg-danger-500/5',
 }
 
 const DIVIDER: Record<SectionVariant, string> = {
   default: 'border-neutral-800',
-  ai: 'border-indigo-500/10',
-  rescue: 'border-amber-500/10',
+  ai: 'border-brand-500/10',
+  rescue: 'border-warning-500/10',
   coaching: 'border-neutral-800',
-  warning: 'border-amber-500/10',
-  danger: 'border-red-500/10',
+  warning: 'border-warning-500/10',
+  danger: 'border-danger-500/10',
 }
 
 const EYEBROW_CLASS: Record<SectionVariant, string> = {
   default: 'text-neutral-500',
-  ai: 'text-indigo-300',
-  rescue: 'text-amber-300',
+  ai: 'text-brand-300',
+  rescue: 'text-warning-300',
   coaching: 'text-neutral-500',
-  warning: 'text-amber-300',
-  danger: 'text-red-300',
+  warning: 'text-warning-300',
+  danger: 'text-danger-300',
 }
 
 interface SectionCardProps {

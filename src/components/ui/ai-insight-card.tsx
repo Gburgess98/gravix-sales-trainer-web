@@ -8,31 +8,33 @@ interface InsightStyle {
   dot: string
 }
 
+// Day 203 — semantic colour roles (brand/accent/success/warning/danger). Tokens
+// alias the prior indigo/cyan/emerald/amber/red palette 1:1, so output is unchanged.
 const STYLES: Record<InsightType, InsightStyle> = {
   summary: {
-    border: 'border-indigo-500/20 bg-indigo-500/5',
-    eyebrow: 'text-indigo-300',
-    dot: 'bg-indigo-500',
+    border: 'border-brand-500/20 bg-brand-500/5',
+    eyebrow: 'text-brand-300',
+    dot: 'bg-brand-500',
   },
   recommendation: {
-    border: 'border-cyan-500/20 bg-cyan-500/5',
-    eyebrow: 'text-cyan-300',
-    dot: 'bg-cyan-500',
+    border: 'border-accent-500/20 bg-accent-500/5',
+    eyebrow: 'text-accent-300',
+    dot: 'bg-accent-500',
   },
   'next-action': {
-    border: 'border-emerald-500/20 bg-emerald-500/5',
-    eyebrow: 'text-emerald-300',
-    dot: 'bg-emerald-500',
+    border: 'border-success-500/20 bg-success-500/5',
+    eyebrow: 'text-success-300',
+    dot: 'bg-success-500',
   },
   warning: {
-    border: 'border-amber-500/20 bg-amber-500/5',
-    eyebrow: 'text-amber-300',
-    dot: 'bg-amber-500',
+    border: 'border-warning-500/20 bg-warning-500/5',
+    eyebrow: 'text-warning-300',
+    dot: 'bg-warning-500',
   },
   escalation: {
-    border: 'border-red-500/20 bg-red-500/5',
-    eyebrow: 'text-red-300',
-    dot: 'bg-red-500',
+    border: 'border-danger-500/20 bg-danger-500/5',
+    eyebrow: 'text-danger-300',
+    dot: 'bg-danger-500',
   },
 }
 
@@ -79,9 +81,9 @@ interface AiInsightItemProps {
 }
 
 const ITEM_STYLES: Record<NonNullable<AiInsightItemProps['type']>, string> = {
-  flag: 'border-red-500/20 bg-red-500/5 text-red-200',
-  rec: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-100',
-  escalation: 'border-red-500/20 bg-red-500/5 text-red-100',
+  flag: 'border-danger-500/20 bg-danger-500/5 text-danger-200',
+  rec: 'border-success-500/20 bg-success-500/5 text-success-100',
+  escalation: 'border-danger-500/20 bg-danger-500/5 text-danger-100',
 }
 
 export function AiInsightItem({ content, type = 'rec', className }: AiInsightItemProps) {

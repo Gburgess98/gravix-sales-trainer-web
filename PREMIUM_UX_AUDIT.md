@@ -1841,6 +1841,93 @@ assignment surfaces for cross-side consistency.
 
 ---
 
+## §33 — Semantic colour tokens + validator-pin refresh (Day 203)
+
+**Scope:** design-system foundation/hardening pass. WEB-only. No product
+behaviour, routes, API, migrations, features, theme switcher or white-label
+settings. Rendered colour output is **byte-identical** — proven by compiling
+`globals.css` and confirming each token class resolves to the same oklch as the
+raw palette utility it replaces (12 pairs, incl. `/opacity` modifiers, which
+Tailwind resolves through the var chain at build time).
+
+### Token mapping (`src/app/globals.css`, `@theme`)
+
+Semantic roles alias the current Tailwind palette 1:1 via `var()`:
+
+| Role      | Palette  | Meaning                                    |
+|-----------|----------|--------------------------------------------|
+| `brand`   | indigo   | primary action / AI / brand accent         |
+| `accent`  | cyan     | sparing highlight + "medium" urgency pair   |
+| `success` | emerald  | positive status only                        |
+| `warning` | amber    | caution status only                         |
+| `danger`  | red      | error / destructive / at-risk status only   |
+
+Only the shades the shared components use are aliased (brand 200–600, accent
+300/500, success 100–600, warning 300–600, danger 100–600). Surface / card /
+border / muted stay on the **neutral** scale — the components already use it
+consistently, so no alias was added there (deliberate; avoids churn and keeps
+the Day-195/196 neutral pins literal).
+
+### Components migrated (raw palette → semantic token)
+
+- `ui/button.tsx` — `primary`/`secondary` → `brand`, `danger` → `danger`;
+  `ghost` stays neutral.
+- `shell/workspace-tabs.tsx` — active underline `indigo-400` → `brand-400`.
+- `ui/ai-insight-card.tsx` — all five insight types + the three inline item
+  variants → brand/accent/success/warning/danger.
+- `ui/stat-card.tsx` — `ai`→brand, `info`→accent, `success`/`warning`/`danger`
+  roles tokenised; `default` stays neutral.
+- `ui/status-badge.tsx` — RiskBadge, UrgencyBadge, StatusBadge maps + ScorePill
+  bands → success/warning/danger/accent; neutral fallbacks unchanged.
+- `ui/section-card.tsx` — `ai`→brand, `rescue`/`warning`→warning, `danger`→
+  danger; `default`/`coaching` stay neutral literal (Day-195/196 pins).
+
+All variant names, props and public APIs are unchanged — consumers and their
+validators (Days 196/199/201/202 pin usage/imports) keep passing untouched.
+
+### Validator-pin refresh
+
+The blocking pins were **not** the days guessed in the task brief; the ones that
+actually pinned migrated component internals were:
+
+- **Day 194** — StatCard/AiInsightCard `ai` variant exact indigo literal →
+  `(indigo|brand)` intent regex.
+- **Day 195** — WorkspaceTabs `border-indigo-400` and StatCard `ai` literal →
+  `(indigo|brand)` intent regexes.
+- **Day 198** — the four Button recipes → intent regexes accepting the raw
+  palette word **or** the token (`(indigo|brand)`, `(red|danger)`), while still
+  asserting the full behaviour contract (solid brand primary, brand-tonal
+  secondary, neutral ghost, bordered danger). An accidental emerald/cyan primary
+  still fails.
+
+Each loosened check carries an inline `Day 203 —` comment explaining why. No
+behaviour-protecting check was weakened. Route-file recipe pins (Days 182/190
+CRM, 196/197 page literals, 199/201/202 usage) were left literal — they don't
+block component-level design-system work.
+
+### White-label readiness
+
+Retinting a whole role for a white-label is now a token-layer edit
+(`--color-brand-* → another palette`) with **zero component changes**. Remaining
+foundation work before true theming: (1) neutral/surface is still literal across
+components — a `surface`/`muted` alias pass would complete the roles; (2) route
+files still use raw palette literals directly (intentionally not mass-migrated
+this pass); (3) no light-theme token set yet — `@theme` currently maps one dark
+palette.
+
+### Deferred
+
+- Surface/muted (neutral) token aliasing + route-file adoption — next increments.
+- Light-theme / actual theme switching — explicitly out of scope today.
+- `empty-state.tsx`, `page-container.tsx`, `page-header.tsx` — neutral/white
+  only, nothing to tokenise; left as-is.
+
+**Day 204 recommendation:** extend the token layer to surface/muted (neutral)
+roles and begin opt-in route-file adoption of the semantic classes, or open the
+`/admin/assignments` manager-assignment lane for cross-side consistency.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -1885,4 +1972,6 @@ full QA sweep + CRM workspace adoption (above). Companion validator:
 Centre pass (above). Companion validator:
 `scripts/validate-premium-ux-day-201.sh`. Day 202 — assignments
 workspace pass (above). Companion validator:
-`scripts/validate-premium-ux-day-202.sh`.*
+`scripts/validate-premium-ux-day-202.sh`. Day 203 — semantic colour tokens +
+validator-pin refresh (above). Companion validator:
+`scripts/validate-premium-ux-day-203.sh`.*

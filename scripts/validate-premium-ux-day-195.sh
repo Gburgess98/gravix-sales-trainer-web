@@ -51,8 +51,10 @@ check "topbar is translucent + blurred" $?
 # --- Navigation states: indigo, no emerald ---
 grep -q 'bg-indigo-500/10' "$SRC/components/shell/nav-item.tsx" 2>/dev/null
 check "active nav item has indigo surface" $?
-grep -q 'border-indigo-400' "$SRC/components/shell/workspace-tabs.tsx" 2>/dev/null
-check "workspace tab active underline is indigo" $?
+# Day 203 — loosened to intent: active underline is the brand accent, rendered
+# via raw indigo OR the semantic `brand` token (aliases indigo 1:1).
+grep -qE 'border-(indigo|brand)-400' "$SRC/components/shell/workspace-tabs.tsx" 2>/dev/null
+check "workspace tab active underline is brand (indigo/brand token)" $?
 ! grep -q 'emerald' "$SRC/components/shell/workspace-tabs.tsx" 2>/dev/null
 check "workspace tabs have no emerald" $?
 
@@ -63,8 +65,9 @@ grep -q "border-neutral-800/70 bg-neutral-950" "$SRC/components/ui/section-card.
 check "SectionCard default border softened" $?
 grep -q 'shadow-md shadow-black/20' "$SRC/components/ui/stat-card.tsx" 2>/dev/null
 check "StatCard has soft shadow" $?
-grep -q "ai: 'border-indigo-500/20 bg-indigo-500/5'" "$SRC/components/ui/stat-card.tsx" 2>/dev/null
-check "StatCard ai variant unchanged (indigo)" $?
+# Day 203 — loosened to intent (indigo OR brand token, aliases indigo 1:1).
+grep -qE "ai: 'border-(indigo|brand)-500/20 bg-(indigo|brand)-500/5'" "$SRC/components/ui/stat-card.tsx" 2>/dev/null
+check "StatCard ai variant is brand (indigo/brand token)" $?
 
 # --- Layout: PageContainer clamp ---
 grep -q 'max-w-\[1400px\]' "$SRC/components/layout/page-container.tsx" 2>/dev/null
