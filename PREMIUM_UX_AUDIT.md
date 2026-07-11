@@ -2110,6 +2110,145 @@ as `/crm/analytics`), or the surface/muted token extension carried from Day 204.
 
 ---
 
+## §36 — Intelligence + manager workspace v2 (Day 205C)
+
+**Scope:** `/crm/analytics` recomposed as the Intelligence Cockpit, plus
+low-risk trust/colour passes on `/crm/overview`, `/crm/manager`
+(ManagerClient), and `/admin/users`. WEB-only, visual-only. No API changes, no
+migrations, no new routes, no fake features.
+
+### Why Day 205B still read as "basic dark charts"
+
+Day 205B put `/crm/analytics` on the shell system, but composition stayed a
+uniform grid: a bare `PageHeader` floating on the background, four
+equal-weight KPI tiles with no hierarchy or movement, three same-weight chart
+cards on default Recharts styling (dashed cartesian grids, bare axis lines,
+flat solid marks), no curated-insight layer between the numbers and the
+charts, and next actions as three bare buttons. Structurally sound; visually
+still a PowerPoint dashboard.
+
+### What changed — `/crm/analytics` (Intelligence Cockpit)
+
+- **Intelligence hero band** — the page opens with a framed panel (rounded-2xl
+  brand-tinted border, layered indigo radial glows echoing the app shell),
+  eyebrow *Gravix Intelligence*, `PageHeader` inside it with the rep/range
+  selects, and a chip row: a live indicator (honest — the existing Supabase
+  realtime channel refreshes on `calls` changes) plus the active scope/range.
+- **KPI hierarchy** — *Avg call score* promoted to a featured 2-column card
+  (text-4xl value, its own radial sheen) with a **trend delta chip** computed
+  from the score trend already fetched (second half of range vs first);
+  up = success tint, down = warning tint, steady = neutral. Shows an em dash,
+  not a misleading 0, when no calls are scored. Three `StatCard`s remain;
+  *Tasks completed* now carries a derived completion-rate subtext.
+- **Signals band** — "This range at a glance": up to four plain-English reads
+  derived arithmetically from the three existing responses (score direction,
+  most-coached rep, task completion rate, busiest pipeline stage). No extra
+  fetches, no AI claims — the subtitle says "read automatically from the
+  figures in this range". Honest empty line when there is no data.
+- **Score performance module** — line chart upgraded to a gradient-filled
+  area (brand-400 stroke, fade-to-transparent fill), dashed grid replaced
+  with faint horizontal rules only, axis lines/ticks removed, Y domain locked
+  0–100, plus a **reading rail** (Latest / Range high / Range low with dates,
+  all derived from the same series).
+- **Chart framing** — both bar charts get vertical gradient fills on the
+  brand ramp, softened grid, no axis lines, `maxBarSize` so sparse data stops
+  rendering as slabs, and a brand-tinted hover cursor.
+- **Humanised rep labels** — `repLabel()` maps unnamed reps to `Rep a1b2c3`
+  (first 6 chars) in the chart axis and rep filter; raw UUIDs no longer
+  render. CSV exports keep full-fidelity ids.
+- **Intentional empty states** — conversion empty state now sits over muted
+  aria-hidden ghost bars (decoration under an explicit "No stage transitions"
+  message, not fake data); all three modules keep fixed heights so the page
+  doesn't collapse when empty.
+- **Next actions** — the three real links (`/coaching?tab=review`,
+  `/admin/assignments`, `/crm/manager`) upgraded from bare buttons to
+  described action cards with hover affordance; header gains an *Upload a
+  call* ghost action (existing route).
+
+Preserved exactly: all three `/v1/crm/analytics/*` fetches, sessionStorage
+cache, `analytics-updates` realtime channel, `exportCSV`/`exportPNG` and their
+element ids (`score-performance-card`, `conversion-by-stage-card`,
+`activity-by-rep-card` — ids now wrap the chart node only, so PNG exports
+capture the chart as before), rep/days filters, error card + Retry, loading
+skeletons, and the pinned brand hexes `#818cf8`/`#6366f1`.
+
+### What changed — `/crm/overview` (trust pass only)
+
+Active and manager-facing (linked from manager surfaces and assignment flows).
+Full recomposition of the 1,450-line page stays deferred; today only:
+
+- Emoji status chips (🟡/🕑/✅ and 🔴/✅/💤 in Manager Trust) replaced with
+  semantic status dots (warning/accent/success/danger/neutral).
+- Raw `missing_user` error code under "Control Centre unavailable" replaced
+  with calm copy; the code moves to a hover `title` for debugging.
+- Top Reps medal emojis (🥇🥈🥉) replaced with rank chips (#1–#3 in brand
+  tint); active-filter accent moved `sky-500` → `brand-500`; "XP" display
+  label reworded to "Points" (same underlying field).
+
+**Build warnings (documented, not faked):** `listCoachAssignments` and
+`getTopObjections` are imported from `@/lib/api` but not exported there —
+the two Day 205A build warnings. Restoring them needs real helper/API work
+(they back the Recent Assignments and Top Objections cards), so they are left
+untouched rather than stubbed. Candidate for the Day 206 overview pass.
+
+### What changed — `/crm/manager`
+
+- Header subtitle de-jargonised ("dry-run" parenthetical → plain sentence).
+- Failure banner no longer prints the raw error code inline (moved to
+  `title`); banner moved onto warning tokens.
+- ManagerClient: four `bg-white text-black` primary CTAs (Run auto-assign
+  now / Execute this preview / both confirm-modal confirms) moved to the
+  brand primary recipe; "from preview" provenance chip emerald → neutral
+  (green stays status-only). The Day 187-pinned indigo batch-assign literal
+  is untouched; all handlers, disabled states and confirm flows preserved.
+
+### What changed — `/admin/users`
+
+- Filter chips + search focus ring cyan → brand (active/action = brand).
+- Tier badges onto tokens: PartnerAdmin raw indigo → brand, Manager cyan →
+  accent token, Owner amber → neutral (amber is caution-only).
+- Partner-name chip cyan → neutral label; error card onto danger tokens.
+- Impersonation flows untouched.
+
+### Not copied / not built
+
+Same boundary as §35: no light theme, no Kendo hero/module-nav/setup-progress
+layout, no editable context fields, no Autofill, no scorecard builder, no new
+routes. Verified: no `src/app/scorecard`, `src/app/context`, or
+`src/app/crm/scorecard` exist.
+
+### Future product opportunities (real features for future lanes, not fake UI)
+
+- **Context Engine** — org-scoped editable business context (company profile,
+  ICP, value prop, objection library, competitors) consumed by AI feedback,
+  sparring and Whisperer prompts; setup-progress affordance once fields exist.
+- **Scorecard Studio** — manager-defined scoring criteria and weights with
+  per-criterion results on call review, replacing the single opaque score.
+- **AI Scorecard Builder** — generate a draft scorecard from the org's
+  context + call history for the manager to edit and approve.
+- **AI Autofill from website** — prefill Context Engine fields from the org's
+  public site, manager-reviewed before save.
+- **Custom scorecards by call type** — different criteria for discovery vs
+  demo vs objection-handling calls, selected at upload/review time.
+
+All five need API/schema work — documented here so the demo narrative can
+mention direction without shipping placeholder UI.
+
+### Deferred
+
+- `/crm/overview` full Intelligence Cockpit recomposition (incl. restoring
+  `listCoachAssignments`/`getTopObjections` exports — needs helper work).
+- `/crm/manager` deeper workspace polish (tables, run-history framing).
+- Raw "Rep ID" free-text filter inside overview's embedded CRM Analytics
+  section — replace with a rep select when that section is recomposed.
+- Surface/muted token extension (carried from Days 204/205B).
+
+**Day 206 recommendation:** `/crm/overview` intelligence pass — it is the
+weakest remaining high-visibility manager surface, and its two build warnings
+should be resolved with real helpers in the same lane.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.

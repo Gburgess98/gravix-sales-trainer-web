@@ -18,14 +18,6 @@ import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-// --- Medal helpers (Top Reps UI polish) ---
-function rankMedal(rank: number) {
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
-  return undefined;
-}
-
 function scoreColour(score?: number | null) {
   if (score == null) return 'text-zinc-400';
   if (score >= 80) return 'text-green-400';
@@ -608,9 +600,18 @@ export default function CrmOverviewPage() {
           <div className="h-5 w-64 animate-pulse rounded bg-white/10" />
         ) : (
           <>
-            <span>🟡 Open: <span className="tabular-nums">{sumOpen}</span></span>
-            <span>🕑 Due soon: <span className="tabular-nums">{sumDueSoon}</span></span>
-            <span>✅ Completed 7d: <span className="tabular-nums">{sumDone7d}</span></span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning-500" />
+              Open: <span className="tabular-nums">{sumOpen}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+              Due soon: <span className="tabular-nums">{sumDueSoon}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success-500" />
+              Completed 7d: <span className="tabular-nums">{sumDone7d}</span>
+            </span>
           </>
         )}
       </div>
@@ -719,7 +720,7 @@ export default function CrmOverviewPage() {
 
             <div className="rounded-lg border border-white/10 p-2">
               <div className="text-white/50">Auto Assign</div>
-              <div className="text-lg font-semibold text-sky-300">
+              <div className="text-lg font-semibold text-brand-300">
                 {reporting.auto_assignments_created ?? 0}
               </div>
             </div>
@@ -784,7 +785,12 @@ export default function CrmOverviewPage() {
         ) : !controlCentre?.ok ? (
           <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="text-sm text-white/80">Control Centre unavailable right now.</div>
-            <div className="mt-1 text-xs text-white/55">{String(controlCentre?.error ?? 'control_centre_failed')}</div>
+            <div
+              className="mt-1 text-xs text-white/55"
+              title={String(controlCentre?.error ?? '')}
+            >
+              It will load again once team data is reachable for this account.
+            </div>
           </div>
         ) : (
           (() => {
@@ -1082,7 +1088,7 @@ export default function CrmOverviewPage() {
               const statusCls =
                 status === 'done' || status === 'completed'
                   ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-                  : 'border-sky-500/30 text-sky-300 bg-sky-500/10';
+                  : 'border-brand-500/30 text-brand-300 bg-brand-500/10';
 
               const href = a.contact_id ? `/crm/contacts/${encodeURIComponent(String(a.contact_id))}` : null;
 
@@ -1134,7 +1140,7 @@ export default function CrmOverviewPage() {
           <div className="text-sm opacity-70">Conversion (90d)</div>
           <div className="text-2xl font-semibold">{pct((trends as any)?.conversion_rate_90d)}</div>
           <div className="mt-2">
-            <Sparkline className="text-sky-400" data={(trends as any)?.winRate} />
+            <Sparkline className="text-brand-400" data={(trends as any)?.winRate} />
           </div>
         </div>
 
@@ -1166,14 +1172,17 @@ export default function CrmOverviewPage() {
           <div className="mt-2 text-sm text-neutral-400">No trust signal available.</div>
         ) : (
           <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-300">
-            <span>
-              🔴 Overdue: <span className="tabular-nums">{trust.trust.overdue ?? 0}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-danger-500" />
+              Overdue: <span className="tabular-nums">{trust.trust.overdue ?? 0}</span>
             </span>
-            <span>
-              ✅ Completed (7d): <span className="tabular-nums">{trust.trust.completed_7d ?? 0}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success-500" />
+              Completed (7d): <span className="tabular-nums">{trust.trust.completed_7d ?? 0}</span>
             </span>
-            <span>
-              💤 Stale reps: <span className="tabular-nums">{(trust.trust.stale_reps || []).length}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-neutral-600" />
+              Stale reps: <span className="tabular-nums">{(trust.trust.stale_reps || []).length}</span>
             </span>
           </div>
         )}
@@ -1300,22 +1309,21 @@ export default function CrmOverviewPage() {
             {(topReps.length > 0 ? topReps : []).map((r: any, idx: number) => {
               const isActive = repFilter && String(repFilter) === String(r.user_id);
               const rank = idx + 1;
-              const medal = rankMedal(rank);
               return (
                 <Link
                   key={r.user_id || String(idx)}
                   href={`/crm/reps/${encodeURIComponent(r.user_id)}`}
-                  className={`px-4 py-3 flex items-center justify-between hover:bg-neutral-900 ${isActive ? 'bg-neutral-900 border-l-2 border-sky-500' : ''}`}
+                  className={`px-4 py-3 flex items-center justify-between hover:bg-neutral-900 ${isActive ? 'bg-neutral-900 border-l-2 border-brand-500' : ''}`}
                   title={isActive ? 'Active filter: this rep' : 'Filter by this rep'}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 text-center text-lg" aria-hidden>
-                      {medal ? medal : <span className="text-xs text-neutral-500">#{rank}</span>}
+                    <div className="w-8 text-center" aria-hidden>
+                      <span className={`text-xs tabular-nums ${rank <= 3 ? 'text-brand-300 font-semibold' : 'text-neutral-500'}`}>#{rank}</span>
                     </div>
                     <div className="min-w-0">
                       <div className="truncate">{r.name ?? 'Rep'}</div>
-                      <div className="text-xs text-neutral-500 truncate" title={`Calls: ${r.calls ?? '—'} · XP: ${r.xp ?? '—'}`}>
-                        Calls: {r.calls ?? '—'} · XP: {r.xp ?? '—'}
+                      <div className="text-xs text-neutral-500 truncate" title={`Calls: ${r.calls ?? '—'} · Points: ${r.xp ?? '—'}`}>
+                        Calls: {r.calls ?? '—'} · Points: {r.xp ?? '—'}
                       </div>
                     </div>
                   </div>
@@ -1445,7 +1453,7 @@ export default function CrmOverviewPage() {
         <div className="rounded-lg border border-neutral-800 p-4">
           <div className="text-sm opacity-70">Follow-ups Sent</div>
           <div className="text-2xl font-semibold">—</div>
-          <div className="mt-2"><Sparkline className="text-sky-400" /></div>
+          <div className="mt-2"><Sparkline className="text-brand-400" /></div>
         </div>
         <div className="rounded-lg border border-neutral-800 p-4">
           <div className="text-sm opacity-70">Rep Activity</div>

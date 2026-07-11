@@ -62,7 +62,7 @@ export default async function CrmManagerPage() {
     <PageContainer>
       <PageHeader
         title="Team"
-        subtitle="Overview + run auto-assign across recent contacts (dry-run first, then execute)."
+        subtitle="Team overview and auto-assign controls — preview a run first, then execute."
         actions={
           <>
             <Link
@@ -83,8 +83,11 @@ export default async function CrmManagerPage() {
       />
 
       {!overview.ok ? (
-        <div className="rounded-lg border border-amber-800 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
-          Manager overview failed to load: {overview.error ?? "overview_failed"}. Core manager controls are still available below.
+        <div
+          className="rounded-lg border border-warning-500/20 bg-warning-500/5 px-4 py-3 text-sm text-warning-200"
+          title={overview.error ?? undefined}
+        >
+          Team overview could not be loaded right now. Core manager controls are still available below.
         </div>
       ) : null}
 

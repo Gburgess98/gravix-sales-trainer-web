@@ -19,9 +19,9 @@ type UserRow = {
 
 const TIER_STYLE: Record<string, string> = {
   SuperAdmin:    'border-brand-400/40 bg-brand-500/15 text-brand-200',
-  PartnerAdmin:  'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
-  Manager:       'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
-  Owner:         'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  PartnerAdmin:  'border-brand-500/30 bg-brand-500/10 text-brand-300',
+  Manager:       'border-accent-500/30 bg-accent-500/10 text-accent-300',
+  Owner:         'border-neutral-600 bg-neutral-800/60 text-neutral-200',
   SalesRep:      'border-neutral-700 bg-neutral-900 text-neutral-400',
 }
 
@@ -143,10 +143,12 @@ export default function UsersPage() {
       {loading && <LoadingText text="Loading users…" />}
 
       {error && !loading && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 text-sm text-red-300">
+        <div className="rounded-xl border border-danger-500/30 bg-danger-500/5 px-4 py-4 text-sm text-danger-300">
           {error === 'forbidden_not_partner_admin'
             ? 'Access denied — PartnerAdmin or SuperAdmin required.'
-            : error}
+            : error === 'missing_user'
+              ? 'Users could not be loaded for this account. Sign in with an admin account and retry.'
+              : error}
         </div>
       )}
 
@@ -159,7 +161,7 @@ export default function UsersPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search name, company, partner…"
-              className="w-full max-w-sm rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-cyan-500/40 placeholder:text-neutral-600"
+              className="w-full max-w-sm rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-600"
             />
             <div className="flex flex-wrap gap-2">
               {tiers.map(t => (
@@ -169,7 +171,7 @@ export default function UsersPage() {
                   onClick={() => setTierFilter(t)}
                   className={`rounded-xl border px-3 py-1.5 text-xs transition-all ${
                     tierFilter === t
-                      ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                      ? 'border-brand-500/30 bg-brand-500/10 text-brand-200'
                       : 'border-neutral-800 bg-black/30 text-neutral-400 hover:border-neutral-700'
                   }`}
                 >
@@ -216,7 +218,7 @@ export default function UsersPage() {
                         <td className="px-4 py-3"><TierBadge tier={u.tier} /></td>
                         <td className="px-4 py-3">
                           {u.partner_name
-                            ? <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-300">{u.partner_name}</span>
+                            ? <span className="rounded-full border border-neutral-700 bg-neutral-800/60 px-2 py-0.5 text-[10px] text-neutral-300">{u.partner_name}</span>
                             : <span className="text-sm text-neutral-600">—</span>
                           }
                         </td>

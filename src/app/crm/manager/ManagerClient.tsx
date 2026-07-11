@@ -850,7 +850,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
               setApiError(null);
               setConfirmExecute(true);
             }}
-            className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
+            className="px-3 py-2 rounded-md bg-brand-600 text-white text-sm font-semibold hover:bg-brand-500 disabled:opacity-60"
           >
             {busy ? "Running…" : "Run auto-assign now"}
           </button>
@@ -914,7 +914,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
                       setConfirmExecutePreviewId(null);
                       if (id) await executeFromPreview(id);
                     }}
-                    className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+                    className="px-3 py-2 rounded-md bg-brand-600 text-white text-sm font-semibold hover:bg-brand-500"
                   >
                     Yes, execute preview
                   </button>
@@ -948,7 +948,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
                       setConfirmExecute(false);
                       await runNow(false);
                     }}
-                    className="px-3 py-2 rounded bg-white text-black text-sm font-medium"
+                    className="px-3 py-2 rounded-md bg-brand-600 text-white text-sm font-semibold hover:bg-brand-500"
                   >
                     Yes, run auto-assign
                   </button>
@@ -1053,7 +1053,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
                 }
                 setConfirmExecutePreviewId(previewRunId);
               }}
-              className="px-3 py-2 rounded bg-white text-black text-sm font-medium disabled:opacity-60"
+              className="px-3 py-2 rounded-md bg-brand-600 text-white text-sm font-semibold hover:bg-brand-500 disabled:opacity-60"
             >
               Execute this preview
             </button>
@@ -1075,7 +1075,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
             {lastRun?.executed_from_preview_run_id && (
               <span
-                className="text-xs px-2 py-0.5 rounded bg-emerald-900/20 text-emerald-200"
+                className="text-xs px-2 py-0.5 rounded bg-neutral-800/80 text-neutral-300"
                 title={`Executed from preview: ${String(lastRun.executed_from_preview_run_id)}`}
               >
                 from preview
