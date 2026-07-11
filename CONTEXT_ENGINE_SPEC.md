@@ -1,7 +1,9 @@
 # Context Engine — Module Spec (Day 207)
 
 Status: **Planning only.** Part of the Intelligence Layer
-(`INTELLIGENCE_LAYER_BLUEPRINT.md`).
+(`INTELLIGENCE_LAYER_BLUEPRINT.md`). Day 208 UX design:
+`CONTEXT_ENGINE_UX_BLUEPRINT.md`, `CONTEXT_ENGINE_FIELD_SPEC.md`,
+`CONTEXT_ENGINE_ROUTE_PLAN.md`.
 
 ## Purpose
 

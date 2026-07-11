@@ -3,6 +3,10 @@
 Status: **Planning only.** No API changes, no migrations, no production UI changes.
 Companion specs: `CONTEXT_ENGINE_SPEC.md`, `SCORECARD_STUDIO_SPEC.md`,
 `MANAGER_TEAM_MANAGEMENT_SCOPE.md`.
+Day 208 addenda (Context Engine UX design): `CONTEXT_ENGINE_UX_BLUEPRINT.md`
+(layout, states, workflow, copy deck), `CONTEXT_ENGINE_FIELD_SPEC.md`
+(exact MVP fields + UFC seed examples + compiled-block contract),
+`CONTEXT_ENGINE_ROUTE_PLAN.md` (route decision + nav wiring checklist).
 
 ---
 
