@@ -21,6 +21,14 @@ supersession of the Context Engine objections module),
 `SPARRING_SCENARIO_ENGINE_SPEC.md` (scenario builder + versioning +
 sparring integration), `OBJECTION_TO_ASSIGNMENT_FLOW.md` (detect → review
 → teach → practise → prove loop + analytics).
+Day 211 addenda (Manager Team Management UX):
+`MANAGER_TEAM_MANAGEMENT_UX_BLUEPRINT.md` (team list, member drawer,
+invite/deactivate flows, `rep_missing_office` fix loop),
+`MANAGER_TEAM_MANAGEMENT_FIELD_SPEC.md` (fields + permission matrix),
+`MANAGER_TEAM_MANAGEMENT_ROUTE_PLAN.md` (new `/team` route — supersedes
+the "extend `/admin/users`" note; legacy `/admin/reps` + `POST
+/v1/admin/users` disposition), `LICENCE_AND_SEAT_RULES.md` (seat model,
+`company_licences` canonical over legacy `org_limits`).
 
 ---
 

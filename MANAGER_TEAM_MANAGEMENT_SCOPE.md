@@ -4,6 +4,15 @@ Status: **Planning only.** Part of the Intelligence Layer
 (`INTELLIGENCE_LAYER_BLUEPRINT.md`). Deliberately the thinnest module —
 this is an enabler, not a product pillar.
 
+Day 211 UX design: `MANAGER_TEAM_MANAGEMENT_UX_BLUEPRINT.md`,
+`MANAGER_TEAM_MANAGEMENT_FIELD_SPEC.md`,
+`MANAGER_TEAM_MANAGEMENT_ROUTE_PLAN.md`, `LICENCE_AND_SEAT_RULES.md`.
+**Two Day 211 supersessions of this doc:** the surface is a new `/team`
+route, not an extension of `/admin/users` (audit found `/admin/users` is
+the control-plane console with impersonation); and the seat source of
+truth is `company_licences` with `org_limits` as legacy fallback — see the
+route plan §1/§3 and seat rules §2.
+
 ## Purpose
 
 Let a manager run their own team day-to-day — see reps, invite new ones
