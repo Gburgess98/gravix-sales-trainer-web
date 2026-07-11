@@ -2013,6 +2013,103 @@ surfaces) for cross-side polish.
 
 ---
 
+## §35 — Analytics intelligence workspace pass (Day 205B)
+
+**Scope:** `/crm/analytics` (the sidebar Analytics route, manager-gated) plus a
+fuchsia sweep on `/admin/users`. WEB-only, visual-only. No API changes, no new
+features, no route changes.
+
+### Competitor-inspired principles (extracted, not copied)
+
+Competitor screenshots (Kendo) were used as *principle* references only:
+
+- **Calm hierarchy** — one clear hero surface per page, secondary modules
+  visually subordinate, generous confident spacing.
+- **Premium workspace framing** — the page reads as an intelligence workspace,
+  not a grid of disconnected chart tiles.
+- **Curated insight** — every chart carries a plain-English subtitle saying
+  what it measures and over what range, so figures read as findings.
+- **Enterprise-grade states** — deliberate loading, empty, and error states
+  instead of blank axes on empty data.
+- **Action adjacency** — insight surfaces end in obvious next actions.
+
+Deliberately **not** copied: Kendo's light theme, hero layout, left context
+module navigation, setup-progress meter, editable business-context fields,
+Autofill concept, wording, or any visual assets. Gravix stays on its own dark
+Command Centre shell and Day 203 semantic tokens.
+
+### What changed — `/crm/analytics`
+
+Previously: hand-rolled header + local KPI `Card`, hardcoded hex palette
+(blue-400 line, blue-500 + **violet `#8b5cf6`** bars), per-call-site export
+button recipes, and charts that rendered empty axes with no loading/empty/error
+handling. A classic "PowerPoint chart grid".
+
+- Page rebuilt on the shell system: `PageContainer` + `PageHeader` (rep/range
+  selects as calm header actions), `StatCard` ×4 KPI strip, `SectionCard` for
+  every chart module, `Button`/`buttonClasses` for all actions.
+- Hero framing: Score performance is now the single `variant="ai"` hero card
+  (eyebrow *Intelligence*), with the two bar charts as subordinate modules.
+- Chart palette unified on the brand ramp: line `#818cf8` (brand-400), bars
+  `#6366f1` (brand-500) — the violet `#8b5cf6` bar is retired. Hexes mirror
+  the token palette because Recharts writes SVG presentation attributes, which
+  cannot resolve CSS variables.
+- Curated subtitles on every module including the live range
+  (e.g. "Average call review score per day · last 30 days").
+- States: pulse skeleton while first load is in flight, `EmptyState` per chart
+  when a range has no data (score trend offers a real "Upload a call" link),
+  and a `variant="danger"` error card with a Retry button if the analytics
+  fetches fail (previously an unhandled rejection and stale silence).
+- Manager next actions: a closing "Act on these insights" card linking to the
+  existing review queue (`/coaching?tab=review`), assignments admin
+  (`/admin/assignments`) and team workspace (`/crm/manager`). Real routes only.
+
+### What changed — `/admin/users`
+
+Residual fuchsia retired (last active-surface fuchsia in the app): SuperAdmin
+tier badge → brand-200/brand-400 chip; impersonation "Active" chip and "Exit
+impersonation" link → warning tokens (impersonation *is* a caution status);
+"Become User" hover → brand. No handler/gating changes.
+
+### Behaviour preserved
+
+All three analytics fetches (`stage-conversion`, `score-trend`,
+`activity-by-rep`), the sessionStorage read-then-refresh cache, the Supabase
+`calls` realtime re-load channel, the 90-day rep-options fetch, `exportCSV`,
+`exportPNG` (same element ids `score-performance-card`,
+`conversion-by-stage-card`, `activity-by-rep-card`; SVG-first export path
+untouched), KPI reductions, and the rep/days filter state are unchanged. The
+only logic additions are the `loaded`/`loadError` flags feeding the new states.
+
+### Future module (documented, not built): Context Engine / Scorecard Studio
+
+Kendo's strongest product idea is an editable **business-context setup
+surface** (company profile, ICP, objections, competitors) feeding scoring, plus
+a **scorecard builder** with per-criterion results. Gravix has no scorecard,
+context, or config routes today (audited: none exist). Opportunity, for a
+future lane — requires API/schema work, so out of scope for a visual pass:
+
+- **Context Engine** — org-scoped editable context fields (business summary,
+  ICP, competitors, objection library) that AI feedback/sparring prompts could
+  consume; setup-progress affordance; AI-assist prefill *only* when a real
+  backend exists (no fake Autofill UI).
+- **Scorecard Studio** — manager-defined scoring criteria with weights;
+  per-call scorecard results view replacing the single opaque score.
+
+No placeholder routes or fake UI were shipped for either.
+
+### Deferred
+
+- `/crm/overview` analytics blocks (1,457-line page) — separate pass.
+- Recharts theming beyond colour (custom tooltip component, axis typography).
+- `/admin/users` full shell adoption (PageContainer/PageHeader) — badge-only
+  sweep today.
+
+**Day 206 recommendation:** `/crm/overview` intelligence pass (same treatment
+as `/crm/analytics`), or the surface/muted token extension carried from Day 204.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.
@@ -2067,4 +2164,6 @@ checkpoint (not a visual pass): removed proven-dead `lib/api` exports
 `getSparringSessionsByRep`) and dropped the stale `/reps` smoke-spec entry
 (no `/reps` index route exists). Build warnings and `/crm/Leaderboard`
 documented as known non-blockers in `DEMO_VISUAL_QA_NOTES.md`. Companion
-validator: `scripts/validate-premium-ux-day-205a.sh`.*
+validator: `scripts/validate-premium-ux-day-205a.sh`. Day 205B — analytics
+intelligence workspace pass (above). Companion validator:
+`scripts/validate-premium-ux-day-205b.sh`.*

@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import html2canvas from "html2canvas";
 import { proxyFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabaseClient";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button, buttonClasses } from "@/components/ui/button";
 import {
   LineChart,
   Line,
@@ -32,6 +39,22 @@ type RepOption = {
   rep_name?: string;
 };
 
+/* ------------------------- Chart styling ------------------------- */
+// Recharts writes these as SVG presentation attributes, so CSS variables
+// can't be used here — hex values mirror the brand (indigo) token palette.
+const CHART_LINE = "#818cf8"; // brand-400
+const CHART_BAR = "#6366f1"; // brand-500
+const CHART_GRID = "#262626";
+const CHART_TICK = { fill: "#9ca3af", fontSize: 12 };
+const CHART_TOOLTIP = {
+  background: "#0a0a0a",
+  border: "1px solid #333",
+  borderRadius: "8px"
+};
+
+const SELECT_CLASS =
+  "rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 shadow-md shadow-black/20 focus:border-brand-500/50 focus:outline-none";
+
 /* --------------------------- Component --------------------------- */
 
 export default function AnalyticsPage() {
@@ -39,6 +62,8 @@ export default function AnalyticsPage() {
   const [scoreTrend, setScoreTrend] = useState<ScorePoint[]>([]);
   const [repActivity, setRepActivity] = useState<RepActivity[]>([]);
   const [repOptions, setRepOptions] = useState<RepOption[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const [days, setDays] = useState(30);
   const [selectedRep, setSelectedRep] = useState<string>("all");
@@ -60,53 +85,60 @@ export default function AnalyticsPage() {
 
     const repParam = selectedRep !== "all" ? `&repId=${encodeURIComponent(selectedRep)}` : "";
 
-    const conv = await proxyFetch(
-      `/v1/crm/analytics/stage-conversion?days=${days}${repParam}`,
-      { cache: "no-store" }
-    );
-    const convJson = await conv.json();
-
-    const score = await proxyFetch(
-      `/v1/crm/analytics/score-trend?days=${days}${repParam}`,
-      { cache: "no-store" }
-    );
-    const scoreJson = await score.json();
-
-    const rep = await proxyFetch(
-      `/v1/crm/analytics/activity-by-rep?days=${days}${repParam}`,
-      { cache: "no-store" }
-    );
-    const repJson = await rep.json();
-
-    const stagesObj = convJson?.stages ?? {};
-    const stageRows: StageConversion[] = Object.entries(stagesObj).map(([stage, count]) => ({
-      stage,
-      count: Number(count ?? 0),
-    }));
-
-    const trendRows: ScorePoint[] = Array.isArray(scoreJson?.trend)
-      ? scoreJson.trend.map((x: any) => ({
-          day: String(x?.date ?? ""),
-          avg_score: Number(x?.avg_score ?? 0),
-        }))
-      : [];
-
-    const repRows: RepActivity[] = Array.isArray(repJson?.reps) ? repJson.reps : [];
-
-    setConversion(stageRows);
-    setScoreTrend(trendRows);
-    setRepActivity(repRows);
-
     try {
-      sessionStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          conversion: stageRows,
-          scoreTrend: trendRows,
-          repActivity: repRows,
-        })
+      const conv = await proxyFetch(
+        `/v1/crm/analytics/stage-conversion?days=${days}${repParam}`,
+        { cache: "no-store" }
       );
-    } catch {}
+      const convJson = await conv.json();
+
+      const score = await proxyFetch(
+        `/v1/crm/analytics/score-trend?days=${days}${repParam}`,
+        { cache: "no-store" }
+      );
+      const scoreJson = await score.json();
+
+      const rep = await proxyFetch(
+        `/v1/crm/analytics/activity-by-rep?days=${days}${repParam}`,
+        { cache: "no-store" }
+      );
+      const repJson = await rep.json();
+
+      const stagesObj = convJson?.stages ?? {};
+      const stageRows: StageConversion[] = Object.entries(stagesObj).map(([stage, count]) => ({
+        stage,
+        count: Number(count ?? 0),
+      }));
+
+      const trendRows: ScorePoint[] = Array.isArray(scoreJson?.trend)
+        ? scoreJson.trend.map((x: any) => ({
+            day: String(x?.date ?? ""),
+            avg_score: Number(x?.avg_score ?? 0),
+          }))
+        : [];
+
+      const repRows: RepActivity[] = Array.isArray(repJson?.reps) ? repJson.reps : [];
+
+      setConversion(stageRows);
+      setScoreTrend(trendRows);
+      setRepActivity(repRows);
+      setLoadError(false);
+
+      try {
+        sessionStorage.setItem(
+          cacheKey,
+          JSON.stringify({
+            conversion: stageRows,
+            scoreTrend: trendRows,
+            repActivity: repRows,
+          })
+        );
+      } catch {}
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoaded(true);
+    }
   }, [days, selectedRep]);
 
   useEffect(() => {
@@ -265,286 +297,235 @@ export default function AnalyticsPage() {
 
   const conversionTotal = conversion.reduce((a, c) => a + c.count, 0);
 
+  const rangeLabel = `last ${days} days`;
+
   /* ---------------------------- Render ---------------------------- */
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Analytics</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
-            Performance insights across your sales organisation
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <select
-            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm"
-            value={selectedRep}
-            onChange={(e) => setSelectedRep(e.target.value)}
-          >
-            <option value="all">All reps</option>
-            {repOptions.map((rep) => (
-              <option key={rep.rep_id} value={rep.rep_id}>
-                {rep.rep_name ?? rep.rep_id}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm"
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-          >
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
-        </div>
-      </div>
-
-      {/* KPI CARDS */}
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-
-        <Card
-          title="Activities Created"
-          value={totalActivities}
-          subtitle="Total tasks generated"
-        />
-
-        <Card
-          title="Tasks Completed"
-          value={completedActivities}
-          subtitle="Completed coaching actions"
-        />
-
-        <Card
-          title="Avg Call Score"
-          value={avgScore}
-          subtitle="Average review score"
-        />
-
-        <Card
-          title="Pipeline Events"
-          value={conversionTotal}
-          subtitle="Stage transitions"
-        />
-
-      </div>
-
-      {/* HERO CHART */}
-
-      <div id="score-performance-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
-
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-medium">Score Performance</h2>
-            <p className="text-xs text-neutral-400">Average call score trend</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => exportCSV("score_trend.csv", scoreTrend)}
-              className="px-3 py-2 text-sm bg-neutral-800 rounded-lg"
+    <PageContainer>
+      <PageHeader
+        title="Analytics"
+        subtitle="Performance intelligence across your sales organisation"
+        actions={
+          <>
+            <select
+              className={SELECT_CLASS}
+              value={selectedRep}
+              onChange={(e) => setSelectedRep(e.target.value)}
             >
+              <option value="all">All reps</option>
+              {repOptions.map((rep) => (
+                <option key={rep.rep_id} value={rep.rep_id}>
+                  {rep.rep_name ?? rep.rep_id}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={SELECT_CLASS}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </>
+        }
+      />
+
+      {loadError && (
+        <SectionCard variant="danger" padded>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-danger-200">Analytics could not be loaded</div>
+              <p className="mt-0.5 text-xs text-neutral-400">
+                Check your connection, then retry. Any cached figures below may be out of date.
+              </p>
+            </div>
+            <Button variant="ghost" onClick={() => void load()}>
+              Retry
+            </Button>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* KPI STRIP */}
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Activities created"
+          value={totalActivities}
+          subtext="Coaching tasks generated"
+        />
+        <StatCard
+          label="Tasks completed"
+          value={completedActivities}
+          subtext="Completed coaching actions"
+        />
+        <StatCard
+          label="Avg call score"
+          value={avgScore}
+          subtext="Average review score"
+        />
+        <StatCard
+          label="Pipeline events"
+          value={conversionTotal}
+          subtext="Stage transitions"
+        />
+      </div>
+
+      {/* HERO — SCORE PERFORMANCE */}
+
+      <SectionCard
+        variant="ai"
+        eyebrow="Intelligence"
+        title="Score performance"
+        subtitle={`Average call review score per day · ${rangeLabel}`}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => exportCSV("score_trend.csv", scoreTrend)}>
               Export CSV
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={() => void exportPNG("score-performance-card", "score-performance.png")}
-              className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
             >
               Export PNG
-            </button>
-          </div>
+            </Button>
+          </>
+        }
+      >
+        <div id="score-performance-card" className="px-5 py-4">
+          {scoreTrend.length ? (
+            <ResponsiveContainer width="100%" height={340}>
+              <LineChart data={scoreTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="day" tick={CHART_TICK} />
+                <YAxis tick={CHART_TICK} />
+                <Tooltip contentStyle={CHART_TOOLTIP} />
+                <Line
+                  type="monotone"
+                  dataKey="avg_score"
+                  stroke={CHART_LINE}
+                  strokeWidth={2.5}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : loaded ? (
+            <EmptyState
+              message="No reviewed calls in this range"
+              sub="Score trend builds as calls are uploaded and reviewed."
+              action={{ label: "Upload a call", href: "/upload" }}
+            />
+          ) : (
+            <div className="h-[340px] animate-pulse rounded-lg bg-neutral-900/60" />
+          )}
         </div>
-
-        <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={scoreTrend}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-
-            <XAxis
-              dataKey="day"
-              tick={{ fill: "#9ca3af", fontSize: 12 }}
-            />
-
-            <YAxis
-              tick={{ fill: "#9ca3af", fontSize: 12 }}
-            />
-
-            <Tooltip
-              contentStyle={{
-                background: "#111",
-                border: "1px solid #333",
-                borderRadius: "8px"
-              }}
-            />
-
-            <Line
-              type="monotone"
-              dataKey="avg_score"
-              stroke="#60a5fa"
-              strokeWidth={3}
-              dot={false}
-            />
-
-          </LineChart>
-        </ResponsiveContainer>
-
-      </div>
+      </SectionCard>
 
       {/* SECONDARY GRID */}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-        {/* Stage Conversion */}
-
-        <div id="conversion-by-stage-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-neutral-300">
-              Conversion by Stage
-            </h3>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => exportCSV("conversion-by-stage.csv", conversion)}
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
-              >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Conversion by stage"
+          subtitle={`Pipeline stage transitions · ${rangeLabel}`}
+          actions={
+            <>
+              <Button variant="ghost" onClick={() => exportCSV("conversion-by-stage.csv", conversion)}>
                 Export CSV
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => void exportPNG("conversion-by-stage-card", "conversion-by-stage.png")}
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
               >
                 Export PNG
-              </button>
-            </div>
+              </Button>
+            </>
+          }
+        >
+          <div id="conversion-by-stage-card" className="px-5 py-4">
+            {conversion.length ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={conversion}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="stage" tick={CHART_TICK} />
+                  <YAxis tick={CHART_TICK} />
+                  <Tooltip contentStyle={CHART_TOOLTIP} />
+                  <Bar dataKey="count" fill={CHART_BAR} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : loaded ? (
+              <EmptyState
+                message="No stage transitions in this range"
+                sub="Conversion fills in as deals move through the pipeline."
+              />
+            ) : (
+              <div className="h-[260px] animate-pulse rounded-lg bg-neutral-900/60" />
+            )}
           </div>
+        </SectionCard>
 
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={conversion}>
-
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-
-              <XAxis
-                dataKey="stage"
-                tick={{ fill: "#9ca3af", fontSize: 12 }}
-              />
-
-              <YAxis
-                tick={{ fill: "#9ca3af", fontSize: 12 }}
-              />
-
-              <Tooltip
-                contentStyle={{
-                  background: "#111",
-                  border: "1px solid #333",
-                  borderRadius: "8px"
-                }}
-              />
-
-              <Bar
-                dataKey="count"
-                fill="#3b82f6"
-                radius={[6, 6, 0, 0]}
-              />
-
-            </BarChart>
-          </ResponsiveContainer>
-
-        </div>
-
-
-        {/* Rep Activity */}
-
-        <div id="activity-by-rep-card" className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-neutral-300">
-              Activity by Rep
-            </h3>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => exportCSV("activity-by-rep.csv", repActivity)}
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
-              >
+        <SectionCard
+          title="Activity by rep"
+          subtitle={`Coaching activities created per rep · ${rangeLabel}`}
+          actions={
+            <>
+              <Button variant="ghost" onClick={() => exportCSV("activity-by-rep.csv", repActivity)}>
                 Export CSV
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => void exportPNG("activity-by-rep-card", "activity-by-rep.png")}
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800"
               >
                 Export PNG
-              </button>
-            </div>
+              </Button>
+            </>
+          }
+        >
+          <div id="activity-by-rep-card" className="px-5 py-4">
+            {repActivity.length ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={repActivity}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="rep_name" tick={CHART_TICK} />
+                  <YAxis tick={CHART_TICK} />
+                  <Tooltip contentStyle={CHART_TOOLTIP} />
+                  <Bar dataKey="activities_created" fill={CHART_BAR} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : loaded ? (
+              <EmptyState
+                message="No rep activity in this range"
+                sub="Activity appears as coaching tasks are created for reps."
+              />
+            ) : (
+              <div className="h-[260px] animate-pulse rounded-lg bg-neutral-900/60" />
+            )}
           </div>
+        </SectionCard>
+      </div>
 
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={repActivity}>
+      {/* NEXT ACTIONS */}
 
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-
-              <XAxis
-                dataKey="rep_name"
-                tick={{ fill: "#9ca3af", fontSize: 12 }}
-              />
-
-              <YAxis
-                tick={{ fill: "#9ca3af", fontSize: 12 }}
-              />
-
-              <Tooltip
-                contentStyle={{
-                  background: "#111",
-                  border: "1px solid #333",
-                  borderRadius: "8px"
-                }}
-              />
-
-              <Bar
-                dataKey="activities_created"
-                fill="#8b5cf6"
-                radius={[6, 6, 0, 0]}
-              />
-
-            </BarChart>
-          </ResponsiveContainer>
-
+      <SectionCard
+        title="Act on these insights"
+        subtitle="Move from analysis to coaching action"
+        padded
+      >
+        <div className="flex flex-wrap gap-2">
+          <Link href="/coaching?tab=review" className={buttonClasses("secondary")}>
+            Open review queue
+          </Link>
+          <Link href="/admin/assignments" className={buttonClasses("ghost")}>
+            Manage assignments
+          </Link>
+          <Link href="/crm/manager" className={buttonClasses("ghost")}>
+            Team workspace
+          </Link>
         </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-/* --------------------------- KPI Card --------------------------- */
-
-function Card({ title, value, subtitle }: any) {
-  return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-
-      <div className="text-xs uppercase tracking-wide text-neutral-400">
-        {title}
-      </div>
-
-      <div className="text-3xl font-semibold mt-2">
-        {value}
-      </div>
-
-      <div className="text-xs text-neutral-500 mt-2">
-        {subtitle}
-      </div>
-
-    </div>
+      </SectionCard>
+    </PageContainer>
   );
 }

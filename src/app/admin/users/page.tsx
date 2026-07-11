@@ -18,7 +18,7 @@ type UserRow = {
 }
 
 const TIER_STYLE: Record<string, string> = {
-  SuperAdmin:    'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300',
+  SuperAdmin:    'border-brand-400/40 bg-brand-500/15 text-brand-200',
   PartnerAdmin:  'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
   Manager:       'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
   Owner:         'border-amber-500/30 bg-amber-500/10 text-amber-300',
@@ -225,7 +225,7 @@ export default function UsersPage() {
                         {myTier === 'SuperAdmin' && (
                           <td className="px-4 py-3">
                             {impersonating === u.id ? (
-                              <span className="rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-2 py-1 text-[10px] text-fuchsia-300">
+                              <span className="rounded-full border border-warning-500/40 bg-warning-500/10 px-2 py-1 text-[10px] text-warning-300">
                                 Active
                               </span>
                             ) : (
@@ -233,7 +233,7 @@ export default function UsersPage() {
                                 type="button"
                                 onClick={() => handleBecomeUser(u)}
                                 disabled={!!impersonateLoading}
-                                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs text-neutral-300 hover:border-fuchsia-500/40 hover:bg-fuchsia-500/10 hover:text-fuchsia-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs text-neutral-300 hover:border-brand-500/40 hover:bg-brand-500/10 hover:text-brand-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                               >
                                 {impersonateLoading === u.id ? 'Starting…' : 'Become User'}
                               </button>
@@ -251,7 +251,7 @@ export default function UsersPage() {
                   <button
                     type="button"
                     onClick={handleStopImpersonation}
-                    className="text-[10px] text-fuchsia-400 hover:text-fuchsia-300 underline"
+                    className="text-[10px] text-warning-300 hover:text-warning-200 underline"
                   >
                     Exit impersonation
                   </button>
