@@ -7,6 +7,12 @@ Day 208 addenda (Context Engine UX design): `CONTEXT_ENGINE_UX_BLUEPRINT.md`
 (layout, states, workflow, copy deck), `CONTEXT_ENGINE_FIELD_SPEC.md`
 (exact MVP fields + UFC seed examples + compiled-block contract),
 `CONTEXT_ENGINE_ROUTE_PLAN.md` (route decision + nav wiring checklist).
+Day 209 addenda (Scorecard Studio UX design):
+`SCORECARD_STUDIO_UX_BLUEPRINT.md` (list/editor/lifecycle/versioning UX),
+`SCORECARD_STUDIO_FIELD_SPEC.md` (exact MVP fields + validation rules),
+`SCORECARD_STUDIO_ROUTE_PLAN.md` (query-param deep links — supersedes the
+`/intelligence/scorecards/[id]` subroute sketch in §7),
+`AI_SCORECARD_BUILDER_SPEC.md` (draft-only AI flow, built after the editor).
 
 ---
 

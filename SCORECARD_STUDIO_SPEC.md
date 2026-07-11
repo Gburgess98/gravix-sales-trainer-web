@@ -2,7 +2,9 @@
 
 Status: **Planning only.** Part of the Intelligence Layer
 (`INTELLIGENCE_LAYER_BLUEPRINT.md`). Covers Scorecard Studio, the AI
-Scorecard Builder, and scoring-runtime integration.
+Scorecard Builder, and scoring-runtime integration. Day 209 UX design:
+`SCORECARD_STUDIO_UX_BLUEPRINT.md`, `SCORECARD_STUDIO_FIELD_SPEC.md`,
+`SCORECARD_STUDIO_ROUTE_PLAN.md`, `AI_SCORECARD_BUILDER_SPEC.md`.
 
 ## Purpose
 
