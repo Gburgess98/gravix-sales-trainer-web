@@ -2442,4 +2442,8 @@ checkpoint (not a visual pass): removed proven-dead `lib/api` exports
 documented as known non-blockers in `DEMO_VISUAL_QA_NOTES.md`. Companion
 validator: `scripts/validate-premium-ux-day-205a.sh`. Day 205B — analytics
 intelligence workspace pass (above). Companion validator:
-`scripts/validate-premium-ux-day-205b.sh`.*
+`scripts/validate-premium-ux-day-205b.sh`. Day 207 — Intelligence Layer
+product blueprint (docs only, no UI change): the "Intelligence Cockpit"
+direction from Days 205B–206 now has a product plan behind it — see
+`INTELLIGENCE_LAYER_BLUEPRINT.md`, `CONTEXT_ENGINE_SPEC.md`,
+`SCORECARD_STUDIO_SPEC.md`, `MANAGER_TEAM_MANAGEMENT_SCOPE.md`.*
