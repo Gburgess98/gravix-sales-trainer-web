@@ -13,6 +13,14 @@ Day 209 addenda (Scorecard Studio UX design):
 `SCORECARD_STUDIO_ROUTE_PLAN.md` (query-param deep links — supersedes the
 `/intelligence/scorecards/[id]` subroute sketch in §7),
 `AI_SCORECARD_BUILDER_SPEC.md` (draft-only AI flow, built after the editor).
+Day 210 addenda (Objection Library + Sparring Scenario Engine — the
+designed promotion of `company_context.objections` foreshadowed in §8):
+`OBJECTION_LIBRARY_BLUEPRINT.md` (library UX, suggestion review,
+supersession of the Context Engine objections module),
+`OBJECTION_LIBRARY_FIELD_SPEC.md` (fields + data entities),
+`SPARRING_SCENARIO_ENGINE_SPEC.md` (scenario builder + versioning +
+sparring integration), `OBJECTION_TO_ASSIGNMENT_FLOW.md` (detect → review
+→ teach → practise → prove loop + analytics).
 
 ---
 
