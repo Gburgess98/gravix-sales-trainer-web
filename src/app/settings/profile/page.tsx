@@ -23,6 +23,13 @@ const TIMEZONES = [
   'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney',
 ]
 
+// Keep parser/transport errors out of the UI — show calm copy, raw detail on hover.
+function friendlyError(message: string, fallback: string) {
+  const raw = String(message ?? '')
+  const technical = /token|JSON|fetch|network|<!DOCTYPE|missing_user/i.test(raw)
+  return technical ? fallback : raw || fallback
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,7 +52,7 @@ export default function ProfilePage() {
         setPhone(u.phone ?? '')
         setTimezone(u.timezone ?? 'UTC')
       })
-      .catch(e => setError(e.message))
+      .catch(e => setError(friendlyError(e?.message, 'Profile could not be loaded right now — please retry shortly.')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -66,7 +73,7 @@ export default function ProfilePage() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (e: any) {
-      setError(e?.message || 'Save failed')
+      setError(friendlyError(e?.message, 'Save failed — please retry shortly.'))
     } finally {
       setSaving(false)
     }
@@ -84,10 +91,10 @@ export default function ProfilePage() {
       />
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-300">{error}</div>
+        <div className="rounded-xl border border-danger-500/30 bg-danger-500/5 px-4 py-3 text-sm text-danger-300">{error}</div>
       )}
       {success && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-300">Profile saved.</div>
+        <div className="rounded-xl border border-success-500/30 bg-success-500/5 px-4 py-3 text-sm text-success-300">Profile saved.</div>
       )}
 
       <form onSubmit={handleSave} className="flex flex-col gap-5">
@@ -125,14 +132,14 @@ export default function ProfilePage() {
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               maxLength={120}
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-600"
               placeholder="Your display name"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-neutral-400">
-              Phone Number <span className="text-red-400">*</span>
+              Phone Number <span className="text-danger-300">*</span>
             </label>
             <input
               type="tel"
@@ -140,7 +147,7 @@ export default function ProfilePage() {
               onChange={e => setPhone(e.target.value)}
               maxLength={30}
               required
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-600"
               placeholder="+44 7700 900000"
             />
           </div>
@@ -150,7 +157,7 @@ export default function ProfilePage() {
             <select
               value={timezone}
               onChange={e => setTimezone(e.target.value)}
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-indigo-500/40"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50"
             >
               {TIMEZONES.map(tz => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -163,7 +170,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-xl border border-indigo-500/20 bg-indigo-600/20 px-5 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-600/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-xl border border-brand-500/20 bg-brand-600/20 px-5 py-2 text-sm font-semibold text-brand-200 hover:bg-brand-600/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save Profile'}
           </button>

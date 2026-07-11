@@ -2249,6 +2249,143 @@ should be resolved with real helpers in the same lane.
 
 ---
 
+## §37 — Final product quality pass (Day 206)
+
+**Scope:** `/crm/overview` recomposed on the Intelligence Cockpit system
+(primary), plus targeted trust/polish on `/crm/manager` (ManagerClient +
+RunHistoryTable) and `/settings/profile`. WEB-only, visual-only. No API
+changes, no migrations, no new routes, no fake features.
+
+### Surfaces ranked (audited in browser, weakest first)
+
+1. **`/crm/overview`** — pre-shell layout (`max-w-5xl`, own rhythm), bare
+   floating header, nested boxes-in-boxes, six different card recipes,
+   bare-text empty states, KPI tiles buried mid-page, sparklines silently
+   broken (wrong prop name), four perpetual em-dash stub tiles, an embedded
+   "CRM Analytics" block with a raw *Rep ID* text input and sky-blue line
+   chart. Clearly the weakest active manager surface. **Upgraded.**
+2. **`/crm/manager`** — shell-aligned since 205C, but shipped a dev-scaffold
+   "Auto-Assign Runner / write flow pending" placeholder card, raw
+   `missing_user` mono codes in two error cards, `(mode=fallback)` leak,
+   snake_case `run_id:` labels and full raw UUIDs in the rep table.
+   **Polished.**
+3. **`/settings/profile`** — solid Day 179 shell, but surfaced raw parser
+   errors ("Unexpected token '<' … is not valid JSON") directly in the error
+   banner; raw palette classes. **Polished.**
+4. **`/admin/users`** — already premium after 205B/C. **No change.**
+5. **`/upload`** — already demo-ready after Days 163–166 (structured card,
+   guidance rail, brand CTA). **No change.**
+
+### What changed — `/crm/overview` (Intelligence Cockpit recomposition)
+
+Render layer rebuilt on the shell system; every fetch, state, handler and
+href above it untouched.
+
+- **Hero band** — same framing as `/crm/analytics`: rounded-2xl brand border,
+  layered radial glows, *Gravix Intelligence* eyebrow, `PageHeader` with a
+  *Manager workspace* action, and the assignments summary (Open / Due soon /
+  Completed 7d) as hero status chips.
+- **KPI strip promoted** to directly under the hero: featured *Avg coaching
+  score* card (2-col, text-4xl, brand sheen) + Total calls + Conversion (90d).
+  The KPI sparklines were passing a `data` prop that `Sparkline` doesn't
+  accept — they had never rendered. Now wired to the real `values` prop with
+  a numeric-series guard, so the score/calls/win-rate series from
+  `/v1/dashboard/kpis` actually draw.
+- **Performance signals** — the nested Flag-Intelligence-inside-Reporting
+  boxes flattened into one `variant="ai"` SectionCard with two labelled tile
+  rows (flags / coaching output) on a single tile recipe; *Assign drill*
+  moved to the shared button recipe; orange-300 → warning token; honest
+  empty copy per row.
+- **Control Centre / Nudges / Today’s actions / Manager trust / Recent
+  assignments / Top objections / Top accounts / Top reps** — all converted to
+  `SectionCard` with consistent title/subtitle/action headers, shared chip
+  and tile recipes, `EmptyState` for every empty list, and status chips moved
+  to Day 203 tokens (danger/warning/success; brand for open/active).
+- **Top objections chart** de-arcaded: the gold/green/rose ranking `Cell`s
+  and blue-400 bars replaced with a single brand fill, soft ticks, no axis
+  lines, dark rounded tooltip, capped bar width.
+- **CRM analytics quick view** — reframed as an explicit *Quick view*
+  SectionCard pointing at the full cockpit (*Open Analytics* CTA). The raw
+  *Rep ID* free-text input replaced with a rep **select** built from the
+  activity-by-rep response already on the page (same `analyticsRep` state and
+  values, `null` for all reps — behaviour identical, no raw UUID entry).
+  Sky-blue `#38bdf8` line → brand `#818cf8`; summary tiles, stage chips and
+  activity rows on the shared recipes with humanised rep labels
+  (`repShort()`), plus per-block empty copy and a loading skeleton on the
+  existing `loadingAnalytics` state (previously unused).
+- **Removed:** the four perpetual em-dash stub tiles (Avg. Handle Time /
+  Objection Wins / Follow-ups Sent / Rep Activity) — hardcoded `—` values
+  with empty sparklines, i.e. decorative template stubs; and the dead
+  static recharts import shadowed by the module's `nextDynamic` versions.
+- Raw `repFilter` UUID readout under Top reps replaced by a subtitle state +
+  *Reset filter* action.
+
+### What changed — `/crm/manager`
+
+- **Removed the "Auto-Assign Runner" scaffold card** (dashed border, "write
+  flow pending" badge, two inert placeholder controls, roadmap copy) — it was
+  hard-gated behind `AUTO_ASSIGN_WRITE_UI_ENABLED = false` and was internal
+  scaffolding shipped to users. The real read-only Latest run + Run history
+  surfaces are unchanged.
+- **Rep overview table** onto shell rhythm (uppercase tracked headers, row
+  divide + hover, rounded-xl); *Rep ID* column truncated to 8 chars with the
+  full id on hover; `No reps found (mode=fallback)` → calm copy with the mode
+  in a hover title.
+- **Error cards** (ManagerClient + RunHistoryTable) no longer print the raw
+  error code in mono under the hint — the code moves to a hover `title`.
+- **Latest run provenance** — `run_id:` / `executed_from_preview_run_id:` /
+  `executed_at:` labels humanised (Run / From preview / Executed) with
+  truncated ids, full values on hover.
+
+### What changed — `/settings/profile`
+
+- `friendlyError()` guard: parser/transport errors (JSON token errors,
+  `missing_user`, network) map to calm copy instead of rendering raw
+  JavaScript exception text in the banner.
+- Palette onto tokens: red/emerald banners → danger/success, indigo
+  focus/CTA → brand.
+
+### Deliberately not copied from Kendo
+
+Same boundary as §§35–36: principles only (calm hierarchy, workspace framing,
+premium controls, less clutter). No light theme, no left context-module nav,
+no setup-progress meter, no editable business-context fields, no Autofill, no
+scorecard builder, no new routes. Verified again: no
+`src/app/scorecard`, `src/app/context`, or `src/app/crm/scorecard` exist.
+
+### Behaviour preserved
+
+All `/crm/overview` fetches (kpis, reporting-summary, flags-summary, crm
+actions, nudges, control-centre, assignments summary, trust, coach
+assignments, top objections, Day 53 analytics loader) and their states are
+untouched; `assignDrillFromSection` intact; all hrefs preserved
+(`/crm/manager`, `/crm/manager/control-centre`, `/crm/manager/nudges`,
+`/crm/contacts/*`, `/crm/contacts/import`, `/admin/assignments`,
+`/assignments`, `/crm/accounts/*`, `/crm/reps/*`, `/crm/analytics`);
+`analyticsDays`/`analyticsRep` filter semantics identical; rep-filter
+query-param behaviour identical. ManagerClient handlers, confirm flows,
+disabled states, Day 187 pinned literal, and RunHistoryTable
+execute-from-preview flow untouched. Profile load/save logic unchanged.
+
+### Known non-blockers (unchanged, documented)
+
+- `listCoachAssignments` / `getTopObjections` (+ `DashboardKpisResp` type)
+  still missing from `lib/api` — the two build-warning groups; restoring them
+  is real helper work for the next lane.
+- `/crm/Leaderboard` orphan; `rewards` warning pair.
+
+### Remaining future opportunities
+
+Unchanged from §36: Context Engine, Scorecard Studio, AI Scorecard Builder,
+AI Autofill from website, custom scorecards by call type — all need
+API/schema work; no placeholder UI shipped.
+
+**Day 207 recommendation:** restore the missing `lib/api` helpers so Recent
+assignments / Top objections actually populate (clears both build-warning
+groups), then a demo reseed + timed rehearsal on the upgraded surfaces.
+
+---
+
 ---
 
 *Day 177 — audit only; no code changed. Day 178 — navigation + trust cleanup.

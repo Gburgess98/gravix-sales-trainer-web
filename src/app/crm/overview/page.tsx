@@ -16,7 +16,11 @@ import {
 } from "@/lib/api";
 import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { buttonClasses } from "@/components/ui/button";
 
 function scoreColour(score?: number | null) {
   if (score == null) return 'text-zinc-400';
@@ -38,6 +42,25 @@ function pct(n?: number | null) {
   if (typeof n !== 'number' || !isFinite(n)) return '—';
   return `${Math.round(n * 100)}%`;
 }
+
+// Display-only label — never surface a raw UUID; ids stay intact in state/URLs.
+function repShort(id: string, name?: string | null) {
+  const n = (name ?? '').trim();
+  return n || `Rep ${String(id).slice(0, 6)}`;
+}
+
+// Guard sparkline inputs — the KPI series come from a tolerant endpoint shape.
+function numericSeries(xs: unknown): number[] {
+  return Array.isArray(xs) ? xs.filter((n): n is number => typeof n === 'number' && isFinite(n)) : [];
+}
+
+const SELECT_CLASS =
+  'rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 shadow-md shadow-black/20 focus:border-brand-500/50 focus:outline-none';
+
+const TILE_CLASS = 'rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5';
+const TILE_LABEL = 'text-[10px] uppercase tracking-[0.12em] text-neutral-500';
+const CHIP_CLASS =
+  'inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-950/80 px-2.5 py-1 text-[11px] text-neutral-400 tabular-nums';
 
 function relTime(iso?: string | null) {
   if (!iso) return '—';
@@ -580,111 +603,165 @@ export default function CrmOverviewPage() {
   const topRepsAll = Array.isArray((trends as any)?.top_reps) ? (trends as any).top_reps : [];
   const topReps = repFilter ? topRepsAll.filter((r: any) => String(r.user_id) === String(repFilter)) : topRepsAll;
   return (
-    <div className="max-w-5xl mx-auto py-10 px-6">
-      <div className="flex items-start justify-between gap-4 mb-2">
-        <div>
-          <h1 className="text-xl font-semibold">Overview</h1>
-          <p className="opacity-80">Snapshot of recent team performance based on analysed calls.</p>
+    <PageContainer>
+      {/* INTELLIGENCE HERO */}
+      <div className="relative overflow-hidden rounded-2xl border border-brand-500/15 bg-neutral-950 shadow-lg shadow-black/30">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_130%_at_85%_-30%,rgba(99,102,241,0.18),transparent_60%)]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_80%_at_0%_110%,rgba(99,102,241,0.07),transparent_55%)]"
+        />
+        <div className="relative px-6 py-5">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-brand-300">
+            Gravix Intelligence
+          </div>
+          <PageHeader
+            className="mt-1.5"
+            title="Overview"
+            subtitle="Snapshot of recent team performance based on analysed calls."
+            actions={
+              <Link href="/crm/manager" className={buttonClasses('ghost', 'md')}>
+                Manager workspace
+              </Link>
+            }
+          />
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {loadingSummary ? (
+              <div className="h-6 w-64 animate-pulse rounded-full bg-neutral-900" />
+            ) : (
+              <>
+                <span className={CHIP_CLASS}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning-500" />
+                  Open {sumOpen}
+                </span>
+                <span className={CHIP_CLASS}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+                  Due soon {sumDueSoon}
+                </span>
+                <span className={CHIP_CLASS}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success-500" />
+                  Completed 7d {sumDone7d}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* KPI STRIP */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="relative col-span-2 overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/5 px-5 py-4 shadow-md shadow-black/20">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_120%_at_100%_-20%,rgba(99,102,241,0.12),transparent_60%)]"
+          />
+          <div className="relative flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-brand-300">
+                Avg coaching score
+              </div>
+              <div className="mt-1 text-4xl font-semibold tabular-nums text-white">
+                {typeof trends?.avg_score_overall === 'number' ? Math.round(trends.avg_score_overall) : '—'}
+              </div>
+              <div className="mt-1 text-[11px] text-neutral-500">
+                Across analysed calls · last 90 days
+              </div>
+            </div>
+            <Sparkline
+              className="text-brand-400"
+              values={numericSeries(trends?.avgScore)}
+              width={120}
+              height={36}
+            />
+          </div>
         </div>
 
-        <Link
-          href="/crm/manager"
-          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-        >
-          Manager
-        </Link>
-      </div>
-      {/* Manager Assignments Summary */}
-      <div className="mt-3 mb-5 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-2 text-sm text-neutral-300 flex flex-wrap gap-4">
-        {loadingSummary ? (
-          <div className="h-5 w-64 animate-pulse rounded bg-white/10" />
-        ) : (
-          <>
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning-500" />
-              Open: <span className="tabular-nums">{sumOpen}</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent-500" />
-              Due soon: <span className="tabular-nums">{sumDueSoon}</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success-500" />
-              Completed 7d: <span className="tabular-nums">{sumDone7d}</span>
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* 🔥 Manager Reporting (Day 65) */}
-      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <div className="text-sm font-semibold text-neutral-100 mb-2">Performance Signals</div>
-
-        {/* 🔥 Flag Intelligence (NEW) */}
-        <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-          <div className="text-sm font-semibold text-neutral-100 mb-2">
-            Flag Intelligence (7d)
+        <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 px-4 py-3 shadow-md shadow-black/20">
+          <div className={TILE_LABEL}>Total calls</div>
+          <div className="mt-1.5 text-2xl font-semibold tabular-nums text-white">
+            {typeof trends?.total_calls === 'number' ? trends.total_calls : '—'}
           </div>
+          <div className="mt-2">
+            <Sparkline className="text-neutral-500" values={numericSeries(trends?.callsAnalyzed)} />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 px-4 py-3 shadow-md shadow-black/20">
+          <div className={TILE_LABEL}>Conversion (90d)</div>
+          <div className="mt-1.5 text-2xl font-semibold tabular-nums text-white">
+            {pct((trends as any)?.conversion_rate_90d)}
+          </div>
+          <div className="mt-2">
+            <Sparkline className="text-neutral-500" values={numericSeries((trends as any)?.winRate)} />
+          </div>
+        </div>
+      </div>
+
+      {/* PERFORMANCE SIGNALS */}
+      <SectionCard
+        variant="ai"
+        eyebrow="Signals"
+        title="Performance signals"
+        subtitle="Flags and coaching output across the team · last 7 days"
+        padded
+      >
+        <div>
+          <div className={TILE_LABEL}>Flag intelligence</div>
 
           {loadingFlags ? (
-            <div className="h-16 animate-pulse rounded-xl bg-white/10" />
+            <div className="mt-2 h-16 animate-pulse rounded-lg bg-neutral-900/60" />
           ) : !flagsSummary?.ok ? (
-            <div className="text-sm text-neutral-400">No flag data.</div>
+            <p className="mt-2 text-xs text-neutral-500">
+              No flags in this window — flags appear when reviewed calls surface risks.
+            </p>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="text-white/50">Total Flags</div>
-                  <div className="text-lg font-semibold text-amber-300">
+              <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className={TILE_CLASS}>
+                  <div className={TILE_LABEL}>Total flags</div>
+                  <div className="mt-0.5 text-lg font-semibold tabular-nums text-warning-300">
                     {flagsSummary.total_flags ?? 0}
                   </div>
                 </div>
-
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="text-white/50">Critical</div>
-                  <div className="text-lg font-semibold text-red-300">
+                <div className={TILE_CLASS}>
+                  <div className={TILE_LABEL}>Critical</div>
+                  <div className="mt-0.5 text-lg font-semibold tabular-nums text-danger-300">
                     {flagsSummary.critical_flags ?? 0}
                   </div>
                 </div>
-
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="text-white/50">Low Score</div>
-                  <div className="text-lg font-semibold text-orange-300">
+                <div className={TILE_CLASS}>
+                  <div className={TILE_LABEL}>Low score</div>
+                  <div className="mt-0.5 text-lg font-semibold tabular-nums text-warning-200">
                     {flagsSummary.low_score_flags ?? 0}
                   </div>
                 </div>
-
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="text-white/50">Top Issue</div>
-                  <div className="text-sm font-semibold text-white/80">
-                    {flagsSummary.top_flag_type ?? "—"}
+                <div className={TILE_CLASS}>
+                  <div className={TILE_LABEL}>Top issue</div>
+                  <div className="mt-0.5 truncate text-sm font-semibold text-neutral-200">
+                    {flagsSummary.top_flag_type ?? '—'}
                   </div>
                 </div>
-
               </div>
 
-              {/* 🔥 Section Breakdown + Actions */}
               {flagsSummary?.sections?.length > 0 && (
                 <div className="mt-4">
-                  <div className="text-xs text-white/50 mb-2">Weakness Breakdown</div>
-
-                  <div className="space-y-2">
+                  <div className={TILE_LABEL}>Weakness breakdown</div>
+                  <div className="mt-2 space-y-2">
                     {flagsSummary.sections.map((s: any, idx: number) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2"
+                        className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
                       >
-                        <div className="text-sm text-white/80">
+                        <div className="text-sm text-neutral-200">
                           {s.section}
-                          <span className="ml-2 text-xs text-white/40">
-                            ({s.count})
-                          </span>
+                          <span className="ml-2 text-xs text-neutral-500">({s.count})</span>
                         </div>
-
                         <button
                           onClick={() => assignDrillFromSection(s.section)}
-                          className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                          className={buttonClasses('ghost')}
                         >
                           Assign drill
                         </button>
@@ -697,98 +774,75 @@ export default function CrmOverviewPage() {
           )}
         </div>
 
-        {loadingReporting ? (
-          <div className="h-16 animate-pulse rounded-xl bg-white/10" />
-        ) : !reporting?.ok ? (
-          <div className="text-sm text-neutral-400">No reporting data available.</div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+        <div className="mt-5 border-t border-brand-500/10 pt-4">
+          <div className={TILE_LABEL}>Coaching output</div>
 
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Critical Today</div>
-              <div className="text-lg font-semibold text-red-300">
-                {reporting.critical_calls_today ?? 0}
+          {loadingReporting ? (
+            <div className="mt-2 h-16 animate-pulse rounded-lg bg-neutral-900/60" />
+          ) : !reporting?.ok ? (
+            <p className="mt-2 text-xs text-neutral-500">
+              Reporting builds automatically as calls are analysed and coaching is assigned.
+            </p>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Critical today</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-danger-300">
+                  {reporting.critical_calls_today ?? 0}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Flagged (7d)</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-warning-300">
+                  {reporting.flagged_calls_this_week ?? 0}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Auto-assigned</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-brand-300">
+                  {reporting.auto_assignments_created ?? 0}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Completion</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-success-300">
+                  {reporting.assignment_completion_rate ?? 0}%
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Weakest skill</div>
+                <div className="mt-0.5 truncate text-sm font-semibold text-neutral-200">
+                  {reporting.weakest_team_skill?.skill ?? '—'}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Reps needing help</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-danger-200">
+                  {(reporting.reps_needing_help ?? []).length}
+                </div>
               </div>
             </div>
-
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Flagged (7d)</div>
-              <div className="text-lg font-semibold text-amber-300">
-                {reporting.flagged_calls_this_week ?? 0}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Auto Assign</div>
-              <div className="text-lg font-semibold text-brand-300">
-                {reporting.auto_assignments_created ?? 0}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Completion</div>
-              <div className="text-lg font-semibold text-emerald-300">
-                {reporting.assignment_completion_rate ?? 0}%
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Weakest Skill</div>
-              <div className="text-sm font-semibold text-white/80">
-                {reporting.weakest_team_skill?.skill ?? '—'}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className="text-white/50">Reps Needing Help</div>
-              <div className="text-lg font-semibold text-red-200">
-                {(reporting.reps_needing_help ?? []).length}
-              </div>
-            </div>
-
-          </div>
-        )}
-      </div>
-
-      {/* Control Centre teaser (manager system feature, fail-soft) */}
-      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold text-neutral-100">Control Centre</div>
-              {loadingControlCentre ? null : (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 tabular-nums">
-                  {Number(controlCentre?.headline?.window_days ?? 7)}d window
-                </span>
-              )}
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
-                Manager view
-              </span>
-            </div>
-            <div className="mt-0.5 text-xs text-neutral-400">
-              One place to see which reps need attention — based on overdue work, open workload, and recent activity.
-            </div>
-          </div>
-
-          <div className="shrink-0">
-            <Link
-              href="/crm/manager/control-centre"
-              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
-            >
-              Open Control Centre
-            </Link>
-          </div>
+          )}
         </div>
+      </SectionCard>
 
+      {/* CONTROL CENTRE */}
+      <SectionCard
+        title="Control Centre"
+        subtitle="Which reps need attention — overdue work, open workload, and recent activity · manager view"
+        actions={
+          <Link href="/crm/manager/control-centre" className={buttonClasses('secondary')}>
+            Open Control Centre
+          </Link>
+        }
+        padded
+      >
         {loadingControlCentre ? (
-          <div className="mt-3 h-12 animate-pulse rounded-xl bg-white/10" />
+          <div className="h-8 animate-pulse rounded-lg bg-neutral-900/60" />
         ) : !controlCentre?.ok ? (
-          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="text-sm text-white/80">Control Centre unavailable right now.</div>
-            <div
-              className="mt-1 text-xs text-white/55"
-              title={String(controlCentre?.error ?? '')}
-            >
+          <div>
+            <div className="text-sm text-neutral-300">Control Centre unavailable right now.</div>
+            <div className="mt-1 text-xs text-neutral-500" title={String(controlCentre?.error ?? '')}>
               It will load again once team data is reachable for this account.
             </div>
           </div>
@@ -801,73 +855,54 @@ export default function CrmOverviewPage() {
             const overdue = Number(h.overdue_actions_total ?? 0);
             const open = Number(h.open_actions_total ?? 0);
 
-            const atRiskCls = atRisk > 0 ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-white/10 bg-white/5 text-white/70';
-            const watchCls = watch > 0 ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-white/10 bg-white/5 text-white/70';
-            const overdueCls = overdue > 0 ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-white/10 bg-white/5 text-white/70';
+            const atRiskCls =
+              atRisk > 0
+                ? 'inline-flex items-center rounded-full border border-danger-500/30 bg-danger-500/10 px-2.5 py-1 text-[11px] text-danger-200 tabular-nums'
+                : CHIP_CLASS;
+            const watchCls =
+              watch > 0
+                ? 'inline-flex items-center rounded-full border border-warning-500/30 bg-warning-500/10 px-2.5 py-1 text-[11px] text-warning-200 tabular-nums'
+                : CHIP_CLASS;
+            const overdueCls =
+              overdue > 0
+                ? 'inline-flex items-center rounded-full border border-danger-500/30 bg-danger-500/10 px-2.5 py-1 text-[11px] text-danger-200 tabular-nums'
+                : CHIP_CLASS;
 
             return (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${atRiskCls}`}>
-                  At risk {atRisk}
-                </span>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${watchCls}`}>
-                  Watch {watch}
-                </span>
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
-                  Reps {repsTotal}
+              <div className="flex flex-wrap gap-2">
+                <span className={atRiskCls}>At risk {atRisk}</span>
+                <span className={watchCls}>Watch {watch}</span>
+                <span className={CHIP_CLASS}>Reps {repsTotal}</span>
+                <span className={CHIP_CLASS}>
+                  {Number(controlCentre?.headline?.window_days ?? 7)}d window
                 </span>
 
-                <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${overdueCls}`}>
-                  Overdue actions {overdue}
-                </span>
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
-                  Open actions {open}
-                </span>
+                <span className={`ml-auto ${overdueCls}`}>Overdue actions {overdue}</span>
+                <span className={CHIP_CLASS}>Open actions {open}</span>
               </div>
             );
           })()
         )}
-      </div>
+      </SectionCard>
 
-      {/* Nudges (system feature, fail-soft) */}
-      <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold text-neutral-100">Nudges</div>
-              {!loadingNudges ? (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 tabular-nums">
-                  {nudges?.length ?? 0}
-                </span>
-              ) : null}
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
-                Manager signal
-              </span>
-            </div>
-            <div className="mt-0.5 text-xs text-neutral-400">
-              The system’s best guess at who needs attention next — ranked by overdue work, staleness, and open actions.
-            </div>
-          </div>
-
-          <div className="shrink-0 flex items-center gap-2">
-            <Link
-              href="/crm/manager"
-              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
-            >
+      {/* NUDGES */}
+      <SectionCard
+        title="Nudges"
+        subtitle="Who needs attention next — ranked by overdue work, staleness, and open actions."
+        actions={
+          <>
+            <Link href="/crm/manager" className={buttonClasses('ghost')}>
               Manager
             </Link>
-            <Link
-              href="/crm/manager/nudges"
-              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
-            >
+            <Link href="/crm/manager/nudges" className={buttonClasses('ghost')}>
               View all
             </Link>
-          </div>
-        </div>
-
-        {/* Summary strip */}
+          </>
+        }
+        padded
+      >
         {loadingNudges ? (
-          <div className="mt-3 h-10 animate-pulse rounded-xl bg-white/10" />
+          <div className="h-10 animate-pulse rounded-lg bg-neutral-900/60" />
         ) : (
           (() => {
             const items = Array.isArray(nudges) ? nudges : [];
@@ -887,44 +922,39 @@ export default function CrmOverviewPage() {
             const openTotal = items.reduce((s: number, n: any) => s + Number(n?.action_counts?.open ?? 0), 0);
 
             return (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-red-500/30 bg-red-500/10 text-red-200 tabular-nums">
+              <div className="flex flex-wrap gap-2">
+                <span className={CHIP_CLASS}>Tracked {items.length}</span>
+                <span className="inline-flex items-center rounded-full border border-danger-500/30 bg-danger-500/10 px-2.5 py-1 text-[11px] text-danger-200 tabular-nums">
                   At risk {counts.at_risk}
                 </span>
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-amber-500/30 bg-amber-500/10 text-amber-200 tabular-nums">
+                <span className="inline-flex items-center rounded-full border border-warning-500/30 bg-warning-500/10 px-2.5 py-1 text-[11px] text-warning-200 tabular-nums">
                   Watch {counts.watch}
                 </span>
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 tabular-nums">
+                <span className="inline-flex items-center rounded-full border border-success-500/20 bg-success-500/10 px-2.5 py-1 text-[11px] text-success-300 tabular-nums">
                   Healthy {counts.healthy}
                 </span>
                 {counts.unknown ? (
-                  <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
-                    Other {counts.unknown}
-                  </span>
+                  <span className={CHIP_CLASS}>Other {counts.unknown}</span>
                 ) : null}
 
-                <span className="ml-auto rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
-                  Overdue {overdueTotal}
-                </span>
-                <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums">
-                  Open {openTotal}
-                </span>
+                <span className={`ml-auto ${CHIP_CLASS}`}>Overdue {overdueTotal}</span>
+                <span className={CHIP_CLASS}>Open {openTotal}</span>
               </div>
             );
           })()
         )}
 
         {loadingNudges ? (
-          <div className="mt-3 h-28 animate-pulse rounded-xl bg-white/10" />
+          <div className="mt-3 h-28 animate-pulse rounded-lg bg-neutral-900/60" />
         ) : !nudges || nudges.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="text-sm text-white/80">No nudges right now.</div>
-            <div className="mt-1 text-xs text-white/55">
-              When contacts have open or overdue actions, or go stale, they’ll show up here automatically.
-            </div>
+          <div className="mt-3">
+            <EmptyState
+              message="No nudges right now"
+              sub="When contacts have open or overdue actions, or go stale, they’ll show up here automatically."
+            />
           </div>
         ) : (
-          <ul className="mt-3 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10">
+          <ul className="mt-3 divide-y divide-neutral-800 overflow-hidden rounded-lg border border-neutral-800">
             {nudges.slice(0, 5).map((n: any) => {
               const contactId = String(n?.contact_id ?? "");
               const name = String(n?.name ?? n?.contact_name ?? "Contact").trim();
@@ -936,12 +966,12 @@ export default function CrmOverviewPage() {
               const band = bandRaw || "unknown";
               const bandCls =
                 band === "hot" || band === "critical" || band === "at_risk"
-                  ? "border-red-500/30 bg-red-500/10 text-red-200"
+                  ? "border-danger-500/30 bg-danger-500/10 text-danger-200"
                   : band === "warm" || band === "watch" || band === "warning"
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    ? "border-warning-500/30 bg-warning-500/10 text-warning-200"
                     : band === "healthy"
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                      : "border-white/10 bg-white/5 text-white/70";
+                      ? "border-success-500/20 bg-success-500/10 text-success-300"
+                      : "border-neutral-800 bg-neutral-950/80 text-neutral-400";
 
               const score = typeof n?.health?.score === "number" ? n.health.score : null;
 
@@ -969,14 +999,14 @@ export default function CrmOverviewPage() {
               const urgencyLabel = overdue > 0 ? `Overdue ${overdue}` : open > 0 ? `${open} open` : "No open";
               const urgencyCls =
                 overdue > 0
-                  ? "border-red-500/30 bg-red-500/10 text-red-200"
+                  ? "border-danger-500/30 bg-danger-500/10 text-danger-200"
                   : open > 0
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-                    : "border-white/10 bg-white/5 text-white/70";
+                    ? "border-warning-500/30 bg-warning-500/10 text-warning-200"
+                    : "border-neutral-800 bg-neutral-950/80 text-neutral-400";
 
               const RowWrap: any = href ? Link : "div";
               const rowProps = href
-                ? { href, className: "block px-3 py-2 hover:bg-white/[0.03]" }
+                ? { href, className: "block px-3 py-2 hover:bg-neutral-900/40 transition-colors" }
                 : { className: "px-3 py-2" };
 
               return (
@@ -985,11 +1015,11 @@ export default function CrmOverviewPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className="truncate text-sm text-white/90">{name}</div>
-                          {company ? <span className="truncate text-xs text-white/50">· {company}</span> : null}
+                          <div className="truncate text-sm text-neutral-100">{name}</div>
+                          {company ? <span className="truncate text-xs text-neutral-500">· {company}</span> : null}
                         </div>
 
-                        <div className="mt-0.5 truncate text-xs text-white/50">{email ? email : "—"}</div>
+                        <div className="mt-0.5 truncate text-xs text-neutral-500">{email ? email : "—"}</div>
 
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <span className={`rounded-full px-2 py-0.5 text-[11px] border uppercase ${bandCls}`}>{band}</span>
@@ -997,17 +1027,17 @@ export default function CrmOverviewPage() {
                           <span className={`rounded-full px-2 py-0.5 text-[11px] border tabular-nums ${urgencyCls}`}>{urgencyLabel}</span>
 
                           {score != null ? (
-                            <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                            <span className="rounded-full px-2 py-0.5 text-[11px] border border-neutral-800 bg-neutral-950/80 text-neutral-400 tabular-nums">
                               Score {Math.round(score)}
                             </span>
                           ) : null}
 
-                          <span className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/70 tabular-nums">
+                          <span className="rounded-full px-2 py-0.5 text-[11px] border border-neutral-800 bg-neutral-950/80 text-neutral-400 tabular-nums">
                             {touchedLabel}
                           </span>
 
                           <span
-                            className="rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-white/60 tabular-nums"
+                            className="rounded-full px-2 py-0.5 text-[11px] border border-neutral-800 bg-neutral-950/80 text-neutral-500 tabular-nums"
                             title="Priority score (higher = more urgent)"
                           >
                             P{isFinite(priority) ? Math.round(priority) : 0}
@@ -1015,8 +1045,8 @@ export default function CrmOverviewPage() {
                         </div>
 
                         {nextAction ? (
-                          <div className="mt-2 text-xs text-white/75">
-                            <span className="text-white/50">Next:</span> {nextAction}
+                          <div className="mt-2 text-xs text-neutral-300">
+                            <span className="text-neutral-500">Next:</span> {nextAction}
                           </div>
                         ) : null}
 
@@ -1025,7 +1055,7 @@ export default function CrmOverviewPage() {
                             {reasons.slice(0, 2).map((r: any, idx: number) => (
                               <span
                                 key={`${contactId || name}-r-${idx}`}
-                                className="text-[11px] rounded-full px-2 py-0.5 border border-white/10 bg-white/5 text-white/55"
+                                className="text-[11px] rounded-full px-2 py-0.5 border border-neutral-800 bg-neutral-950/80 text-neutral-500"
                               >
                                 {String(r)}
                               </span>
@@ -1035,8 +1065,8 @@ export default function CrmOverviewPage() {
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <div className="text-[11px] text-white/40">Actions</div>
-                        <div className="mt-1 text-xs text-white/70 tabular-nums">{open}/{overdue}</div>
+                        <div className="text-[11px] text-neutral-600">Actions</div>
+                        <div className="mt-1 text-xs text-neutral-400 tabular-nums">{open}/{overdue}</div>
                       </div>
                     </div>
                   </RowWrap>
@@ -1046,65 +1076,68 @@ export default function CrmOverviewPage() {
           </ul>
         )}
 
-        <div className="mt-3 flex items-center justify-between text-xs text-white/50">
+        <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
           <div>
             Nudges update automatically as you log notes, complete actions, and touch contacts.
           </div>
-          <Link href="/crm/manager/nudges" className="underline hover:text-white/70">
+          <Link href="/crm/manager/nudges" className="hover:text-neutral-300 transition-colors">
             Open full nudges →
           </Link>
         </div>
-      </div>
+      </SectionCard>
 
-      {/* Rep Home: Today's Actions (CORE WIN) */}
-      <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900/40 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-neutral-200">Today’s Actions</div>
-          <Link href="/crm/contacts/import" className="text-xs underline opacity-80 hover:opacity-100">
+      {/* TODAY'S ACTIONS */}
+      <SectionCard
+        title="Today’s actions"
+        subtitle="Queued CRM actions for today"
+        actions={
+          <Link href="/crm/contacts/import" className={buttonClasses('ghost')}>
             Import leads
           </Link>
-        </div>
-
+        }
+        padded
+      >
         {loadingTodayActions ? (
-          <div className="mt-3 h-20 animate-pulse rounded-xl bg-white/10" />
+          <div className="h-20 animate-pulse rounded-lg bg-neutral-900/60" />
         ) : !todayActions || todayActions.length === 0 ? (
-          <div className="mt-3 text-sm text-neutral-400">
-            No actions queued. Open a contact and hit <span className="text-neutral-200">Auto-Assign</span>.
-          </div>
+          <EmptyState
+            message="No actions queued"
+            sub="Open a contact and use Auto-Assign to generate follow-ups."
+          />
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="space-y-2">
             {todayActions.slice(0, 8).map((a) => {
               const due = a.due_at ? new Date(String(a.due_at)) : null;
               const dueLabel = due && isFinite(due.getTime()) ? due.toLocaleString() : null;
               const imp = (a.importance ?? 'normal') as string;
               const impCls =
                 imp === 'critical'
-                  ? 'border-red-500/40 text-red-300 bg-red-500/10'
+                  ? 'border-danger-500/40 text-danger-300 bg-danger-500/10'
                   : imp === 'important'
-                    ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                    : 'border-white/10 text-white/60 bg-white/5';
+                    ? 'border-warning-500/40 text-warning-300 bg-warning-500/10'
+                    : 'border-neutral-800 text-neutral-400 bg-neutral-950/80';
 
               const status = (a.status ?? 'open') as string;
               const statusCls =
                 status === 'done' || status === 'completed'
-                  ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                  ? 'border-success-500/40 text-success-300 bg-success-500/10'
                   : 'border-brand-500/30 text-brand-300 bg-brand-500/10';
 
               const href = a.contact_id ? `/crm/contacts/${encodeURIComponent(String(a.contact_id))}` : null;
 
               return (
-                <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2">
+                <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2">
                   <div className="min-w-0">
-                    <div className="text-sm text-white/90 truncate">
+                    <div className="text-sm text-neutral-100 truncate">
                       {href ? (
-                        <Link href={href} className="underline">
+                        <Link href={href} className="hover:text-brand-300 transition-colors">
                           {a.title}
                         </Link>
                       ) : (
                         a.title
                       )}
                     </div>
-                    <div className="text-xs text-white/50 truncate">
+                    <div className="text-xs text-neutral-500 truncate">
                       {dueLabel ? `Due: ${dueLabel}` : 'No due date'}
                       {a.source ? ` · ${a.source}` : ''}
                     </div>
@@ -1123,55 +1156,27 @@ export default function CrmOverviewPage() {
             })}
           </ul>
         )}
-      </div>
+      </SectionCard>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Total Calls */}
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Total Calls</div>
-          <div className="text-2xl font-semibold">{typeof trends?.total_calls === 'number' ? trends.total_calls : '—'}</div>
-          <div className="mt-2">
-            <Sparkline className="text-emerald-400" data={trends?.callsAnalyzed} />
-          </div>
-        </div>
-
-        {/* Conversion (90d) */}
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Conversion (90d)</div>
-          <div className="text-2xl font-semibold">{pct((trends as any)?.conversion_rate_90d)}</div>
-          <div className="mt-2">
-            <Sparkline className="text-brand-400" data={(trends as any)?.winRate} />
-          </div>
-        </div>
-
-        {/* Avg. Coaching Score */}
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Avg. Coaching Score</div>
-          <div className="text-2xl font-semibold">{typeof trends?.avg_score_overall === 'number' ? Math.round(trends.avg_score_overall) : '—'}</div>
-          <div className="mt-2">
-            <Sparkline className="text-amber-400" data={trends?.avgScore} />
-          </div>
-        </div>
-      </div>
-
-      {/* Manager Trust (optional surface) */}
-      <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm text-neutral-200">
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-sm font-medium">Manager Trust</div>
-          <Link
-            href="/admin/assignments"
-            className="text-xs underline opacity-80 hover:opacity-100"
-          >
-            Open assignments admin
+      {/* MANAGER TRUST */}
+      <SectionCard
+        title="Manager trust"
+        subtitle="Assignment follow-through across the team"
+        actions={
+          <Link href="/admin/assignments" className={buttonClasses('ghost')}>
+            Assignments admin
           </Link>
-        </div>
-
+        }
+        padded
+      >
         {loadingTrust ? (
-          <div className="mt-2 h-5 w-64 animate-pulse rounded bg-white/10" />
+          <div className="h-5 w-64 animate-pulse rounded bg-neutral-900/60" />
         ) : !trust?.trust ? (
-          <div className="mt-2 text-sm text-neutral-400">No trust signal available.</div>
+          <p className="text-xs text-neutral-500">
+            No trust signal yet — it builds as assignments are completed.
+          </p>
         ) : (
-          <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-300">
+          <div className="flex flex-wrap gap-4 text-sm text-neutral-300">
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-danger-500" />
               Overdue: <span className="tabular-nums">{trust.trust.overdue ?? 0}</span>
@@ -1186,98 +1191,106 @@ export default function CrmOverviewPage() {
             </span>
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      {/* Manager Cards: Assignments + Top Objections */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Assignments Overview */}
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm opacity-70">Recent Assignments</div>
-            <Link href="/assignments" className="text-xs underline opacity-80 hover:opacity-100">View all</Link>
-          </div>
-          <div className="mt-3 space-y-2">
-            {loadingA ? (
-              <div className="h-24 animate-pulse rounded-xl bg-white/10" />
-            ) : !assignments || assignments.length === 0 ? (
-              <div className="text-sm text-neutral-400">No open assignments.</div>
-            ) : (
-              <ul className="space-y-2">
-                {assignments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2">
-                    <div className="text-sm min-w-0">
-                      <div className="text-white/90 truncate">{a.title || 'Coaching task'}</div>
-                      <div className="text-white/50">
-                        {a.rep_name ? `@${a.rep_name} • ` : ''}
-                        {new Date(a.created_at).toLocaleString()}
-                        {a.due_at ? ` • due ${new Date(a.due_at).toLocaleDateString()}` : ''}
-                      </div>
+      {/* ASSIGNMENTS + OBJECTIONS */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Recent assignments"
+          subtitle="Latest coaching work across the team"
+          actions={
+            <Link href="/assignments" className={buttonClasses('ghost')}>
+              View all
+            </Link>
+          }
+          padded
+        >
+          {loadingA ? (
+            <div className="h-24 animate-pulse rounded-lg bg-neutral-900/60" />
+          ) : !assignments || assignments.length === 0 ? (
+            <EmptyState
+              message="No open assignments"
+              sub="Assignments appear here as coaching work is created."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {assignments.map((a) => (
+                <li key={a.id} className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2">
+                  <div className="text-sm min-w-0">
+                    <div className="text-neutral-100 truncate">{a.title || 'Coaching task'}</div>
+                    <div className="text-neutral-500">
+                      {a.rep_name ? `${a.rep_name} · ` : ''}
+                      {new Date(a.created_at).toLocaleString()}
+                      {a.due_at ? ` · due ${new Date(a.due_at).toLocaleDateString()}` : ''}
                     </div>
-                    <span className={clsx(
-                      'text-xs rounded-full px-2 py-0.5 border whitespace-nowrap ml-2',
-                      (a.status === 'done' || a.status === 'completed')
-                        ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-                        : 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                    )}>
-                      {a.status}
-                    </span>
-                    <Link href={`/assignments/${a.id}`} className="text-sm text-white/70 hover:underline ml-3 shrink-0">Open</Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+                  </div>
+                  <span className={clsx(
+                    'text-xs rounded-full px-2 py-0.5 border whitespace-nowrap ml-2',
+                    (a.status === 'done' || a.status === 'completed')
+                      ? 'border-success-500/40 text-success-300 bg-success-500/10'
+                      : 'border-brand-500/30 text-brand-300 bg-brand-500/10'
+                  )}>
+                    {a.status}
+                  </span>
+                  <Link href={`/assignments/${a.id}`} className="text-sm text-neutral-400 hover:text-brand-300 transition-colors ml-3 shrink-0">Open</Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
 
-        {/* Top Objections */}
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm opacity-70">Top Objections</div>
-            <span className="text-xs text-white/50">Last period</span>
-          </div>
-          <div className="mt-3 h-64">
+        <SectionCard title="Top objections" subtitle="Most frequent objections · last period">
+          <div className="px-5 py-4 h-64">
             {loadingO ? (
-              <div className="h-full animate-pulse rounded-xl bg-white/10" />
+              <div className="h-full animate-pulse rounded-lg bg-neutral-900/60" />
             ) : !objections || objections.length === 0 ? (
-              <div className="text-sm text-neutral-400">No objections logged.</div>
+              <div className="flex h-full items-center justify-center">
+                <EmptyState
+                  message="No objections logged"
+                  sub="Objections build here as calls are analysed."
+                />
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={objections} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+                <BarChart data={objections} margin={{ top: 10, right: 8, left: -8, bottom: 20 }}>
                   <XAxis
                     dataKey="objection"
-                    tick={{ fontSize: 11, fill: '#bbb' }}
+                    tick={{ fontSize: 11, fill: '#9ca3af' }}
                     angle={-25}
                     textAnchor="end"
                     interval={0}
                     height={50}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                  <YAxis tick={{ fontSize: 11, fill: '#bbb' }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }} />
-                  <Bar dataKey="count" fill="#60a5fa" radius={[4, 4, 0, 0]}>
-                    {objections.map((_, idx) => (
-                      <Cell key={idx} fill={idx < 3 ? ['#22c55e', '#eab308', '#f43f5e'][idx] : '#60a5fa'} />
-                    ))}
-                  </Bar>
+                  <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #333', borderRadius: '8px' }} cursor={{ fill: 'rgba(99,102,241,0.06)' }} />
+                  <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </div>
-        </div>
+        </SectionCard>
       </div>
-      {/* Top Accounts by Avg Score */}
-      <div className="mt-6">
-        <div className="rounded-lg border border-neutral-800">
-          <div className="px-4 py-3 border-b border-neutral-800 font-medium">Top Accounts by Avg Score</div>
+
+      {/* TOP ACCOUNTS + TOP REPS */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard title="Top accounts" subtitle="By average call score">
           <div className="divide-y divide-neutral-800">
             {(trends?.top_accounts?.length ?? 0) === 0 && (
-              <div className="px-4 py-4 text-sm text-neutral-400">No data yet.</div>
+              <EmptyState
+                message="No account scores yet"
+                sub="Accounts rank here as their calls are scored."
+              />
             )}
             {(trends?.top_accounts ?? []).map((a: any, idx: number) => (
               <div key={a.account_id || a.id || String(idx)} className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 text-center text-xs text-neutral-400">#{idx + 1}</div>
-                  <Link href={`/crm/accounts/${a.account_id ?? a.id}`} className="truncate underline">
-                    {a.name ?? a.account_id ?? 'Unnamed Account'}
+                  <div className="w-8 text-center" aria-hidden>
+                    <span className={`text-xs tabular-nums ${idx < 3 ? 'text-brand-300 font-semibold' : 'text-neutral-500'}`}>#{idx + 1}</span>
+                  </div>
+                  <Link href={`/crm/accounts/${a.account_id ?? a.id}`} className="truncate text-neutral-100 hover:text-brand-300 transition-colors">
+                    {a.name ?? 'Unnamed account'}
                   </Link>
                 </div>
                 <div className={`text-sm tabular-nums ${scoreColour(a.avg_score)}`} title={`Avg Score ${a.avg_score ?? '—'}`}>
@@ -1286,24 +1299,25 @@ export default function CrmOverviewPage() {
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </SectionCard>
 
-      {/* Top Reps by Avg Score */}
-      {repFilter ? (
-        <div className="mt-2 mb-2 text-xs text-neutral-400">
-          Filtering by rep: <code className="text-neutral-200">{repFilter}</code>
-          {' '}· <Link className="underline" href="/crm/overview">Reset</Link>
-        </div>
-      ) : null}
-      <div className="mt-6">
-        <div className="rounded-lg border border-neutral-800">
-          <div className="px-4 py-3 border-b border-neutral-800 font-medium">
-            Top Reps by Avg Score {repFilter ? <span className="text-xs text-neutral-500">(filtered)</span> : null}
-          </div>
+        <SectionCard
+          title="Top reps"
+          subtitle={repFilter ? 'Filtered to one rep' : 'By average call score'}
+          actions={
+            repFilter ? (
+              <Link href="/crm/overview" className={buttonClasses('ghost')}>
+                Reset filter
+              </Link>
+            ) : undefined
+          }
+        >
           <div className="divide-y divide-neutral-800">
             {(Array.isArray(topRepsAll) ? topRepsAll : []).length === 0 && (
-              <div className="px-4 py-4 text-sm text-neutral-400">No data yet.</div>
+              <EmptyState
+                message="No rep scores yet"
+                sub="Reps rank here as their calls are scored."
+              />
             )}
 
             {(topReps.length > 0 ? topReps : []).map((r: any, idx: number) => {
@@ -1321,7 +1335,7 @@ export default function CrmOverviewPage() {
                       <span className={`text-xs tabular-nums ${rank <= 3 ? 'text-brand-300 font-semibold' : 'text-neutral-500'}`}>#{rank}</span>
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate">{r.name ?? 'Rep'}</div>
+                      <div className="truncate text-neutral-100">{r.name ?? 'Rep'}</div>
                       <div className="text-xs text-neutral-500 truncate" title={`Calls: ${r.calls ?? '—'} · Points: ${r.xp ?? '—'}`}>
                         Calls: {r.calls ?? '—'} · Points: {r.xp ?? '—'}
                       </div>
@@ -1334,133 +1348,140 @@ export default function CrmOverviewPage() {
               );
             })}
           </div>
-        </div>
+        </SectionCard>
       </div>
 
-      {/* ---------------- CRM Analytics (Day 53) ---------------- */}
-      <div className="mt-8 rounded-xl border border-neutral-800 p-4">
-
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-sm font-medium text-neutral-200">CRM Analytics</div>
-
-          <div className="flex items-center gap-2 text-xs">
+      {/* CRM ANALYTICS — QUICK VIEW */}
+      <SectionCard
+        eyebrow="Quick view"
+        title="CRM analytics"
+        subtitle="Pipeline and coaching output at a glance — the full cockpit lives in Analytics"
+        actions={
+          <>
             <select
               value={analyticsDays}
               onChange={(e) => setAnalyticsDays(Number(e.target.value))}
-              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+              className={SELECT_CLASS}
             >
-              <option value={7}>7d</option>
-              <option value={30}>30d</option>
-              <option value={90}>90d</option>
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
             </select>
 
-            <input
-              placeholder="Rep ID"
-              value={analyticsRep ?? ""}
+            <select
+              value={analyticsRep ?? ''}
               onChange={(e) => setAnalyticsRep(e.target.value || null)}
-              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
-            />
-          </div>
-        </div>
+              className={SELECT_CLASS}
+            >
+              <option value="">All reps</option>
+              {(activityByRep ?? []).map((r: any) => (
+                <option key={r.rep_id} value={r.rep_id}>
+                  {repShort(String(r.rep_id), r.rep_name)}
+                </option>
+              ))}
+            </select>
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-
-          <div className="border border-neutral-800 rounded p-3">
-            <div className="text-xs text-neutral-400">Opportunities</div>
-            <div className="text-xl font-semibold">{analyticsSummary?.opportunities ?? '—'}</div>
-          </div>
-
-          <div className="border border-neutral-800 rounded p-3">
-            <div className="text-xs text-neutral-400">Won</div>
-            <div className="text-xl font-semibold">{analyticsSummary?.won ?? '—'}</div>
-          </div>
-
-          <div className="border border-neutral-800 rounded p-3">
-            <div className="text-xs text-neutral-400">Conversion</div>
-            <div className="text-xl font-semibold">{analyticsSummary?.conversion_rate ?? '—'}%</div>
-          </div>
-
-          <div className="border border-neutral-800 rounded p-3">
-            <div className="text-xs text-neutral-400">Avg Score</div>
-            <div className="text-xl font-semibold">{analyticsSummary?.avg_score ?? '—'}</div>
-          </div>
-
-        </div>
-
-        {/* Conversion by stage */}
-        <div className="mb-6">
-          <div className="text-sm mb-2 text-neutral-300">Conversion by Stage</div>
-          <div className="flex flex-wrap gap-2">
-            {stageConversion && Object.entries(stageConversion).map(([stage, count]) => (
-              <span key={stage} className="text-xs border border-neutral-700 rounded px-2 py-1">
-                {stage}: {count}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Score trend */}
-        <div className="mb-6 h-48">
-          <div className="text-sm mb-2 text-neutral-300">Avg Score Trend</div>
-
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={scoreTrend ?? []}>
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#bbb" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#bbb" }} />
-              <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333" }} />
-
-              <Line
-                type="monotone"
-                dataKey="avg_score"
-                stroke="#38bdf8"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Activity by rep */}
-        <div>
-          <div className="text-sm mb-2 text-neutral-300">Activity by Rep</div>
-
-          <div className="space-y-1">
-            {(activityByRep ?? []).slice(0, 6).map((r: any) => (
-              <div key={r.rep_id} className="flex justify-between text-xs border border-neutral-800 rounded px-2 py-1">
-                <span>{r.rep_name ?? r.rep_id}</span>
-                <span>{r.activities_completed}/{r.activities_created}</span>
+            <Link href="/crm/analytics" className={buttonClasses('secondary')}>
+              Open Analytics
+            </Link>
+          </>
+        }
+        padded
+      >
+        {loadingAnalytics ? (
+          <div className="h-48 animate-pulse rounded-lg bg-neutral-900/60" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Opportunities</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
+                  {analyticsSummary?.opportunities ?? '—'}
+                </div>
               </div>
-            ))}
-          </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Won</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
+                  {analyticsSummary?.won ?? '—'}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Conversion</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
+                  {analyticsSummary?.conversion_rate != null ? `${analyticsSummary.conversion_rate}%` : '—'}
+                </div>
+              </div>
+              <div className={TILE_CLASS}>
+                <div className={TILE_LABEL}>Avg score</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
+                  {analyticsSummary?.avg_score ?? '—'}
+                </div>
+              </div>
+            </div>
 
-        </div>
+            <div className="mt-5">
+              <div className={TILE_LABEL}>Conversion by stage</div>
+              {stageConversion && Object.keys(stageConversion).length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.entries(stageConversion).map(([stage, count]) => (
+                    <span key={stage} className={CHIP_CLASS}>
+                      {stage} · {count}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Stage movement appears as deals progress through the pipeline.
+                </p>
+              )}
+            </div>
 
-      </div>
+            <div className="mt-5">
+              <div className={TILE_LABEL}>Avg score trend</div>
+              {(scoreTrend?.length ?? 0) > 0 ? (
+                <div className="mt-2 h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={scoreTrend ?? []} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                      <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #333', borderRadius: '8px' }} />
+                      <Line
+                        type="monotone"
+                        dataKey="avg_score"
+                        stroke="#818cf8"
+                        strokeWidth={2.5}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Score trend builds as calls are reviewed in this range.
+                </p>
+              )}
+            </div>
 
-      {/* Secondary row of stubs (optional) */}
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Avg. Handle Time</div>
-          <div className="text-2xl font-semibold">—</div>
-          <div className="mt-2"><Sparkline className="text-neutral-300" data={trends?.aht} /></div>
-        </div>
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Objection Wins</div>
-          <div className="text-2xl font-semibold">—</div>
-          <div className="mt-2"><Sparkline className="text-emerald-400" /></div>
-        </div>
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Follow-ups Sent</div>
-          <div className="text-2xl font-semibold">—</div>
-          <div className="mt-2"><Sparkline className="text-brand-400" /></div>
-        </div>
-        <div className="rounded-lg border border-neutral-800 p-4">
-          <div className="text-sm opacity-70">Rep Activity</div>
-          <div className="text-2xl font-semibold">—</div>
-          <div className="mt-2"><Sparkline className="text-amber-400" /></div>
-        </div>
-      </div>
-    </div>
+            <div className="mt-5">
+              <div className={TILE_LABEL}>Activity by rep</div>
+              {(activityByRep?.length ?? 0) > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {(activityByRep ?? []).slice(0, 6).map((r: any) => (
+                    <div key={r.rep_id} className="flex justify-between rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-1.5 text-xs">
+                      <span className="text-neutral-200">{repShort(String(r.rep_id), r.rep_name)}</span>
+                      <span className="text-neutral-400 tabular-nums">{r.activities_completed}/{r.activities_created} completed</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Rep activity appears as coaching tasks are created.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </SectionCard>
+    </PageContainer>
   );
 }

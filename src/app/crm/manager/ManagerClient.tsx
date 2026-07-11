@@ -828,8 +828,9 @@ export default function ManagerClient({ initial }: { initial: any }) {
                   <span className="ml-2 text-neutral-400 font-normal">({apiError.status})</span>
                 ) : null}
               </div>
-              <div className="text-neutral-300 text-sm mt-1">{apiError.hint}</div>
-              <div className="text-neutral-400 text-xs mt-2 font-mono break-all">{apiError.error}</div>
+              <div className="text-neutral-300 text-sm mt-1" title={apiError.error}>
+                {apiError.hint}
+              </div>
             </div>
 
             <button
@@ -898,7 +899,10 @@ export default function ManagerClient({ initial }: { initial: any }) {
                 </div>
 
                 <div className="text-xs text-neutral-500">
-                  preview_run_id: <span className="font-mono text-neutral-200">{confirmExecutePreviewId}</span>
+                  Preview{" "}
+                  <span className="font-mono text-neutral-200" title={String(confirmExecutePreviewId ?? "")}>
+                    {String(confirmExecutePreviewId ?? "").slice(0, 8)}…
+                  </span>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
@@ -1127,19 +1131,24 @@ export default function ManagerClient({ initial }: { initial: any }) {
           </div>
 
           <div className="text-xs text-neutral-400">
-            run_id: <span className="font-mono text-neutral-200">{lastRun.run_id}</span>
+            Run{" "}
+            <span className="font-mono text-neutral-200" title={String(lastRun.run_id)}>
+              {String(lastRun.run_id).slice(0, 8)}…
+            </span>
           </div>
 
           {lastRun.executed_from_preview_run_id && (
             <div className="text-xs text-neutral-500">
-              executed_from_preview_run_id:{" "}
-              <span className="font-mono text-neutral-200">{lastRun.executed_from_preview_run_id}</span>
+              From preview{" "}
+              <span className="font-mono text-neutral-200" title={String(lastRun.executed_from_preview_run_id)}>
+                {String(lastRun.executed_from_preview_run_id).slice(0, 8)}…
+              </span>
             </div>
           )}
 
           {lastRun.executed_at && (
             <div className="text-xs text-neutral-500">
-              executed_at: <span className="text-neutral-200">{new Date(lastRun.executed_at).toLocaleString()}</span>
+              Executed <span className="text-neutral-200">{new Date(lastRun.executed_at).toLocaleString()}</span>
             </div>
           )}
 
@@ -1196,59 +1205,35 @@ export default function ManagerClient({ initial }: { initial: any }) {
         </>
       ) : null}
 
-      {!AUTO_ASSIGN_WRITE_UI_ENABLED ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <section className="rounded-xl border border-dashed border-neutral-800 bg-neutral-950/60 p-4 opacity-80">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-200">Auto-Assign Runner</h3>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Execute / preview controls are staged next. Read-only latest run and history are now live below.
-                </p>
-              </div>
-              <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                Write flow pending
-              </span>
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-500">
-                Execute run
-              </div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-500">
-                Preview / execute-from-preview
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
       <div className="text-neutral-200 font-medium pt-2">Rep overview</div>
-      <div className="overflow-auto border border-neutral-800 rounded">
+      <div className="overflow-auto rounded-xl border border-neutral-800 shadow-md shadow-black/20">
         <table className="min-w-[700px] w-full text-sm">
-          <thead className="bg-neutral-900/40">
-            <tr className="text-left">
-              <th className="p-3">Rep</th>
-              <th className="p-3">Open</th>
-              <th className="p-3">Overdue</th>
-              <th className="p-3">Completed Today</th>
-              <th className="p-3">Rep ID</th>
+          <thead>
+            <tr className="border-b border-neutral-800 text-left">
+              <th className="p-3 text-[10px] uppercase tracking-[0.12em] font-medium text-neutral-500">Rep</th>
+              <th className="p-3 text-[10px] uppercase tracking-[0.12em] font-medium text-neutral-500">Open</th>
+              <th className="p-3 text-[10px] uppercase tracking-[0.12em] font-medium text-neutral-500">Overdue</th>
+              <th className="p-3 text-[10px] uppercase tracking-[0.12em] font-medium text-neutral-500">Completed today</th>
+              <th className="p-3 text-[10px] uppercase tracking-[0.12em] font-medium text-neutral-500">Rep ID</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-neutral-800/60">
             {rows.map((r) => (
-              <tr key={r.rep_id} className="border-t border-neutral-800">
-                <td className="p-3">{r.rep_name}</td>
-                <td className="p-3">{r.counts.open}</td>
-                <td className="p-3">{r.counts.overdue}</td>
-                <td className="p-3">{r.counts.completed_today}</td>
-                <td className="p-3 font-mono text-xs text-neutral-400">{r.rep_id}</td>
+              <tr key={r.rep_id} className="hover:bg-neutral-900/30 transition-colors">
+                <td className="p-3 text-neutral-100">{r.rep_name}</td>
+                <td className="p-3 tabular-nums">{r.counts.open}</td>
+                <td className="p-3 tabular-nums">{r.counts.overdue}</td>
+                <td className="p-3 tabular-nums">{r.counts.completed_today}</td>
+                <td className="p-3 font-mono text-xs text-neutral-500" title={r.rep_id}>
+                  {String(r.rep_id).slice(0, 8)}…
+                </td>
               </tr>
             ))}
 
             {!rows.length && (
               <tr>
-                <td className="p-3 text-neutral-400" colSpan={5}>
-                  No reps found (mode={mode})
+                <td className="p-3 text-neutral-400" colSpan={5} title={`mode=${mode}`}>
+                  No reps found yet — reps appear here once assignments are in play.
                 </td>
               </tr>
             )}
