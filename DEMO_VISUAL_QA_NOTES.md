@@ -103,3 +103,27 @@ WEB-only, patch mode, no behaviour change:
   asserted a 404 and protected no live route.
 
 Next: full Day 205 demo reseed + lighthouse QA.
+
+## 7. Day 212 — Assign Coaching blocker RESOLVED (API-side)
+
+The known demo blocker where `/coaching` Review Queue → Assign Coaching
+failed with `rep_missing_office` is fixed in the API repo
+(`feat: add team management scope foundation`):
+
+- Root cause: `POST /v1/assignments` hard-required a rep `office_id`, but
+  the UFC demo company (like any office-less company) has none — every rep
+  is company-scoped, which reads have honoured since Day 166/168. Not a
+  seed defect; no reseed needed for this fix.
+- Fix: office is now optional at assignment creation (null `office_id` =
+  company scope, matching seeded assignment rows). Company remains the
+  hard boundary, and a new cross-company guard rejects out-of-company
+  targets with 403 `rep_out_of_scope`.
+- New read-only `GET /v1/team/members` (manager-gated) exposes per-member
+  office/scope status + seat summary for the future `/team` surface.
+- Proof: `npm run validate:team-management` (API repo) — 15/15, including
+  live Dana→Nate assignment creation and cross-company rejection.
+- Demo note: the seat summary reports the UFC org **over allocation**
+  (15 members vs 5 licensed seats in `company_licences`) with an
+  `over_seat_allocation` warning. Expected with the demo seed; harmless
+  today because nothing enforces seat limits yet, but worth knowing if a
+  seat panel is shown in a demo.

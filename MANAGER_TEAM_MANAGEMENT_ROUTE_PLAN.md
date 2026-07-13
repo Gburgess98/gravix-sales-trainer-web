@@ -70,6 +70,44 @@ from calls-table lookups. Seat source of truth:
 `LICENCE_AND_SEAT_RULES.md` §2 (company_licences canonical, org_limits
 legacy fallback during migration).
 
+### Day 212 — implemented subset (API lane, read-only)
+
+Shipped in the API repo (`npm run validate:team-management`, 15/15):
+
+```
+GET /v1/team/members   NEW — requireManager-gated, company-scoped
+                       (users→reps identity bridge, same rule as /users).
+                       Per member: office_id/office_name, scope
+                       ("office" | "company"), identity ("rep" |
+                       "user_only"), warnings (no_office_assigned only
+                       when the company actually uses offices,
+                       office_not_in_company, no_rep_identity).
+                       Seat summary: company_licences canonical (summed
+                       allocated), org_limits legacy fallback; response
+                       warnings include over_seat_allocation and
+                       members_missing_office.
+```
+
+Deliberate deviations from the sketch above:
+
+- New `/members` endpoint instead of reshaping `GET /v1/team/users` — the
+  Upload picker depends on the existing `/users` shape, and §4 promised no
+  changes to existing endpoints.
+- No mutating endpoints yet (invite / PATCH / deactivate deferred to the
+  build lane) — Day 212 is the read-only scope foundation.
+
+### Day 212 — `rep_missing_office` resolved at the API
+
+Root cause: assignment creation (`POST /v1/assignments`) hard-required a
+rep `office_id`, but reads have used "office scope when assigned, else
+company scope" since Day 166/168 (`applyOrgScope`), and the demo company —
+like any office-less company — has no office rows at all. Fix: office is
+now optional scope at creation (null `office_id` stamps company scope,
+matching seeded rows); company remains the hard boundary
+(`rep_missing_company` kept). In exchange the previously missing
+cross-company write guard was added: a manager assigning to a rep outside
+their own company now gets 403 `rep_out_of_scope`.
+
 ## 5. Page structure (build reference)
 
 ```
@@ -83,10 +121,12 @@ Drawer pattern: existing `CrmDrawer` conventions; URL-synced `member` /
 
 ## 6. Error-map integration points (build lane)
 
-Surfaces that create assignments and can receive `rep_missing_office`
-(e.g. call review Assign Coaching, admin assignment create) add a mapped
-message + deep link `/team?member=<rep_id>`. Error mapping only — no
-assignment logic changes.
+**Day 212 update:** `rep_missing_office` can no longer occur for
+same-company reps — assignment creation falls back to company scope (see
+§4). Remaining errors worth mapping on assignment-create surfaces:
+`rep_missing_company` (broken identity row) and `rep_out_of_scope`
+(cross-company target), both deep-linking `/team?member=<rep_id>` once
+`/team` exists. Error mapping only — no assignment logic changes.
 
 ## 7. Prototype policy
 
