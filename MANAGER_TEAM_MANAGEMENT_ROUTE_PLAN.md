@@ -96,6 +96,29 @@ Deliberate deviations from the sketch above:
 - No mutating endpoints yet (invite / PATCH / deactivate deferred to the
   build lane) — Day 212 is the read-only scope foundation.
 
+### Day 214 — `/team` read-only MVP shipped (WEB)
+
+`src/app/team/page.tsx` (client page, `proxyFetch("/v1/team/members")`
+only — no other endpoints, no mutations):
+
+- Seat summary StatCards (members / allocated / available / scope setup)
+  with the seat source humanised (company_licences → "Licensed seats",
+  org_limits → "Legacy seat limit") and a calm, non-blocking
+  `over_seat_allocation` warning.
+- Members table: name (UUID-guarded label > email local part > "Team
+  member"), role, office, coaching-scope status chip ("Office assigned" /
+  "Company-wide scope" / "Needs team setup" — warning tone only when the
+  API flags setup warnings).
+- Loading skeleton, fail-soft error state with retry, calm forbidden
+  state for non-managers. **No mutating controls at all** — no invite /
+  edit / deactivate, no disabled "coming soon" buttons; the §5 drawer is
+  deferred with the mutating lane to avoid fake UI.
+- Nav (§2 wiring): sidebar "Team" now points to `/team`; the coaching
+  workload page keeps its entry as **"Manager Centre"** (`/crm/manager`,
+  unchanged route). `/team` added to `SHELL_PATHS`. `/admin/users` and
+  `/admin/reps` untouched.
+- Validator: `npm run validate-premium-ux-day-214`.
+
 ### Day 212 — `rep_missing_office` resolved at the API
 
 Root cause: assignment creation (`POST /v1/assignments`) hard-required a

@@ -8,6 +8,7 @@ import {
   Swords,
   Brain,
   BarChart2,
+  Briefcase,
   Settings,
   Handshake,
   ShieldCheck,
@@ -47,6 +48,7 @@ export const SHELL_PATHS = [
   '/whisperer',
   '/coaching',
   '/settings',
+  '/team',
 ]
 
 export function isShellPath(pathname: string): boolean {
@@ -66,7 +68,11 @@ export const navigation: NavSection[] = [
       { label: 'Accounts', href: '/crm/accounts', icon: Building2 },
       // Contacts: manager-only until a rep-facing contacts page exists
       { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'] },
-      { label: 'Team', href: '/crm/manager', icon: Users2, roles: ['manager'] },
+      // Day 214 — "Team" now means people/team management (/team, read-only MVP).
+      // The coaching-workload workspace at /crm/manager keeps its own entry as
+      // "Manager Centre" so neither destination is lost or duplicated.
+      { label: 'Team', href: '/team', icon: Users2, roles: ['manager'] },
+      { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'] },
     ],
   },
   {

@@ -152,3 +152,20 @@ labels`:
   part, or null as `rep_name` — never the UUID. The WEB Day 213A guard
   stays as defence in depth. API validator:
   `npm run validate:analytics-labels` (API repo).
+
+## 9. Day 214 — /team read-only QA checklist (as Dana)
+
+`/team` is the new manager people surface (sidebar "Team"; the coaching
+workload page is now labelled "Manager Centre", same `/crm/manager`
+route). Read-only MVP — walk this after reseed:
+
+- [ ] Sidebar shows **Team** (→ /team) and **Manager Centre**
+      (→ /crm/manager); both load.
+- [ ] `/team` lists all UFC members with real names (Nate Diaz, Anderson
+      Silva…), never UUIDs.
+- [ ] Seat summary shows the demo org **over allocation** (15 members vs
+      5 licensed seats) as a calm warning StatCard — nothing is blocked.
+- [ ] Coaching scope column shows "Company-wide scope" for the
+      office-less demo org (no spurious "Needs team setup" chips).
+- [ ] No invite / edit / deactivate controls anywhere on the page.
+- [ ] As a rep (e.g. Nate), `/team` shows the calm managers-only notice.

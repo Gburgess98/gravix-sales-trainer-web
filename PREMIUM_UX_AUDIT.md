@@ -2478,3 +2478,26 @@ from the public `reps`/`users` tables and returns display name, email
 local part, or null as `rep_name` — never the UUID — so every future
 consumer gets clean labels at the source. The WEB guard above remains as
 defence in depth.
+
+## §39 — Manager Team surface, read-only MVP (Day 214)
+
+First visible surface of the Day 211 Manager Team Management blueprint,
+against the Day 212 API (`GET /v1/team/members`). Product driver: the
+`rep_missing_office` demo failure showed managers had nowhere to *see*
+team/coaching scope — `/team` makes setup visible before it becomes
+editable.
+
+- New route `/team` on the Command Centre shell (PageContainer,
+  PageHeader, StatCard ×4, SectionCard members table, EmptyState states).
+  Calm enterprise tone: statuses are neutral chips, warnings use the
+  semantic warning role, nothing arcade, nothing admin-console.
+- Honest read-only: no invite/edit/deactivate, no disabled placeholder
+  buttons, no fake drawer — mutating UX ships with the mutating API lane.
+- Seat summary is informational only (over-allocation is a warning
+  StatCard + copy "Seat usage never blocks coaching").
+- Member labels are UUID-guarded (§38 house rule): name > email local
+  part > neutral "Team member".
+- Nav: "Team" → `/team`; `/crm/manager` relabelled "Manager Centre"
+  (route unchanged, no redirects, no stub work needed).
+
+Companion validator: `scripts/validate-premium-ux-day-214.sh`.
