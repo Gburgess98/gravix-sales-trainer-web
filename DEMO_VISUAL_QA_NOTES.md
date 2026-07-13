@@ -145,3 +145,10 @@ labels`:
 - **House rule: user-facing analytics must never expose raw internal
   IDs** — axis, tooltip, select options, signal cards, or exports.
 - Validator: `npm run validate-premium-ux-day-213a`.
+- **Day 213B — API source fixed too** (`fix: return human names for
+  analytics reps`, API repo): activity-by-rep now resolves names from
+  the public `reps`/`users` tables (the old `auth.users` lookup could
+  never succeed via PostgREST) and returns a display name, email local
+  part, or null as `rep_name` — never the UUID. The WEB Day 213A guard
+  stays as defence in depth. API validator:
+  `npm run validate:analytics-labels` (API repo).

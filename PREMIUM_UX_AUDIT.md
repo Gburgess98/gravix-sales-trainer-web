@@ -2472,3 +2472,9 @@ WEB-only patch (`fix: hide raw ids in analytics labels`):
   truncated label, never the UUID.
 
 Companion validator: `scripts/validate-premium-ux-day-213a.sh`.
+
+Day 213B follow-up (API repo): the endpoint itself now resolves names
+from the public `reps`/`users` tables and returns display name, email
+local part, or null as `rep_name` — never the UUID — so every future
+consumer gets clean labels at the source. The WEB guard above remains as
+defence in depth.
