@@ -127,3 +127,21 @@ failed with `rep_missing_office` is fixed in the API repo
   `over_seat_allocation` warning. Expected with the demo seed; harmless
   today because nothing enforces seat limits yet, but worth knowing if a
   seat panel is shown in a demo.
+
+## 8. Day 213A — analytics UUID leak fixed (WEB-only)
+
+During a demo, `/crm/analytics` showed raw user UUIDs on the Activity by
+rep chart axis and tooltip. Fixed in `fix: hide raw ids in analytics
+labels`:
+
+- Root cause: the API's activity-by-rep endpoint echoes `rep_id` back as
+  `rep_name` (its `auth.users` name lookup silently fail-softs), and the
+  page's `repLabel` helper trusted any non-empty name.
+- Fix: `repLabel` now rejects UUID-shaped / id-equal names and resolves
+  human names from the existing tenant-scoped `/v1/team/users` endpoint.
+  Preference: team name > API name > email local part > neutral
+  `Rep xxxxxx` fallback. Full ids stay internal for filters/queries.
+- The activity-by-rep CSV export ships human labels instead of raw ids.
+- **House rule: user-facing analytics must never expose raw internal
+  IDs** — axis, tooltip, select options, signal cards, or exports.
+- Validator: `npm run validate-premium-ux-day-213a`.

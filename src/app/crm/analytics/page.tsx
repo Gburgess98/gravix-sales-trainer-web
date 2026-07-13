@@ -55,10 +55,46 @@ const CHART_TOOLTIP = {
 const SELECT_CLASS =
   "rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 shadow-md shadow-black/20 focus:border-brand-500/50 focus:outline-none";
 
-// Display-only label — never surface a raw UUID; exports keep full fidelity.
-function repLabel(rep: { rep_id: string; rep_name?: string }) {
-  const name = rep.rep_name?.trim();
-  return name || `Rep ${rep.rep_id.slice(0, 6)}`;
+// Display-only label — never surface a raw UUID (Day 213A). The analytics API
+// has historically echoed the rep_id back as rep_name (its auth.users name
+// lookup fail-softs to the id), so a "name" that is UUID-shaped or equals the
+// id must be treated as absent. Preference order: team directory name >
+// API-provided name > email local part > short neutral "Rep xxxxxx" label.
+// The full rep_id stays internal for filters/queries/state.
+const UUID_LIKE_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type RepDirectoryEntry = { name?: string; email?: string };
+
+function cleanName(value?: string | null, repId?: string): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  if (UUID_LIKE_RE.test(v)) return null;
+  if (repId && v === repId) return null;
+  if (v.includes("@")) return null; // emails resolve via local part below
+  return v;
+}
+
+function emailLocalPart(value?: string | null): string | null {
+  const v = value?.trim();
+  if (!v || !v.includes("@")) return null;
+  const local = v.split("@")[0]?.trim();
+  return local || null;
+}
+
+function repLabel(
+  rep: { rep_id: string; rep_name?: string },
+  directory?: Record<string, RepDirectoryEntry>
+) {
+  const entry = directory?.[rep.rep_id];
+  return (
+    cleanName(entry?.name, rep.rep_id) ||
+    cleanName(rep.rep_name, rep.rep_id) ||
+    emailLocalPart(entry?.name) ||
+    emailLocalPart(entry?.email) ||
+    emailLocalPart(rep.rep_name) ||
+    `Rep ${rep.rep_id.slice(0, 6)}`
+  );
 }
 
 /* --------------------------- Component --------------------------- */
@@ -68,6 +104,7 @@ export default function AnalyticsPage() {
   const [scoreTrend, setScoreTrend] = useState<ScorePoint[]>([]);
   const [repActivity, setRepActivity] = useState<RepActivity[]>([]);
   const [repOptions, setRepOptions] = useState<RepOption[]>([]);
+  const [repDirectory, setRepDirectory] = useState<Record<string, RepDirectoryEntry>>({});
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
@@ -193,6 +230,30 @@ export default function AnalyticsPage() {
         setRepOptions(reps);
       } catch {
         if (alive) setRepOptions([]);
+      }
+    })();
+
+    // Human names for rep labels (Day 213A) — the analytics endpoints only
+    // carry ids, so resolve names from the existing tenant-scoped team list
+    // (same endpoint the Upload picker uses). Fail-soft: labels fall back to
+    // the short neutral "Rep xxxxxx" form, never the raw UUID.
+    (async () => {
+      try {
+        const team = await proxyFetch(`/v1/team/users?limit=200`, { cache: "no-store" });
+        const teamJson = await team.json();
+        if (!alive) return;
+
+        const directory: Record<string, RepDirectoryEntry> = {};
+        for (const item of Array.isArray(teamJson?.items) ? teamJson.items : []) {
+          if (!item?.id) continue;
+          directory[String(item.id)] = {
+            name: item?.name ? String(item.name) : undefined,
+            email: item?.email ? String(item.email) : undefined,
+          };
+        }
+        setRepDirectory(directory);
+      } catch {
+        if (alive) setRepDirectory({});
       }
     })();
 
@@ -353,7 +414,7 @@ export default function AnalyticsPage() {
   }
   if (topRep) {
     signals.push({
-      title: `Most coached: ${repLabel(topRep)}`,
+      title: `Most coached: ${repLabel(topRep, repDirectory)}`,
       detail: `${topRep.activities_created} tasks created · ${topRep.activities_completed} completed`,
     });
   }
@@ -374,10 +435,11 @@ export default function AnalyticsPage() {
     selectedRep === "all"
       ? "All reps"
       : repLabel(
-          repOptions.find((r) => r.rep_id === selectedRep) ?? { rep_id: selectedRep }
+          repOptions.find((r) => r.rep_id === selectedRep) ?? { rep_id: selectedRep },
+          repDirectory
         );
 
-  const repChartData = repActivity.map((r) => ({ ...r, rep_label: repLabel(r) }));
+  const repChartData = repActivity.map((r) => ({ ...r, rep_label: repLabel(r, repDirectory) }));
 
   const nextActions = [
     {
@@ -430,7 +492,7 @@ export default function AnalyticsPage() {
                   <option value="all">All reps</option>
                   {repOptions.map((rep) => (
                     <option key={rep.rep_id} value={rep.rep_id}>
-                      {repLabel(rep)}
+                      {repLabel(rep, repDirectory)}
                     </option>
                   ))}
                 </select>
@@ -730,7 +792,20 @@ export default function AnalyticsPage() {
           subtitle={`Coaching activities created per rep · ${rangeLabel}`}
           actions={
             <>
-              <Button variant="ghost" onClick={() => exportCSV("activity-by-rep.csv", repActivity)}>
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  // Day 213A — export human labels, not raw ids.
+                  exportCSV(
+                    "activity-by-rep.csv",
+                    repChartData.map((r) => ({
+                      rep: r.rep_label,
+                      activities_created: r.activities_created,
+                      activities_completed: r.activities_completed,
+                    }))
+                  )
+                }
+              >
                 Export CSV
               </Button>
               <Button

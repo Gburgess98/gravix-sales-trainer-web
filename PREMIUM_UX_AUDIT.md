@@ -2447,3 +2447,28 @@ product blueprint (docs only, no UI change): the "Intelligence Cockpit"
 direction from Days 205B–206 now has a product plan behind it — see
 `INTELLIGENCE_LAYER_BLUEPRINT.md`, `CONTEXT_ENGINE_SPEC.md`,
 `SCORECARD_STUDIO_SPEC.md`, `MANAGER_TEAM_MANAGEMENT_SCOPE.md`.*
+
+## §38 — Analytics human labels: no raw IDs (Day 213A)
+
+Trust leak found in a live demo: `/crm/analytics` rendered raw user UUIDs
+on the Activity by rep axis and tooltip (e.g. `47841ea3-…`). Root cause
+was API-side data, WEB-side trust: the activity-by-rep endpoint echoes
+`rep_id` back as `rep_name` when its `auth.users` name lookup fail-softs
+(which it always does — the auth schema is not queryable via PostgREST),
+and `repLabel` accepted any non-empty name.
+
+WEB-only patch (`fix: hide raw ids in analytics labels`):
+
+- `repLabel` rejects UUID-shaped or id-equal names (`UUID_LIKE_RE`) and
+  resolves real names from the existing tenant-scoped `/v1/team/users`
+  endpoint (the Upload picker's directory), fail-soft to a neutral
+  truncated `Rep xxxxxx` label. Emails resolve to their local part only.
+- All four label surfaces covered: chart axis/tooltip (`rep_label`
+  dataKey), rep filter select, "Most coached" signal card, scope label.
+- The activity-by-rep CSV export ships human labels, not raw ids; full
+  `rep_id` stays internal for filters, queries and state.
+- **House rule going forward: user-facing analytics never exposes raw
+  internal IDs** — if a name cannot be resolved, show the neutral
+  truncated label, never the UUID.
+
+Companion validator: `scripts/validate-premium-ux-day-213a.sh`.
