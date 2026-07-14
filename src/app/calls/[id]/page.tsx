@@ -108,18 +108,25 @@ function getVoiceData(callMeta: any) {
 
   const voiceFromAnalysis = analysis?.voice ?? null;
 
+  // Seeded/demo rows carry voice data inside the rubric column
+  // (rubric.voice_rubric / rubric.voice_score) rather than top-level fields.
+  const voiceRubric =
+    voiceFromAnalysis ??
+    callMeta?.voice_rubric ??
+    callMeta?.rubric?.voice_rubric ??
+    callMeta?.rubric?._meta?.voice ??
+    null;
+
   const directVoiceScore =
     typeof voiceFromAnalysis?.overall === "number"
       ? Math.round(Number(voiceFromAnalysis.overall))
       : typeof callMeta?.voice_score === "number"
         ? Math.round(Number(callMeta.voice_score))
-        : null;
-
-  const voiceRubric =
-    voiceFromAnalysis ??
-    callMeta?.voice_rubric ??
-    callMeta?.rubric?._meta?.voice ??
-    null;
+        : typeof callMeta?.rubric?.voice_score === "number"
+          ? Math.round(Number(callMeta.rubric.voice_score))
+          : typeof voiceRubric?.overall === "number"
+            ? Math.round(Number(voiceRubric.overall))
+            : null;
 
   const reviewTags =
     callMeta?.review_tags ??
@@ -1344,14 +1351,18 @@ export default function CallPage() {
     };
   }, [callMeta]);
 
-  // Day 215 — score reasoning is derived from the existing scored rubric only
-  // (rubric column with analysis_json.stages fallback). No new data, no new scoring.
+  // Day 215 — score reasoning is derived from the existing scored rubric only.
+  // Day 217A — stage data lives in analysis_json?.stages for scored rows,
+  // rubric.stages for seeded/demo rows, or legacy top-level rubric keys on the
+  // oldest rows (same priority as the header + Assign Coaching readers).
+  // No new data, no new scoring.
   const rubricStages = useMemo(() => {
     const rubric = callMeta?.rubric ?? null;
-    const analysisStages = callMeta?.analysis_json?.stages ?? null;
+    const stageSource =
+      callMeta?.analysis_json?.stages ?? (rubric as any)?.stages ?? rubric ?? null;
     const rows: { key: string; label: string; score: number | null; notes: string | null }[] = [];
     for (const key of ["intro", "discovery", "pitch", "objection", "close"]) {
-      const sec = (rubric as any)?.[key] ?? (analysisStages as any)?.[key] ?? null;
+      const sec = (stageSource as any)?.[key] ?? null;
       if (!sec || typeof sec !== "object") continue;
       const score = typeof sec.score === "number" && Number.isFinite(sec.score) ? Math.round(Number(sec.score)) : null;
       const notes = typeof sec.notes === "string" && sec.notes.trim() ? sec.notes.trim() : null;
@@ -1684,7 +1695,9 @@ export default function CallPage() {
                 </div>
               ) : (
                 <p className="mt-2 text-xs text-neutral-500">
-                  Stage-by-stage reasoning will appear here once this call has a scored rubric.
+                  {overall != null
+                    ? "This call has an overall score but no stage breakdown. Re-score the call to generate a full audit."
+                    : "Stage-by-stage reasoning will appear here once this call has a scored rubric."}
                 </p>
               )}
             </div>
@@ -1811,8 +1824,16 @@ export default function CallPage() {
             </div>
           ) : (
             <EmptyState
-              message="No scored rubric for this call yet."
-              sub="Stage-by-stage reasoning and evidence appear here once scoring completes."
+              message={
+                overall != null
+                  ? "This call has an overall score but no stage breakdown."
+                  : "No scored rubric for this call yet."
+              }
+              sub={
+                overall != null
+                  ? "Re-score the call to generate a full audit."
+                  : "Stage-by-stage reasoning and evidence appear here once scoring completes."
+              }
             />
           )}
 
