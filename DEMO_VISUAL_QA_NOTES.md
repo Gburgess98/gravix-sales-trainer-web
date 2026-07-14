@@ -169,3 +169,34 @@ route). Read-only MVP — walk this after reseed:
       office-less demo org (no spurious "Needs team setup" chips).
 - [ ] No invite / edit / deactivate controls anywhere on the page.
 - [ ] As a rep (e.g. Nate), `/team` shows the calm managers-only notice.
+
+## 10. Day 217B — enriched hero-call audit evidence (API seed)
+
+Day 217A fixed the WEB rubric readers; Day 217B enriched the seed data
+itself (`fix: enrich ufc story rubric evidence`, API repo). The Nate Diaz
+hero call (`Nate Diaz — Price Objection Call`, /calls/3d26a918-…) now
+carries buyer-ready stage audit evidence instead of `"Demo."` notes:
+
+- `seed:ufc-story` pins the canonical story rubric on **both** the call
+  row and its `call_scores` row — scores unchanged (overall 45; intro 57,
+  discovery 53, objection 56, close 40 weakest; voice 53).
+- Each stage note is multi-line (the audit renders `whitespace-pre-wrap`):
+  evidence quoting the seeded Whisperer moments ("too expensive",
+  "speak with my partner", "send over some information"), then
+  `What worked / What was missed / Coach on / Practise next` lines.
+- `review_tags` now feeds the Voice Personality panel: `weak_close: true`
+  ("Weak close detected" chip), `filler_count: 14`, filler word chips.
+- Summary rewritten to match the story (no more "Strong opening" clash
+  with a 57 intro).
+
+QA after any reseed (as Dana, /calls/3d26a918-d9a4-48c6-9ce3-cda316b101f6):
+
+- [ ] Stage audit shows 4 stages with specific multi-line evidence notes
+      (no "Demo." anywhere).
+- [ ] Close (40) is the weakest stage and drives the lost-points list.
+- [ ] "Weak close detected" chip + filler count/words render in the
+      Voice Personality Score panel; voice score still 53.
+- [ ] Header still reads "Nate Diaz — Price Objection Call · 45/100".
+
+API validator: `npm run validate-ufc-demo-seed` (API repo, now asserts
+non-trivial stage notes, pinned scores, weak_close, call_scores mirror).
