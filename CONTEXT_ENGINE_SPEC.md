@@ -1,6 +1,7 @@
 # Context Engine — Module Spec (Day 207)
 
-Status: **Data layer implemented (Day 218, API repo).** Part of the
+Status: **Data layer implemented (Day 218) · scoring-runtime integration
+implemented (Day 221), API repo.** Part of the
 Intelligence Layer (`INTELLIGENCE_LAYER_BLUEPRINT.md`). Day 208 UX design:
 `CONTEXT_ENGINE_UX_BLUEPRINT.md`, `CONTEXT_ENGINE_FIELD_SPEC.md`,
 `CONTEXT_ENGINE_ROUTE_PLAN.md`.
@@ -29,10 +30,35 @@ API repo, `feat: add context engine data layer`:
   stores its compiled block at publish time so the snapshot never shifts.
 - Validator: `npm run validate:intelligence-context` (lifecycle, rep 403s,
   cross-company isolation, snapshot stability, audit row; self-cleaning).
-- **Not yet built:** scoring-prompt integration, `knowledge_embeddings`
-  sync, `rubric._meta.context_version` stamping, the WEB `/intelligence`
+- **Not yet built:** `knowledge_embeddings` sync, the WEB `/intelligence`
   workspace, and the rep read-only summary endpoint (ships with the WEB
-  build). Nothing in the scoring runtime reads `company_context` yet.
+  build).
+
+## Runtime integration (Day 221)
+
+API repo, `feat: wire context and scorecards into scoring runtime`:
+
+- `resolvePublishedContext` (`src/lib/intelligenceRuntime.ts`) — reads the
+  single `status='published'` row for the call's `company_id` (the Day 165
+  hierarchy stamp on `calls`) and returns
+  `{ context_version, compiled_context, published_at }`, or `null` when
+  nothing is published or the compiled block is empty. It reads the
+  `compiled_context` stamped at publish time — never recompiles, never
+  touches draft rows — and is fail-soft: any lookup error degrades to the
+  default (context-free) scoring path.
+- Prompt: the compiled block is appended to the scorer's system message as a
+  bounded "Company context (published vN)" block **only when non-empty** —
+  a company with no published context keeps today's prompt byte-identical.
+- `score_cache` key gains a `context=<version>` segment **only when context
+  was used** — default-path keys are unchanged, so existing cache entries
+  stay valid and publishing v2 naturally misses v1's entries (per the
+  blueprint's determinism rule, refined to avoid orphaning default keys).
+- `rubric._meta` gains `context_version` + `context_published_at` when
+  context entered scoring (additive keys; existing readers unaffected).
+  Old calls are never rewritten.
+- Validator: `npm run validate:intelligence-runtime` (53 checks — default
+  byte-identity, draft-never-scores, cache-key versioning, cross-company
+  isolation, meta stamping; self-cleaning fixtures; no LLM call).
 
 ## Purpose
 

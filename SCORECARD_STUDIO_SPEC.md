@@ -1,6 +1,7 @@
 # Scorecard Studio — Module Spec (Day 207)
 
-Status: **Data layer implemented (Day 219B, API repo).** Part of the
+Status: **Data layer implemented (Day 219B) · lifecycle completed (Day 220)
+· scoring-runtime integration implemented (Day 221), API repo.** Part of the
 Intelligence Layer (`INTELLIGENCE_LAYER_BLUEPRINT.md`). Covers Scorecard
 Studio, the AI Scorecard Builder, and scoring-runtime integration. Day 209
 UX design: `SCORECARD_STUDIO_UX_BLUEPRINT.md`, `SCORECARD_STUDIO_FIELD_SPEC.md`,
@@ -36,9 +37,9 @@ API repo, `feat: add scorecard studio data layer`:
 - Validator: `npm run validate:intelligence-scorecards` (lifecycle,
   immutability, conflict, isolation, audit; self-cleaning fixtures;
   MIGRATION PENDING mode until the SQL is applied).
-- **Not yet built** (deliberately): AI Scorecard Builder, scoring-runtime
-  integration/`resolveScorecard`, call-type persistence at `/upload`,
-  `rubric._meta` stamping, `score_cache` keying, and all WEB UI.
+- **Not yet built** (deliberately): AI Scorecard Builder, call-type
+  persistence at `/upload`, and all WEB UI. Scoring-runtime integration
+  landed Day 221 (see below).
 
 ## Lifecycle completion (Day 220)
 
@@ -74,6 +75,45 @@ ever reads them:
   lifecycle, snapshot stability after forked-draft edits, replace flow,
   archive read-only behaviour, cross-company 404s on all new endpoints,
   audit rows for every lifecycle event.
+
+## Runtime integration (Day 221)
+
+API repo, `feat: wire context and scorecards into scoring runtime`:
+
+- `resolveActiveScorecard` (`src/lib/intelligenceRuntime.ts`) implements the
+  §Scoring runtime integration chain: active version matching the call's
+  type → active company-default scorecard → Gravix Default v1. Only
+  `status='active'` versions on `status='active'` scorecards are candidates
+  — archived scorecards and superseded/draft versions are never selected.
+  Fail-soft: any lookup error resolves to the Gravix Default.
+- **Call type**: `calls` carries no call_type/type/direction column today
+  (live schema checked Day 221), and the runtime does not invent
+  classification — resolution passes `null` and starts at the company
+  default. When `/upload` persists a call type (future lane), the chain's
+  first step activates with no further runtime change.
+- Prompt: the activation `snapshot` renders as a bounded (≤6,000 chars)
+  criteria block appended to the scorer's user message **only for custom
+  scorecards** — it carries stage weights, guidance and per-criterion
+  emphasis/pass-fail/critical flags, and instructs the model to apply them
+  *within* the fixed four stages and return exactly the existing JSON
+  schema. Stage weights are scoring guidance to the model in MVP; the
+  runtime does not deterministically recompute `overall` from weights.
+  With no custom scorecard the prompt is byte-identical to today.
+- `score_cache` key gains a `scorecard=<version_id>` segment **only for
+  custom scorecards** (default keys unchanged → no cache orphaning);
+  activation naturally misses the old version's entries.
+- `rubric._meta` now always stamps `scoring_model_version`,
+  `scorecard_source` (`custom`/`company_default`/`gravix_default`) and
+  `scorecard_name` ("Gravix default rubric" on the default path), plus
+  `scorecard_id`/`scorecard_version_id`/`scorecard_version` when a custom
+  scorecard scored the call — the "scored with" surface reads these. All
+  keys additive; old calls never rewritten; re-scoring stays explicit.
+- Deferred from §Downstream consumers: per-criterion review flags
+  (`criterion_id`) and criterion-enriched assignment notes — the existing
+  threshold/flag machinery is untouched in Day 221.
+- Validator: `npm run validate:intelligence-runtime` (53 checks; resolution
+  chain, precedence, archived/superseded exclusion, cross-company
+  isolation, cache keying, meta stamping, fixed four-stage shape).
 
 ## Purpose
 

@@ -1,6 +1,12 @@
 # Gravix Intelligence Layer — Product Blueprint (Day 207)
 
-Status: **Planning only.** No API changes, no migrations, no production UI changes.
+Status: **Planning document; build under way in the API repo.** Implemented
+so far: Context Engine data layer (Day 218), Scorecard Studio data layer +
+lifecycle (Days 219B/220), and §9 scoring-runtime integration (Day 221 —
+published-context + active-scorecard resolution, bounded prompt blocks,
+versioned `score_cache` keys, `rubric._meta` provenance; default path proven
+byte-identical). Implementation detail lives in the "Implementation status" /
+"Runtime integration" sections of the companion specs.
 Companion specs: `CONTEXT_ENGINE_SPEC.md`, `SCORECARD_STUDIO_SPEC.md`,
 `MANAGER_TEAM_MANAGEMENT_SCOPE.md`.
 Day 208 addenda (Context Engine UX design): `CONTEXT_ENGINE_UX_BLUEPRINT.md`
