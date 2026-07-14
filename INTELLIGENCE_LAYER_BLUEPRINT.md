@@ -380,9 +380,54 @@ call.call_type (set at /upload; nullable)
   criterion coaching guidance in the assignment notes.
 - `rep_memory` weakness labels can later reference criteria (phase 2).
 
----
+### Day 222 — live runtime proof status (PROVEN)
 
-## 10. Safety and product rules
+Day 221 wired resolution into `scoreWithLLM` and proved the units against
+synthetic companies. Day 222 proved the same chain end-to-end on the real UFC
+demo company, through the real manager HTTP routes and the real scoring entry
+point: `npm run validate:intelligence-runtime-live` (API), 58/58.
+
+What is proven live:
+
+- Dana publishes a real UFC context (`PUT /v1/intelligence/context` →
+  `POST /context/publish` → v1) and activates a real UFC company-default
+  scorecard (weights 20/30/30/20, one criterion per fixed stage).
+- A controlled proof call scored through `scoreWithLLM` persists
+  `calls.rubric._meta` naming exactly those assets: `scoring_model_version`,
+  `rubric_version`, `scorecard_source=company_default`, `scorecard_name`,
+  `scorecard_id`, `scorecard_version_id`, `scorecard_version=1`,
+  `context_version=1`, `context_published_at`.
+- Cache keys: custom ≠ default, a context bump changes the key, a scorecard
+  bump changes the key, and the default path key shape is unchanged.
+- Isolation: another company resolves none of UFC's assets; the surviving
+  draft context is never scored; archived scorecards and superseded versions
+  are never selected.
+
+**Scoring method — stated honestly.** No LLM call is made. The validator unsets
+`OPENAI_API_KEY` (so a cache miss can only degrade to the heuristic fallback,
+never a paid call) and seeds a sentinel into `score_cache` under the key derived
+from the just-published versions. `scoreWithLLM` then runs for real and resolves
+and keys *itself* — so the cache **hit** is the proof that its live resolution
+matched, and the rubric it writes is real runtime output. The LLM request path
+is unexercised; its only two injection points (the context and scorecard prompt
+blocks) are asserted directly against the live resolved assets instead. A
+genuine paid end-to-end score remains unproven and is the one honest gap.
+
+**Nothing is persisted.** The validator removes the UFC context and scorecard
+when it finishes, because `validate:intelligence-context` and
+`validate:intelligence-scorecards` both assert the UFC company starts with no
+context and no scorecard rows. Seeding UFC intelligence assets permanently is a
+separate decision — it needs those two validators taught to tolerate a seeded
+baseline first, and should not be smuggled in as a side effect of a proof run.
+
+**Known gap (not a Day 222 blocker).** On the heuristic fallback path (LLM
+unreachable), `buildRubricWithMeta` is called without the resolved context or
+scorecard, so `_meta` stamps `scorecard_source=gravix_default` even for a
+company with custom assets. `resolvedScorecard` is scoped inside the `try`, so
+the `catch` cannot see it. The fallback genuinely uses neither asset, so no
+score is wrong — but the provenance line is misleading and would read as "your
+scorecard was ignored". Worth an explicit `scorecard_source=fallback` (or
+similar) rather than silently reusing the default label.
 
 1. **Manager approval before activation** — nothing the AI drafts ever
    scores a live call without a human clicking Activate.

@@ -200,3 +200,42 @@ QA after any reseed (as Dana, /calls/3d26a918-d9a4-48c6-9ce3-cda316b101f6):
 
 API validator: `npm run validate-ufc-demo-seed` (API repo, now asserts
 non-trivial stage notes, pinned scores, weak_close, call_scores mirror).
+
+---
+
+## 11. Day 222 — live intelligence runtime proof (API, no demo-data change)
+
+`npm run validate:intelligence-runtime-live` (API repo) proves the Intelligence
+Layer end-to-end on the real UFC demo company: Dana publishes a context,
+activates a company-default scorecard, and a controlled proof call scored
+through `scoreWithLLM` records both in `calls.rubric._meta`. 58/58.
+
+**No demo data changes as a result of running it.** The validator is
+self-cleaning and was verified to leave the UFC company exactly as found:
+
+- The Day 222 proof call, its `score_cache` entry, and every row the scoring
+  runtime wrote for it (`call_scores`, `crm_activities`, assignments) are
+  removed.
+- The published context and activated scorecard are removed — the Day 218 and
+  Day 219B validators both assert UFC starts with zero context/scorecard rows,
+  so leaving them would break `validate:intelligence-context` (26/26) and
+  `validate:intelligence-scorecards` (59/59). Both re-run green afterwards.
+- The Nate Diaz hero call is untouched: still 45/100, original `_meta`.
+
+Safe to run before a demo. It needs the API server up (`API_BASE`, default
+`http://localhost:4000`) and never calls a paid model.
+
+### Known non-blockers surfaced by the proof run
+
+- **`/calls/[id]` shows no scorecard provenance.** The page reads
+  `rubric._meta` only for `voice` and `transcript` — it does not surface
+  `scorecard_name` / `scorecard_source`. Managers cannot yet see which
+  scorecard produced a score. WEB display is Day 223 work; deliberately not
+  touched on Day 222.
+- **Pre-existing: auto critical assignment is broken.** Scoring logs
+  `Could not find the 'meta' column of 'coach_assignments' in the schema
+  cache`, so `ensureCriticalCallAssignment` fails for every scored call. It is
+  best-effort and swallowed, so scoring still succeeds. Unrelated to the
+  Intelligence Layer and predates Day 222.
+- **Hero call `_meta` predates Day 221** and carries no scorecard fields at
+  all, so any Day 223 display must handle their absence rather than assume them.
