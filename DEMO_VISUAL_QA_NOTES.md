@@ -239,3 +239,37 @@ Safe to run before a demo. It needs the API server up (`API_BASE`, default
   Intelligence Layer and predates Day 222.
 - **Hero call `_meta` predates Day 221** and carries no scorecard fields at
   all, so any Day 223 display must handle their absence rather than assume them.
+
+---
+
+## 12. Day 223 — scoring provenance now visible on /calls/[id]
+
+The call review page now shows what a call was scored with, read from the
+`rubric._meta` the Day 221 runtime stamps (hero transparency line, review-audit
+chip, and the Scoring transparency panel's Rubric used / Scorecard source /
+Company context / Scoring model rows).
+
+**Nothing in the current demo data changes.** Every existing call — including
+the Nate Diaz hero call — was scored before the runtime stamped provenance, so
+all of them carry no scorecard fields and read exactly as before: "Scored with
+the Gravix default rubric", context "Not applied", and the neutral "Custom
+scorecards will appear here once activated." line. This is the intended calm
+default, not a missing-data state.
+
+The new labels only appear on **newly scored calls** in a company that has a
+published context and/or an activated scorecard. Day 222 removes its UFC
+context and scorecard when it finishes (Day 218/219B validators require UFC to
+start clean), so there is no seeded demo call showing the company-scorecard
+state today — it is covered by the 24 helper fixtures instead
+(`node scripts/validate-scoring-provenance-day-223.mts`).
+
+QA after any reseed (as Dana, /calls/3d26a918-d9a4-48c6-9ce3-cda316b101f6 or
+the hero call):
+
+- [ ] Hero line reads "Scored with the Gravix default rubric · <model>".
+- [ ] Scoring transparency panel shows Rubric used = Gravix default rubric,
+      Scorecard source = Gravix default, Company context = Not applied.
+- [ ] No raw UUID appears as a visible label anywhere on the page.
+- [ ] No claim that a company scorecard or context was applied.
+- [ ] Assign Coaching / Assign Drill / CRM drawer still open; audio, pins and
+      Mark Reviewed unaffected.

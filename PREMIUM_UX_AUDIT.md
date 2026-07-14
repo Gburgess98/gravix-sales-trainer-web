@@ -2617,3 +2617,55 @@ blocks, signal chips and transparency panel are the drop-in rendering
 points once the runtime emits criteria-level results.
 
 Companion validator: `scripts/validate-premium-ux-day-216.sh`.
+
+---
+
+## Day 223 — call review scoring provenance (WEB-only)
+
+Day 221 wired context + scorecard resolution into the scoring runtime and
+Day 222 proved it live (58/58), but `/calls/[id]` still hard-coded "Gravix
+default rubric" in three places and read `rubric._meta` only for voice and
+transcript. Managers could not see which scorecard produced a score. Day 223
+surfaces that provenance — display only, no API/scoring/migration changes.
+
+New helper `src/lib/scoringProvenance.ts` (`getScoringProvenance`) is the
+single normaliser; the page never reads `_meta` provenance fields directly.
+It returns `scorecardLabel`, `scorecardSourceLabel`, `contextLabel`,
+`modelLabel`, `hasCustomScorecard`, `hasCompanyContext` and a `detailTitle`
+for hover.
+
+Display rules — the honesty boundary is the point:
+
+- `scorecard_source` of `custom` / `company_default` → "Scored with
+  {name} v{n}"; source chip reads "Call-type scorecard" / "Company default".
+- `gravix_default`, an unknown source, or no `_meta` at all → the original
+  "Scored with the Gravix default rubric" wording, unchanged.
+- `context_version` present → "Company context vN applied". Absent → "Not
+  applied". The context claim is never unconditional copy.
+- A scorecard name that is missing or UUID-shaped is never rendered. It falls
+  back to "Company scorecard" — **not** to the Gravix default, because a
+  company scorecard genuinely was used; only its name is unusable.
+- Full identifiers (`scorecard_id`, `scorecard_version_id`,
+  `context_published_at`) appear only in hover titles, never as labels.
+
+Three surfaces updated: the hero transparency line, the review-audit chip, and
+the Day 216 transparency panel (now carrying Rubric used / Scorecard source /
+Company context / Scoring model rows).
+
+Old calls are the default case, not an error case. Everything scored before
+Day 221 — including the UFC hero call, whose `_meta` has no scorecard fields
+at all — reads exactly as it did yesterday.
+
+No validator pins were weakened. The Day 215 pin on the literal
+"Scored with the Gravix default rubric" and the Day 216 pins on
+"Custom scorecards will appear here once activated." plus the no-active-
+custom-scorecard-claim ban all still hold, because each pinned string remains
+the real default-state branch rather than a decoy: the future-tense line now
+renders only when no scorecard was used, which is exactly when it is true.
+
+Companion validators: `scripts/validate-premium-ux-day-223.sh` (source
+contracts) and `scripts/validate-scoring-provenance-day-223.mts` (24
+behavioural fixtures — old/absent meta, default, company default, call-type,
+context, UUID-shaped and missing names, junk shapes). The fixtures run on
+Node's native type stripping, so they add no dependency to a repo with no
+test runner.

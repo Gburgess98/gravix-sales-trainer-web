@@ -14,6 +14,7 @@ import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
 import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
+import { getScoringProvenance } from "@/lib/scoringProvenance";
 import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
 
 import {
@@ -1372,6 +1373,15 @@ export default function CallPage() {
     return rows;
   }, [callMeta]);
 
+  // Day 223 — what this call was actually scored with, read from the
+  // rubric._meta the Day 221 runtime stamps. Calls scored before Day 221
+  // (including the UFC hero call) carry no provenance and resolve to the
+  // Gravix default exactly as before.
+  const provenance = useMemo(
+    () => getScoringProvenance(callMeta?.rubric ?? null, callMeta?.ai_model ?? null),
+    [callMeta]
+  );
+
   const scoredStages = useMemo(() => rubricStages.filter((r) => r.score !== null), [rubricStages]);
   const strongestStage = useMemo(
     () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) > (a.score as number) ? b : a)) : null),
@@ -1593,10 +1603,15 @@ export default function CallPage() {
                   <span className="text-neutral-100">{durationLabel}</span>
                 </div>
                 {(rubricStages.length > 0 || callMeta?.ai_model) && (
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-xs text-neutral-500" title={provenance.detailTitle ?? undefined}>
                     {rubricStages.length > 0
-                      ? `Scored with the Gravix default rubric${callMeta?.ai_model ? ` · ${callMeta.ai_model}` : ""}`
+                      ? provenance.hasCustomScorecard
+                        ? `Scored with ${provenance.scorecardLabel}${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
+                        : `Scored with the Gravix default rubric${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
                       : `Scored by ${callMeta.ai_model}`}
+                    {provenance.contextLabel && (
+                      <span className="text-neutral-600"> · {provenance.contextLabel}</span>
+                    )}
                   </div>
                 )}
                 {rawFileLabel && (
@@ -1760,8 +1775,11 @@ export default function CallPage() {
               </h2>
             </div>
             {rubricStages.length > 0 && (
-              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
-                Gravix default rubric
+              <span
+                className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300"
+                title={provenance.detailTitle ?? undefined}
+              >
+                {provenance.hasCustomScorecard ? provenance.scorecardLabel : "Gravix default rubric"}
               </span>
             )}
           </div>
@@ -2002,25 +2020,66 @@ export default function CallPage() {
             </div>
           ) : null}
 
-          {/* Scoring transparency — what this call was scored with, honestly */}
-          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-1.5">
+          {/* Scoring transparency — what this call was scored with, honestly.
+              Day 223 reads the real provenance from rubric._meta; calls with no
+              provenance (everything scored before the runtime stamped it) keep
+              the original default-rubric wording. */}
+          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-2">
             <div className="text-xs uppercase tracking-wide text-neutral-500">Scoring transparency</div>
-            <p className="text-sm leading-6 text-neutral-300">
-              Calls are scored with the{" "}
-              <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
-              stages (
-              {(rubricStages.length > 0
-                ? rubricStages.map((s) => s.label)
-                : ["Intro", "Discovery", "Objection handling", "Close"]
-              ).join(" · ")}
-              ), each scored out of 100 with evidence notes.
-            </p>
-            {callMeta?.ai_model && (
-              <p className="text-xs text-neutral-500">Scoring model: {callMeta.ai_model}</p>
+            {provenance.hasCustomScorecard ? (
+              <p className="text-sm leading-6 text-neutral-300">
+                This call was scored with{" "}
+                <span className="font-medium text-neutral-100">{provenance.scorecardLabel}</span> — your company
+                scorecard, applied within the same fixed call stages (
+                {(rubricStages.length > 0
+                  ? rubricStages.map((s) => s.label)
+                  : ["Intro", "Discovery", "Objection handling", "Close"]
+                ).join(" · ")}
+                ), each scored out of 100 with evidence notes.
+              </p>
+            ) : (
+              <p className="text-sm leading-6 text-neutral-300">
+                Calls are scored with the{" "}
+                <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
+                stages (
+                {(rubricStages.length > 0
+                  ? rubricStages.map((s) => s.label)
+                  : ["Intro", "Discovery", "Objection handling", "Close"]
+                ).join(" · ")}
+                ), each scored out of 100 with evidence notes.
+              </p>
             )}
-            <p className="text-xs text-neutral-500">
-              Custom scorecards will appear here once activated.
-            </p>
+
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Rubric used</dt>
+                <dd className="text-neutral-300 sm:mt-0.5" title={provenance.detailTitle ?? undefined}>
+                  {provenance.scorecardLabel}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Scorecard source</dt>
+                <dd className="text-neutral-300 sm:mt-0.5">{provenance.scorecardSourceLabel}</dd>
+              </div>
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Company context</dt>
+                <dd className="text-neutral-300 sm:mt-0.5">
+                  {provenance.contextLabel ?? "Not applied"}
+                </dd>
+              </div>
+              {provenance.modelLabel && (
+                <div className="flex justify-between gap-3 sm:block">
+                  <dt className="text-neutral-500">Scoring model:</dt>
+                  <dd className="text-neutral-300 sm:mt-0.5">{provenance.modelLabel}</dd>
+                </div>
+              )}
+            </dl>
+
+            {!provenance.hasCustomScorecard && (
+              <p className="text-xs text-neutral-500">
+                Custom scorecards will appear here once activated.
+              </p>
+            )}
           </div>
         </section>
 
