@@ -146,3 +146,25 @@ per-criterion analytics in phase 2.
 - Weights validated server-side (sum 100, all stages present).
 - Company-scoped resolution only; a scorecard can never apply cross-org.
 - Default fallback guarantees the MVP is deletable without breaking scoring.
+
+## Day 216 note — call review render surface is ready
+
+`/calls/[id]` (Days 215–216) now renders the review as stage audit blocks
+(verdict chip, score bar, labelled Evidence block, Coaching implication),
+a "Where this call lost points" priority list mapped to next actions, and
+a Scoring transparency panel that names the active rubric ("Gravix
+default rubric", model when present) with the neutral line "Custom
+scorecards will appear here once activated."
+
+Integration points once the runtime emits criteria-level results:
+
+- the transparency panel swaps the default-rubric copy for the active
+  scorecard's name/version — this is the activation surface;
+- each stage audit block renders its criteria as rows (score/pass-miss +
+  evidence) beneath the existing stage header;
+- the "Signal observed" chip pattern generalises to per-criterion
+  signals (weak_close is the only real stage-mapped tag today);
+- the lost-points list can rank by criterion instead of stage.
+
+No WEB work is blocked on design: the page needs only the new fields on
+the existing call payload.

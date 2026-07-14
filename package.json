@@ -126,6 +126,7 @@
     "validate-premium-ux-day-213a": "bash scripts/validate-premium-ux-day-213a.sh",
     "validate-premium-ux-day-214": "bash scripts/validate-premium-ux-day-214.sh",
     "validate-premium-ux-day-215": "bash scripts/validate-premium-ux-day-215.sh",
+    "validate-premium-ux-day-216": "bash scripts/validate-premium-ux-day-216.sh",
     "validate-premium-ux-day-206": "bash scripts/validate-premium-ux-day-206.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",

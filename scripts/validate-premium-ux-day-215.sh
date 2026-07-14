@@ -51,15 +51,23 @@ check "criteria rows carry verdict labels (Strong/Developing/Needs work)" $?
 grep -q 'rubricStages' "$CALL" && grep -q 'analysis_json?.stages' "$CALL"
 check "audit reads existing rubric/analysis stages (current data model)" $?
 
-grep -q 'Evidence: ' "$CALL"
+# Day 216 loosened from the exact 'Evidence: ' inline label to intent — the
+# evidence label survives as a block label on the stage audit cards.
+grep -q '>Evidence<' "$CALL"
 check "stage notes surfaced as labelled evidence" $?
 
 grep -q 'Gravix default rubric' "$CALL"
 check "rubric transparency chip present" $?
 
 # No fake scorecard claims — Scorecard Studio is future language only.
-if grep -qiE 'custom scorecard|scorecard studio|criterion weight|weighted criteri' "$CALL"; then false; else true; fi
+# Day 216 loosened to intent: the neutral future-tense transparency line
+# ("Custom scorecards will appear here once activated") is allowed; any other
+# custom-scorecard mention or active claim still fails.
+if grep -qiE 'scorecard studio|criterion weight|weighted criteri' "$CALL"; then false; else true; fi
 check "no fake custom-scorecard claims on the page" $?
+
+if grep -iE 'custom scorecard' "$CALL" | grep -viE 'will appear here once activated' | grep -q .; then false; else true; fi
+check "custom scorecards mentioned only as future-tense neutral copy" $?
 
 grep -q 'No scored rubric for this call yet.' "$CALL"
 check "honest empty state when no rubric exists" $?

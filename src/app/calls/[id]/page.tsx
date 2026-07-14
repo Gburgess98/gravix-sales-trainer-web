@@ -87,6 +87,14 @@ function stageVerdict(score: number): { label: string; chip: string; bar: string
   };
 }
 
+// Day 216 — the coaching implication is derived from the same verdict thresholds,
+// never invented: it tells the manager what the score means for coaching.
+function stageImplication(score: number): string {
+  if (score >= 80) return "Working well — use this stage as a positive example in coaching.";
+  if (score >= 60) return "Close to target — reinforce this stage in the next practice session.";
+  return "Priority for coaching — assign a focused drill for this stage.";
+}
+
 const STAGE_LABELS: Record<string, string> = {
   intro: "Intro",
   discovery: "Discovery",
@@ -1362,6 +1370,11 @@ export default function CallPage() {
     () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) < (a.score as number) ? b : a)) : null),
     [scoredStages]
   );
+  // Day 216 — stages below target (70), weakest first: the "where points were lost" list.
+  const priorityStages = useMemo(
+    () => scoredStages.filter((s) => (s.score as number) < 70).sort((a, b) => (a.score as number) - (b.score as number)),
+    [scoredStages]
+  );
 
   function formatContactName(c: any): string | null {
     if (!c) return null;
@@ -1716,6 +1729,10 @@ export default function CallPage() {
                 <Button onClick={() => openCoach(true)}>Assign Drill</Button>
                 <Button onClick={openCrm}>Review CRM link</Button>
               </div>
+              <p className="mt-2 text-[11px] text-neutral-500">
+                Assign Coaching auto-targets the weakest stage from this review
+                {weakestStage ? ` (currently ${weakestStage.label})` : ""}.
+              </p>
             </div>
           )}
         </section>
@@ -1736,13 +1753,16 @@ export default function CallPage() {
             )}
           </div>
 
-          {/* Criteria rows from the existing rubric stages */}
+          {/* Stage audit blocks from the existing rubric stages */}
           {rubricStages.length > 0 ? (
-            <div className="divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-black/30">
+            <div className="space-y-3">
               {rubricStages.map((stage) => {
                 const verdict = stage.score !== null ? stageVerdict(stage.score) : null;
+                // Only real review tags become stage signals — weak_close is the
+                // one stage-mappable tag the current runtime emits.
+                const showWeakCloseSignal = stage.key === "close" && reviewBot.weakClose;
                 return (
-                  <div key={stage.key} className="px-4 py-3">
+                  <div key={stage.key} className="rounded-xl border border-neutral-800 bg-black/30 px-4 py-3.5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
@@ -1753,6 +1773,11 @@ export default function CallPage() {
                         ) : (
                           <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400">
                             Not scored
+                          </span>
+                        )}
+                        {showWeakCloseSignal && (
+                          <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                            Signal observed · Weak close
                           </span>
                         )}
                       </div>
@@ -1769,10 +1794,16 @@ export default function CallPage() {
                       </div>
                     )}
                     {stage.notes && (
-                      <p className="mt-2 text-sm leading-6 text-neutral-400 whitespace-pre-wrap">
-                        <span className="text-neutral-500">Evidence: </span>
-                        {stage.notes}
-                      </p>
+                      <div className="mt-3 border-l-2 border-neutral-700 pl-3">
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Evidence</div>
+                        <p className="text-sm leading-6 text-neutral-300 whitespace-pre-wrap">{stage.notes}</p>
+                      </div>
+                    )}
+                    {stage.score !== null && (
+                      <div className="mt-2.5">
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Coaching implication</div>
+                        <p className="text-sm text-neutral-400">{stageImplication(stage.score)}</p>
+                      </div>
                     )}
                   </div>
                 );
@@ -1783,6 +1814,49 @@ export default function CallPage() {
               message="No scored rubric for this call yet."
               sub="Stage-by-stage reasoning and evidence appear here once scoring completes."
             />
+          )}
+
+          {/* Where this call lost points — priorities mapped to next actions */}
+          {scoredStages.length > 0 && (
+            <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <div className="text-xs uppercase tracking-wide text-neutral-500">Where this call lost points</div>
+              <p className="mt-1 text-xs text-neutral-500">
+                Stages scoring below 70, weakest first — each mapped to a next action.
+              </p>
+              {priorityStages.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {priorityStages.map((stage, i) => (
+                    <div key={stage.key} className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] font-semibold tabular-nums text-neutral-500">#{i + 1}</span>
+                          <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
+                          <span className="text-xs tabular-nums text-neutral-400">{stage.score}/100</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          {managerCheckDone && isManager && (
+                            <Button onClick={() => openCoach(true)}>Assign drill</Button>
+                          )}
+                          <a
+                            href={`/sparring/default?focus=${encodeURIComponent(stage.label.toLowerCase())}&source=call-review`}
+                            className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
+                          >
+                            Practise this stage
+                          </a>
+                        </div>
+                      </div>
+                      {stage.notes && (
+                        <p className="mt-1.5 text-xs leading-5 text-neutral-400 line-clamp-2">{stage.notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-400">
+                  No stage fell below target on this call — reinforce what worked.
+                </p>
+              )}
+            </div>
           )}
 
           {/* Voice Personality Score — supporting signal */}
@@ -1906,6 +1980,27 @@ export default function CallPage() {
               </div>
             </div>
           ) : null}
+
+          {/* Scoring transparency — what this call was scored with, honestly */}
+          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-1.5">
+            <div className="text-xs uppercase tracking-wide text-neutral-500">Scoring transparency</div>
+            <p className="text-sm leading-6 text-neutral-300">
+              Calls are scored with the{" "}
+              <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
+              stages (
+              {(rubricStages.length > 0
+                ? rubricStages.map((s) => s.label)
+                : ["Intro", "Discovery", "Objection handling", "Close"]
+              ).join(" · ")}
+              ), each scored out of 100 with evidence notes.
+            </p>
+            {callMeta?.ai_model && (
+              <p className="text-xs text-neutral-500">Scoring model: {callMeta.ai_model}</p>
+            )}
+            <p className="text-xs text-neutral-500">
+              Custom scorecards will appear here once activated.
+            </p>
+          </div>
         </section>
 
         <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">

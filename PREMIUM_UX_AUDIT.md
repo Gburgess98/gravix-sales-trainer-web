@@ -2562,3 +2562,58 @@ CRM link/unlink/search, assign coaching/drill, mark reviewed, Whisperer
 moment outcomes, score history/trend.
 
 Companion validator: `scripts/validate-premium-ux-day-215.sh`.
+
+## §41 — Call review criteria depth / scorecard-ready pass (Day 216)
+
+Follow-up to §40 after user feedback: the Day 215 audit was still
+stage-level — thin rows, one-line evidence, no per-stage "so what", no
+lost-points breakdown, transparency reduced to a chip. Competitors show
+criteria-level scorecards; our runtime honestly supports only the fixed
+Gravix rubric stages today, so this pass deepens the audit **within the
+real data** and prepares the layout for Scorecard Studio.
+
+Current limitation (unchanged, stated honestly on the page): scoring is
+stage-level (intro/discovery/pitch where present/objection/close) with
+one evidence-notes field per stage plus call-level review tags
+(weak_close, fillers). There are no per-criterion scores, pass/miss
+rows or behaviour checklists in the runtime yet — those need the
+Scorecard Studio data model (Day 209) and runtime emission.
+
+What was improved (WEB-only, visual-only, existing data only):
+
+- **Stage audit blocks**: each rubric stage is now its own audit card —
+  verdict chip + score + bar, a labelled **Evidence** quote block
+  (border-left, no walls of text), and a **Coaching implication** line
+  derived from the same verdict thresholds (Strong → positive example,
+  Developing → reinforce, Needs work → assign a drill). The one real
+  stage-mappable review tag (weak_close) renders as a
+  "Signal observed · Weak close" chip on the Close stage only — no
+  invented signals.
+- **Where this call lost points**: stages below 70, weakest first, each
+  numbered with score, a clamped note excerpt, and next actions — the
+  manager's existing Assign Drill flow (openCoach, handler unchanged)
+  plus a "Practise this stage" link on the established
+  /sparring/default?focus=… pattern. When nothing is below target the
+  block says so instead of inventing priorities.
+- **Scoring transparency panel**: states plainly that calls are scored
+  with the Gravix default fixed-stage rubric (stages listed from real
+  data), shows the scoring model when present, and carries one neutral
+  future line: "Custom scorecards will appear here once activated."
+  No active custom-scorecard claim anywhere.
+- **Manager guidance**: Next-actions strip now captions that Assign
+  Coaching auto-targets the weakest stage (which its handler has always
+  done), naming the current weakest stage.
+
+Validator note: two Day 215 checks were loosened to intent (Day 203
+precedent) — the 'Evidence: ' inline pin became the '>Evidence<' block
+label, and the custom-scorecard ban now allows only the future-tense
+transparency line while still failing on any other mention or active
+claim.
+
+Requires Scorecard Studio / runtime work (not built, not claimed):
+per-criterion scores and pass/miss rows, behaviour checklists,
+scorecard names/versions per call, emphasis levels. The stage audit
+blocks, signal chips and transparency panel are the drop-in rendering
+points once the runtime emits criteria-level results.
+
+Companion validator: `scripts/validate-premium-ux-day-216.sh`.
