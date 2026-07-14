@@ -36,11 +36,44 @@ API repo, `feat: add scorecard studio data layer`:
 - Validator: `npm run validate:intelligence-scorecards` (lifecycle,
   immutability, conflict, isolation, audit; self-cleaning fixtures;
   MIGRATION PENDING mode until the SQL is applied).
-- **Not yet built** (deliberately): activation replacement flow for
-  cross-scorecard conflicts (the §UX dialog — API answers 409 today),
-  edit-forks-new-draft-version, archive endpoint, AI Scorecard Builder,
-  scoring-runtime integration/`resolveScorecard`, call-type persistence at
-  `/upload`, `rubric._meta` stamping, `score_cache` keying, and all WEB UI.
+- **Not yet built** (deliberately): AI Scorecard Builder, scoring-runtime
+  integration/`resolveScorecard`, call-type persistence at `/upload`,
+  `rubric._meta` stamping, `score_cache` keying, and all WEB UI.
+
+## Lifecycle completion (Day 220)
+
+API repo, `feat: complete scorecard studio lifecycle` — the deferred
+lifecycle operations, making scorecards safe to manage before the runtime
+ever reads them:
+
+- **Fork** `POST /:id/versions/:versionId/fork` — "editing" an immutable
+  active/superseded version creates draft version n+1 copying weights,
+  criteria, call types and origin (provenance survives forks: an
+  `ai_draft` stays `ai_draft` in history). Forking a draft → 400; if a
+  draft already exists → 409 `draft_already_exists` with its id — never
+  silently reused, the existing draft may hold unrelated edits.
+- **Replacement activation** — `POST /:id/activate` with
+  `{ replace_conflicts: true }`. Without the flag, cross-scorecard
+  call-type (and company-default) conflicts still answer 409 with the
+  full conflict list; with it, each conflicting active version is
+  superseded **whole** (narrowing an immutable version's call types would
+  mutate it), the replaced scorecard drops to status `draft` with all
+  history intact, and the response's `replaced` array names every
+  superseded scorecard/version — the §UX dialog reads this.
+- **Archive** `POST /:id/archive` — marks, never deletes: active version
+  → superseded, scorecard → `archived` + `archived_at`; every version,
+  snapshot and criteria row survives. Archived scorecards reject
+  edit/save/fork/activate with 409. Archiving the company default is
+  allowed — the Gravix Default rubric is the guaranteed fallback (§Safety
+  rules). No restore endpoint yet (explicit later lane).
+- **Audit** — full lifecycle now writes `audit_events`:
+  `create_scorecard`, `save_scorecard_draft`, `fork_scorecard_version`,
+  `activate_scorecard_version`, `replace_scorecard_conflicts`,
+  `archive_scorecard`.
+- Validator extended (`npm run validate:intelligence-scorecards`): fork
+  lifecycle, snapshot stability after forked-draft edits, replace flow,
+  archive read-only behaviour, cross-company 404s on all new endpoints,
+  audit rows for every lifecycle event.
 
 ## Purpose
 
