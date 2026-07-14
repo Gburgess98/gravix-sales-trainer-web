@@ -413,12 +413,35 @@ is unexercised; its only two injection points (the context and scorecard prompt
 blocks) are asserted directly against the live resolved assets instead. A
 genuine paid end-to-end score remains unproven and is the one honest gap.
 
-**Nothing is persisted.** The validator removes the UFC context and scorecard
-when it finishes, because `validate:intelligence-context` and
-`validate:intelligence-scorecards` both assert the UFC company starts with no
-context and no scorecard rows. Seeding UFC intelligence assets permanently is a
-separate decision — it needs those two validators taught to tolerate a seeded
-baseline first, and should not be smuggled in as a side effect of a proof run.
+**Nothing is persisted (superseded by Day 224 — see below).** The Day 222
+validator removed the UFC context and scorecard when it finished, because
+`validate:intelligence-context` and `validate:intelligence-scorecards` both
+asserted the UFC company starts with no context and no scorecard rows.
+
+### Day 224 — UFC assets seeded, validators decoupled from demo data
+
+`npm run seed:ufc-intelligence` now seeds the assets **persistently**: published
+context v1, "UFC Sales Scorecard" v1 (active, company default, fixed four
+stages, weights 20/30/30/20), and one proof call scored through the real runtime
+so `/calls/[id]` shows "Scored with UFC Sales Scorecard v1 · Company context v1
+applied". The Nate Diaz hero call is untouched and still renders the calm
+default state, so the demo shows both branches.
+
+The blocker Day 222 named was not that the validators *tolerated* an empty UFC —
+it was that they **wrote to UFC**. `validate:intelligence-context` and
+`validate:intelligence-scorecards` saved drafts, published versions and created
+scorecards as Dana inside the demo company; a single run archived the seeded
+context and replaced it with validator content. Teaching them to tolerate a
+seeded baseline would have left that mutation in place. Instead both now own
+throwaway fixture companies and never touch UFC, which also restores absolute
+assertions (publish → v1, second publish → v2, empty list = empty). Day 222 was
+retargeted to prove the seeded assets rather than publish its own, and no longer
+deletes them.
+
+Validators: `validate:ufc-intelligence-seed` 57/57 ·
+`validate:intelligence-context` 27/27 · `validate:intelligence-scorecards` 59/59
+· `validate:intelligence-runtime` 53/53 · `validate:intelligence-runtime-live`
+57/57 — all green together, in any order, with the seed in place.
 
 **Known gap (not a Day 222 blocker).** On the heuristic fallback path (LLM
 unreachable), `buildRubricWithMeta` is called without the resolved context or

@@ -19,12 +19,16 @@ and `DEMO_READINESS_CLOSEOUT.md` (lane status).
 cd ~/Dev/gravix-sales-trainer-api
 npm run seed:demo
 npm run seed:ufc-story
+npm run seed:ufc-intelligence
 ```
 
 `seed:demo` refreshes the whole UFC org (users, calls, filenames, dates).
 `seed:ufc-story` must run **after** it — it re-stamps the hero call title
 ("Nate Diaz — Price Objection Call") and the Whisperer/Discovery/sparring
-story. Both are idempotent.
+story. `seed:ufc-intelligence` (Day 224) runs last: it publishes the UFC
+company context, activates the "UFC Sales Scorecard", and scores one proof
+call so the Intelligence Layer is visible on `/calls/[id]`. All three are
+idempotent.
 
 ## 3. When to re-seed
 
@@ -77,6 +81,9 @@ npm run build
   `npm run seed:ufc-story` (that order), refresh.
 - **Whisperer/Discovery/sparring story missing:** run
   `npm run seed:ufc-story`, refresh.
+- **Scorecard/context provenance missing on the proof call:** run
+  `npm run seed:ufc-intelligence`, refresh. (`seed:demo` does not seed
+  Intelligence assets.)
 - **Dana login fails:** use a dev account only as a fallback; do not
   switch accounts mid-demo unless necessary — the story is built for
   Dana's single login.

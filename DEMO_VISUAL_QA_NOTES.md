@@ -19,19 +19,22 @@ non-blockers so the full QA run starts from a known-clean state.
 
 Seeds are **API-side** and drift over time (the Review Queue and Whisperer
 panels only look back 30 days). Re-seed before any external demo. Order
-matters — run `seed:demo` first, then `seed:ufc-story`:
+matters — run `seed:demo` first, then `seed:ufc-story`, then
+`seed:ufc-intelligence`:
 
 ```bash
 cd ~/Dev/gravix-sales-trainer-api
-npm run seed:demo        # refreshes the whole UFC org (users, calls, dates)
-npm run seed:ufc-story   # re-stamps the hero call + Whisperer/Discovery/sparring story
+npm run seed:demo             # refreshes the whole UFC org (users, calls, dates)
+npm run seed:ufc-story        # re-stamps the hero call + Whisperer/Discovery/sparring story
+npm run seed:ufc-intelligence # Day 224: published context + UFC Sales Scorecard + provenance proof call
 ```
 
-Both are idempotent. Validate the seed:
+All three are idempotent. Validate the seed:
 
 ```bash
 cd ~/Dev/gravix-sales-trainer-api
 npx tsx scripts/validate-ufc-demo-seed.ts
+npm run validate:ufc-intelligence-seed   # Day 224 Intelligence assets
 ```
 
 See `PRE_DEMO_RUNBOOK.md` §2–4 for the full procedure and login details
@@ -273,3 +276,52 @@ the hero call):
 - [ ] No claim that a company scorecard or context was applied.
 - [ ] Assign Coaching / Assign Drill / CRM drawer still open; audio, pins and
       Mark Reviewed unaffected.
+
+---
+
+## 13. Day 224 — UFC Intelligence assets are now seeded (demo-visible)
+
+`npm run seed:ufc-intelligence` (API) seeds the **persistent** Intelligence
+assets, so the Day 221–223 work is finally visible in the product:
+
+- published UFC company context **v1** (plus the draft working copy);
+- **"UFC Sales Scorecard"** v1 — active, company default, fixed four stages
+  (intro 20 / discovery 30 / objection 30 / close 20), one criterion each;
+- one proof call scored through the real runtime, carrying real provenance.
+
+The demo now shows **both** provenance states side by side:
+
+| Call | URL | Reads |
+|---|---|---|
+| Nate Diaz — Pricing Follow-up Call (62) | `/calls/05da878f-1bf4-4d52-af9b-87abd412b0d2` | "Scored with UFC Sales Scorecard v1 · Company context v1 applied" |
+| Nate Diaz — Price Objection Call (45, hero) | `/calls/3d26a918-d9a4-48c6-9ce3-cda316b101f6` | "Scored with the Gravix default rubric" · context "Not applied" |
+
+The hero call is deliberately untouched — it predates the runtime stamping
+provenance, and it is the calm default state Day 223 renders. Both were proven
+by running the real Day 223 helper (`src/lib/scoringProvenance.ts`) against the
+real `rubric._meta` rows: labels render as above with no raw UUID in any visible
+label (full ids appear only in the hover title).
+
+**Honesty note.** The proof call's *stage scores* are seeded demo values, pinned
+the same way the hero call's are — no LLM is called. Its *provenance* is not
+seeded: `scoreWithLLM` resolves the seeded assets, keys the cache and stamps
+`_meta` itself, so a cache hit is only possible if that live resolution matched.
+
+Validate: `npm run validate:ufc-intelligence-seed` (57/57 — asserts the seeded
+shape, the proof call's provenance, that the hero call is untouched, and
+cross-company isolation).
+
+### Validators no longer depend on UFC being empty (Day 224)
+
+`validate:intelligence-context` and `validate:intelligence-scorecards` used to
+save drafts, publish and create scorecards **as Dana, inside the UFC company**.
+That required UFC to start with zero Intelligence rows and silently mutated demo
+data — with the seed in place, a single validator run archived the seeded
+context and replaced it with validator content. Both now create and write to
+their own throwaway fixture companies, so they never touch UFC and their version
+assertions are absolute again. `validate:intelligence-runtime-live` (Day 222)
+now proves the **seeded** assets instead of publishing its own, and no longer
+deletes them.
+
+Practical effect: the seed survives a full validator sweep, and the validators
+can be run in any order before a demo.
