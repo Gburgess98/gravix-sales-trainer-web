@@ -1,10 +1,46 @@
 # Scorecard Studio — Module Spec (Day 207)
 
-Status: **Planning only.** Part of the Intelligence Layer
-(`INTELLIGENCE_LAYER_BLUEPRINT.md`). Covers Scorecard Studio, the AI
-Scorecard Builder, and scoring-runtime integration. Day 209 UX design:
-`SCORECARD_STUDIO_UX_BLUEPRINT.md`, `SCORECARD_STUDIO_FIELD_SPEC.md`,
+Status: **Data layer implemented (Day 219B, API repo).** Part of the
+Intelligence Layer (`INTELLIGENCE_LAYER_BLUEPRINT.md`). Covers Scorecard
+Studio, the AI Scorecard Builder, and scoring-runtime integration. Day 209
+UX design: `SCORECARD_STUDIO_UX_BLUEPRINT.md`, `SCORECARD_STUDIO_FIELD_SPEC.md`,
 `SCORECARD_STUDIO_ROUTE_PLAN.md`, `AI_SCORECARD_BUILDER_SPEC.md`.
+
+## Implementation status (Day 219B)
+
+API repo, `feat: add scorecard studio data layer`:
+
+- Migration `sql/20260714b_scorecard_studio.sql` — four tables:
+  `scorecards` (draft/active/archived, case-insensitive unique name and one
+  active company default per company) · `scorecard_versions` (unique version
+  number, one draft + one active per scorecard, origin enum,
+  draft/active/superseded) · `scorecard_stage_weights` /
+  `scorecard_criteria` (fixed-stage checks, weight 0–100, emphasis enum,
+  critical-requires-pass-fail in SQL). The "snapshot vs relational" choice
+  in §Data model resolved as **both**: relational rows are the editable
+  draft working copy; activation stamps the deterministic immutable jsonb
+  `snapshot` the runtime will read. Applied via the Supabase SQL editor.
+- Endpoints under `/v1/intelligence/scorecards` (all `requireManager`;
+  company from the requester identity, never the request; cross-company ids
+  404 with no existence leak): `GET /` list + read-only Gravix Default card
+  (code, not a row) · `POST /` create draft (v1 draft, 25/25/25/25) ·
+  `GET /:id` detail with versions/weights/criteria · `PUT /:id` metadata ·
+  `PUT /:id/versions/:versionId` save draft version (structural validation
+  only — weights-total-100 never blocks saving) · `POST /:id/activate`
+  (weights total 100, ≥1 criterion, call type or company default; previous
+  active → superseded; snapshot stamped; audit event; cross-scorecard
+  call-type overlap → 409 `call_type_conflict`).
+- Helpers `src/lib/scorecardStudio.ts`: fixed stage/call-type/emphasis
+  enums, default weights, payload normalisation, activation rules,
+  deterministic snapshot builder. Pure — no AI, no network.
+- Validator: `npm run validate:intelligence-scorecards` (lifecycle,
+  immutability, conflict, isolation, audit; self-cleaning fixtures;
+  MIGRATION PENDING mode until the SQL is applied).
+- **Not yet built** (deliberately): activation replacement flow for
+  cross-scorecard conflicts (the §UX dialog — API answers 409 today),
+  edit-forks-new-draft-version, archive endpoint, AI Scorecard Builder,
+  scoring-runtime integration/`resolveScorecard`, call-type persistence at
+  `/upload`, `rubric._meta` stamping, `score_cache` keying, and all WEB UI.
 
 ## Purpose
 
