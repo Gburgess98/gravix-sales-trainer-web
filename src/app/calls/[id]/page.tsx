@@ -14,7 +14,7 @@ import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
 import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
-import { SectionCard, Button, buttonClasses } from "@/components/ui";
+import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
 
 import {
   listPins,
@@ -63,6 +63,37 @@ function ReviewTagChip({ ok, label }: { ok: boolean; label: string }) {
     </span>
   );
 }
+
+// Day 215 — stage verdicts reuse the score-status thresholds (green/amber/red = status only).
+function stageVerdict(score: number): { label: string; chip: string; bar: string } {
+  if (score >= 80) {
+    return {
+      label: "Strong",
+      chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+      bar: "bg-emerald-500/70",
+    };
+  }
+  if (score >= 60) {
+    return {
+      label: "Developing",
+      chip: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+      bar: "bg-amber-500/70",
+    };
+  }
+  return {
+    label: "Needs work",
+    chip: "border-red-500/30 bg-red-500/10 text-red-300",
+    bar: "bg-red-500/70",
+  };
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  intro: "Intro",
+  discovery: "Discovery",
+  pitch: "Pitch",
+  objection: "Objection handling",
+  close: "Close",
+};
 
 function getVoiceData(callMeta: any) {
   const analysis = callMeta?.analysis_json ?? null;
@@ -623,8 +654,6 @@ export default function CallPage() {
         if (res?.call?.signedAudioUrl) {
           setAudioUrl(res.call.signedAudioUrl);
         }
-        console.debug('[CallPage] loaded via proxy', { id: callId, ok: !!res?.call });
-
         setErr(null);
       } catch (e: any) {
         if (!alive) return;
@@ -1307,6 +1336,33 @@ export default function CallPage() {
     };
   }, [callMeta]);
 
+  // Day 215 — score reasoning is derived from the existing scored rubric only
+  // (rubric column with analysis_json.stages fallback). No new data, no new scoring.
+  const rubricStages = useMemo(() => {
+    const rubric = callMeta?.rubric ?? null;
+    const analysisStages = callMeta?.analysis_json?.stages ?? null;
+    const rows: { key: string; label: string; score: number | null; notes: string | null }[] = [];
+    for (const key of ["intro", "discovery", "pitch", "objection", "close"]) {
+      const sec = (rubric as any)?.[key] ?? (analysisStages as any)?.[key] ?? null;
+      if (!sec || typeof sec !== "object") continue;
+      const score = typeof sec.score === "number" && Number.isFinite(sec.score) ? Math.round(Number(sec.score)) : null;
+      const notes = typeof sec.notes === "string" && sec.notes.trim() ? sec.notes.trim() : null;
+      if (score === null && !notes) continue;
+      rows.push({ key, label: STAGE_LABELS[key] ?? key, score, notes });
+    }
+    return rows;
+  }, [callMeta]);
+
+  const scoredStages = useMemo(() => rubricStages.filter((r) => r.score !== null), [rubricStages]);
+  const strongestStage = useMemo(
+    () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) > (a.score as number) ? b : a)) : null),
+    [scoredStages]
+  );
+  const weakestStage = useMemo(
+    () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) < (a.score as number) ? b : a)) : null),
+    [scoredStages]
+  );
+
   function formatContactName(c: any): string | null {
     if (!c) return null;
     const first = String(c?.first_name ?? c?.firstName ?? "").trim();
@@ -1366,20 +1422,23 @@ export default function CallPage() {
     <AuthGate>
       <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6">
         <div className="flex items-start gap-3 flex-wrap">
-          <h1 className="text-xl font-semibold break-words flex items-center gap-3">
-            {loadingCall ? (
-              <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
-            ) : (
-              <>
-                {callDisplayTitle}
-                {overall != null ? (
-                  <ScorePill score={overall} />
-                ) : (
-                  <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
-                )}
-              </>
-            )}
-          </h1>
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 mb-1">Call review</div>
+            <h1 className="text-xl font-semibold break-words flex items-center gap-3">
+              {loadingCall ? (
+                <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
+              ) : (
+                <>
+                  {callDisplayTitle}
+                  {overall != null ? (
+                    <ScorePill score={overall} />
+                  ) : (
+                    <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
+                  )}
+                </>
+              )}
+            </h1>
+          </div>
 
           <div className="ml-auto flex items-center gap-2">
             {trend && trend.length > 1 && (
@@ -1476,279 +1535,378 @@ export default function CallPage() {
         )}
 
 
-        {/* Summary header band (score + duration + summary + flags) */}
-        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 sm:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          {/* Left: score + status + duration */}
-          <div className="flex items-center gap-4">
-            <div
-              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold tabular-nums ${
-                overall == null
-                  ? "border-neutral-700 text-neutral-400"
-                  : overall >= 80
-                    ? "border-emerald-500/50 text-emerald-300"
-                    : overall >= 60
-                      ? "border-amber-500/50 text-amber-300"
-                      : "border-red-500/50 text-red-300"
-              }`}
-            >
-              {overall != null ? overall : "—"}
-            </div>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-flex h-2 w-2 rounded-full ${statusDotColour(
-                    callMeta?.status
-                  )}`}
-                />
-                <span className="text-neutral-300 capitalize">
-                  {callMeta?.status ?? "queued"}
-                </span>
+        {/* Call hero — outcome, metadata, score reasoning and next actions */}
+        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 sm:py-5 space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            {/* Left: score + status + duration */}
+            <div className="flex items-center gap-4">
+              <div
+                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold tabular-nums ${
+                  overall == null
+                    ? "border-neutral-700 text-neutral-400"
+                    : overall >= 80
+                      ? "border-emerald-500/50 text-emerald-300"
+                      : overall >= 60
+                        ? "border-amber-500/50 text-amber-300"
+                        : "border-red-500/50 text-red-300"
+                }`}
+              >
+                {overall != null ? overall : "—"}
               </div>
-              <div className="text-neutral-400">
-                Duration:{" "}
-                <span className="text-neutral-100">{durationLabel}</span>
-              </div>
-              {callMeta?.ai_model && (
-                <div className="text-xs text-neutral-500">
-                  Scored by {callMeta.ai_model}
-                </div>
-              )}
-              {rawFileLabel && (
-                <div className="text-xs text-neutral-600 truncate max-w-[16rem]" title={rawFileLabel}>
-                  File: {rawFileLabel}
-                </div>
-              )}
-              {managerCheckDone && isManager && callMeta?.status === "scored" && (
-                <div className="pt-1 flex items-center gap-2 flex-wrap">
-                  {managerReviewed ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                      Reviewed ✓
-                      {reviewedAt && (
-                        <span className="text-emerald-400/70 font-normal">
-                          {new Date(reviewedAt).toLocaleDateString("en-GB")}
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      onClick={markCallReviewed}
-                      disabled={markingReviewed}
-                    >
-                      {markingReviewed ? "Marking…" : "Mark Reviewed"}
-                    </Button>
-                  )}
-                  {coachingAssigned ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                      Coaching assigned ✓
-                    </span>
-                  ) : (
-                    <Button
-                      onClick={assignCoachingFromCall}
-                      disabled={assigningCoaching}
-                      className="bg-neutral-900 font-semibold text-neutral-200"
-                    >
-                      {assigningCoaching ? "Assigning…" : "Assign Coaching"}
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: summary + flags */}
-          <div className="md:max-w-md space-y-2 text-sm">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                Summary
-              </div>
-              <p className="text-neutral-200">
-                {callMeta?.summary ||
-                  "No summary has been generated for this call yet."}
-              </p>
-            </div>
-
-            {managerReviewed && reviewNote && (
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                <div className="text-xs uppercase tracking-wide text-emerald-400/80 mb-1">
-                  Manager Review Note
-                </div>
-                <p className="text-neutral-200 text-xs leading-relaxed">{reviewNote}</p>
-              </div>
-            )}
-
-            {flags.length > 0 && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                  Flags
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {flags.map((flag) => (
-                    <span
-                      key={flag}
-                      className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-0.5 text-[11px] font-medium text-neutral-200"
-                    >
-                      {flag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Review Bot */}
-        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review Bot</div>
-              <h2 className="text-lg font-medium text-neutral-100">Voice Personality Score</h2>
-            </div>
-
-            {reviewBot.voiceScore != null ? (
-              <ScorePill score={reviewBot.voiceScore} className="text-xs px-2 py-1" />
-            ) : (
-              <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">No voice score yet</span>
-            )}
-          </div>
-
-          {reviewBot.hasData ? (
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <ReviewTagChip
-                    ok={!reviewBot.weakClose}
-                    label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex h-2 w-2 rounded-full ${statusDotColour(
+                      callMeta?.status
+                    )}`}
                   />
-                  <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
-                    Filler count: {reviewBot.fillerCount}
+                  <span className="text-neutral-300 capitalize">
+                    {callMeta?.status ?? "queued"}
                   </span>
                 </div>
-
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
-                  {reviewBot.fillerWords.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {reviewBot.fillerWords.map((word: string) => (
-                        <span
-                          key={word}
-                          className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
-                        >
-                          {word}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
-                  )}
+                <div className="text-neutral-400">
+                  Duration:{" "}
+                  <span className="text-neutral-100">{durationLabel}</span>
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
-                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
-                {reviewBot.rubricRows.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {reviewBot.rubricRows.map((item) => (
-                      <div
-                        key={item.key}
-                        className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
-                      >
-                        <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
-                        <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
-                      </div>
-                    ))}
+                {(rubricStages.length > 0 || callMeta?.ai_model) && (
+                  <div className="text-xs text-neutral-500">
+                    {rubricStages.length > 0
+                      ? `Scored with the Gravix default rubric${callMeta?.ai_model ? ` · ${callMeta.ai_model}` : ""}`
+                      : `Scored by ${callMeta.ai_model}`}
                   </div>
-                ) : (
-                  <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
+                )}
+                {rawFileLabel && (
+                  <div className="text-xs text-neutral-600 truncate max-w-[16rem]" title={rawFileLabel}>
+                    File: {rawFileLabel}
+                  </div>
                 )}
               </div>
             </div>
-          ) : (
-            <div className="mt-4 text-sm text-neutral-400">
-              No Review Bot breakdown has been generated for this call yet.
+
+            {/* Right: summary + flags */}
+            <div className="md:max-w-md space-y-2 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                  Summary
+                </div>
+                <p className="text-neutral-200">
+                  {callMeta?.summary ||
+                    "No summary has been generated for this call yet."}
+                </p>
+              </div>
+
+              {managerReviewed && reviewNote && (
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                  <div className="text-xs uppercase tracking-wide text-emerald-400/80 mb-1">
+                    Manager Review Note
+                  </div>
+                  <p className="text-neutral-200 text-xs leading-relaxed">{reviewNote}</p>
+                </div>
+              )}
+
+              {flags.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                    Flags
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {flags.map((flag) => (
+                      <span
+                        key={flag}
+                        className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-0.5 text-[11px] font-medium text-neutral-200"
+                      >
+                        {flag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Why this scored — reasoning band from the existing scored rubric */}
+          {callMeta?.status === "scored" && (
+            <div className="border-t border-neutral-800 pt-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">
+                  {overall != null ? `Why this scored ${overall}` : "Score reasoning"}
+                </div>
+                {scoredStages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("review")?.scrollIntoView({ behavior: "smooth" })}
+                    className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
+                  >
+                    Open the full review audit
+                  </button>
+                )}
+              </div>
+              {scoredStages.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                  {strongestStage && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-medium text-emerald-300">
+                      Strongest · {strongestStage.label} {strongestStage.score}
+                    </span>
+                  )}
+                  {weakestStage && weakestStage.key !== strongestStage?.key && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-medium text-amber-300">
+                      Weakest · {weakestStage.label} {weakestStage.score}
+                    </span>
+                  )}
+                  {reviewBot.weakClose && (
+                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-medium text-amber-300">
+                      Weak close detected
+                    </span>
+                  )}
+                  {reviewBot.fillerCount > 0 && (
+                    <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-neutral-300">
+                      Fillers · {reviewBot.fillerCount}
+                    </span>
+                  )}
+                  {reviewBot.voiceScore != null && (
+                    <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-neutral-300">
+                      Voice · {reviewBot.voiceScore}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Stage-by-stage reasoning will appear here once this call has a scored rubric.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Manager next actions */}
+          {managerCheckDone && isManager && callMeta?.status === "scored" && (
+            <div className="border-t border-neutral-800 pt-3">
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Next actions</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {managerReviewed ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                    Reviewed ✓
+                    {reviewedAt && (
+                      <span className="text-emerald-400/70 font-normal">
+                        {new Date(reviewedAt).toLocaleDateString("en-GB")}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    onClick={markCallReviewed}
+                    disabled={markingReviewed}
+                  >
+                    {markingReviewed ? "Marking…" : "Mark Reviewed"}
+                  </Button>
+                )}
+                {coachingAssigned ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                    Coaching assigned ✓
+                  </span>
+                ) : (
+                  <Button
+                    onClick={assignCoachingFromCall}
+                    disabled={assigningCoaching}
+                    className="bg-neutral-900 font-semibold text-neutral-200"
+                  >
+                    {assigningCoaching ? "Assigning…" : "Assign Coaching"}
+                  </Button>
+                )}
+                <Button onClick={() => openCoach(true)}>Assign Drill</Button>
+                <Button onClick={openCrm}>Review CRM link</Button>
+              </div>
             </div>
           )}
         </section>
 
-        {postAction ? (
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
-              Post-action summary
+        {/* Review audit — why this call scored the way it did */}
+        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 space-y-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review audit</div>
+              <h2 className="text-lg font-medium text-neutral-100">
+                {overall != null ? `Why this call scored ${overall}/100` : "Call review audit"}
+              </h2>
             </div>
+            {rubricStages.length > 0 && (
+              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
+                Gravix default rubric
+              </span>
+            )}
+          </div>
 
-            <div className="mt-3 grid gap-2 text-sm">
-              <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">Strongest area today</div>
-                <div className="mt-1 font-semibold text-neutral-100">
-                  {postAction.strongest}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">One thing to improve</div>
-                <div className="mt-1 font-semibold text-neutral-100">
-                  {postAction.improve}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-neutral-800 bg-black p-3">
-                <div className="text-neutral-400">XP gained</div>
-                <div className="mt-1 font-semibold text-neutral-100">
-                  +{postAction.xpGained}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {momentumNext && momentumNext.focus && (
-                <button
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    params.set("focus", momentumNext.focus);
-                    params.set("source", "call-review");
-                    // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
-                    // is the launch shortcut that creates a session and redirects into it.
-                    window.location.href = `/sparring/default?${params.toString()}`;
-                  }}
-                >
-                  Practice this now →
-                </button>
-              )}
-
-              <a
-                href="/call-library"
-                className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900"
-              >
-                Review another call
-              </a>
-            </div>
-          </section>
-        ) : null}
-
-        {/* Rubric (if available) */}
-        {callMeta?.rubric ? (
-          <section className="grid md:grid-cols-2 gap-4">
-            {(['intro', 'discovery', 'objection', 'close'] as const).map((k) => {
-              const sec = callMeta.rubric?.[k];
-              if (!sec) return null;
-              const s = typeof sec.score === 'number' ? Math.round(Number(sec.score)) : null;
-              return (
-                <div key={k} className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium capitalize">{k}</h3>
-                    {s != null ? (
-                      <ScorePill score={s} className="text-xs px-1.5 py-0.5" />
-                    ) : (
-                      <span className="text-xs px-1.5 py-0.5 rounded border bg-zinc-600/20 text-zinc-300">—</span>
+          {/* Criteria rows from the existing rubric stages */}
+          {rubricStages.length > 0 ? (
+            <div className="divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-black/30">
+              {rubricStages.map((stage) => {
+                const verdict = stage.score !== null ? stageVerdict(stage.score) : null;
+                return (
+                  <div key={stage.key} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
+                        {verdict ? (
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${verdict.chip}`}>
+                            {verdict.label}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400">
+                            Not scored
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-neutral-200">
+                        {stage.score !== null ? `${stage.score}/100` : "—"}
+                      </span>
+                    </div>
+                    {stage.score !== null && verdict && (
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${verdict.bar}`}
+                          style={{ width: `${Math.max(2, Math.min(100, stage.score))}%` }}
+                        />
+                      </div>
+                    )}
+                    {stage.notes && (
+                      <p className="mt-2 text-sm leading-6 text-neutral-400 whitespace-pre-wrap">
+                        <span className="text-neutral-500">Evidence: </span>
+                        {stage.notes}
+                      </p>
                     )}
                   </div>
-                  <p className="text-sm opacity-80 whitespace-pre-wrap">{sec.notes || '—'}</p>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              message="No scored rubric for this call yet."
+              sub="Stage-by-stage reasoning and evidence appear here once scoring completes."
+            />
+          )}
+
+          {/* Voice Personality Score — supporting signal */}
+          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Supporting signal</div>
+                <h3 className="text-sm font-medium text-neutral-100">Voice Personality Score</h3>
+              </div>
+              {reviewBot.voiceScore != null ? (
+                <ScorePill score={reviewBot.voiceScore} className="text-xs px-2 py-1" />
+              ) : (
+                <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">No voice score yet</span>
+              )}
+            </div>
+
+            {reviewBot.hasData ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ReviewTagChip
+                      ok={!reviewBot.weakClose}
+                      label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
+                    />
+                    <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
+                      Filler count: {reviewBot.fillerCount}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
+                    {reviewBot.fillerWords.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {reviewBot.fillerWords.map((word: string) => (
+                          <span
+                            key={word}
+                            className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
+                          >
+                            {word}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
+                    )}
+                  </div>
                 </div>
-              );
-            })}
-          </section>
-        ) : null}
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
+                  {reviewBot.rubricRows.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {reviewBot.rubricRows.map((item) => (
+                        <div
+                          key={item.key}
+                          className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
+                        >
+                          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
+                          <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-neutral-400">
+                No voice and delivery breakdown has been generated for this call yet.
+              </div>
+            )}
+          </div>
+
+          {/* Coaching priority — what to practise next */}
+          {postAction ? (
+            <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
+              <div className="text-xs uppercase tracking-wide text-neutral-500">
+                What to practise next
+              </div>
+
+              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
+                  <div className="text-neutral-400">Strongest area on this call</div>
+                  <div className="mt-1 font-semibold text-neutral-100">
+                    {postAction.strongest}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
+                  <div className="text-neutral-400">Coaching priority</div>
+                  <div className="mt-1 font-semibold text-neutral-100">
+                    {postAction.improve}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {momentumNext && momentumNext.focus && (
+                  <button
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set("focus", momentumNext.focus);
+                      params.set("source", "call-review");
+                      // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
+                      // is the launch shortcut that creates a session and redirects into it.
+                      window.location.href = `/sparring/default?${params.toString()}`;
+                    }}
+                  >
+                    Practise this next →
+                  </button>
+                )}
+
+                <a
+                  href="/call-library"
+                  className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900"
+                >
+                  Review another call
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1796,7 +1954,7 @@ export default function CallPage() {
                               ? "bg-red-500/10 text-red-300"
                               : severity === "medium"
                                 ? "bg-amber-500/10 text-amber-300"
-                                : "bg-blue-500/10 text-blue-300"
+                                : "bg-neutral-800 text-neutral-300"
                               }`}
                           >
                             {severity}
@@ -1832,7 +1990,7 @@ export default function CallPage() {
                         <span
                           className={`font-semibold mr-2 ${speaker === "Rep"
                             ? "text-indigo-300"
-                            : "text-blue-300"
+                            : "text-neutral-300"
                             }`}
                         >
                           {speaker}:
@@ -1857,9 +2015,11 @@ export default function CallPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-neutral-400">
-              No transcript has been generated for this call yet.
-            </div>
+            <EmptyState
+              className="mt-2"
+              message="No transcript has been generated for this call yet."
+              sub="The transcript appears here automatically once processing completes."
+            />
           )}
         </section>
 
@@ -1910,7 +2070,10 @@ export default function CallPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-neutral-400">No audio available for this call.</p>
+              <EmptyState
+                message="No audio available for this call."
+                sub="The recording may still be uploading, or this call was logged without audio."
+              />
             )}
           </SectionCard>
         </section>
@@ -1927,7 +2090,10 @@ export default function CallPage() {
             {loadingPins ? (
               <p className="text-sm text-neutral-400">Loading pins…</p>
             ) : pins.length === 0 ? (
-              <p className="text-sm text-neutral-400">No pinned coaching notes yet.</p>
+              <EmptyState
+                message="No pinned coaching notes yet."
+                sub="Pin a moment from the player to build a coaching timeline for this call."
+              />
             ) : (
               <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
                 {pins.map((p) => (
@@ -1968,7 +2134,10 @@ export default function CallPage() {
             {whispererMomentsError ? (
               <div className="text-sm text-red-400">Could not load Whisperer moments.</div>
             ) : whispererMoments.length === 0 ? (
-              <div className="text-sm text-neutral-400">No Whisperer moments linked to this call yet.</div>
+              <EmptyState
+                message="No Whisperer moments linked to this call yet."
+                sub="Live coaching moments appear here when this call ran with the Whisperer."
+              />
             ) : (
               <div className="space-y-2">
                 {momentOutcomeNotice && <div className="text-[11px] text-neutral-400">{momentOutcomeNotice}</div>}
@@ -2048,7 +2217,10 @@ export default function CallPage() {
             padded
           >
             {(!Array.isArray(assignments) || assignments.filter(Boolean).length === 0) && !assignmentsLoading && (
-              <div className="text-sm text-neutral-500">No assignments yet.</div>
+              <EmptyState
+                message="No coaching assignments for this call yet."
+                sub="Drills assigned from this review appear here."
+              />
             )}
 
             {Array.isArray(assignments) && assignments.filter(Boolean).length > 0 && (

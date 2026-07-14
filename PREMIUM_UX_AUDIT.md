@@ -2501,3 +2501,64 @@ editable.
   (route unchanged, no redirects, no stub work needed).
 
 Companion validator: `scripts/validate-premium-ux-day-214.sh`.
+
+## §40 — Call Review Intelligence Workspace (Day 215)
+
+`/calls/[id]` recomposed from a stacked-panel dashboard into an
+evidence-led call review workspace. Competitor principles applied (call
+review audit structure, criteria-based scoring, visible evidence,
+pass/miss clarity, manager action guidance, scorecard transparency) —
+**nothing copied**: no light theme, no competitor layout/wording/sidebar/
+scorecard visuals; everything stays dark Gravix Command Centre native.
+
+Why the old page felt basic:
+
+- The actual score reasoning (rubric stage notes) sat in an unanchored
+  card grid *below* the Voice Personality Score and post-action panels —
+  no "why did this score happen?" path from the hero.
+- Evidence was buried: stage notes rendered as flat card text, moments
+  lived only inside the transcript section.
+- Sections stacked without narrative (voice-led #review, XP tile,
+  arcade "Practice this now").
+- No scorecard transparency — nothing said what the call was scored
+  with.
+
+What changed (visual/UI only, no data-model or logic changes):
+
+- **Hero (#summary)**: score dial + status + duration + honest scoring
+  transparency line ("Scored with the Gravix default rubric · model"),
+  a "Why this scored N" reasoning band (strongest/weakest stage chips,
+  weak-close and filler signals, all derived from the existing rubric /
+  review tags) and a manager "Next actions" strip (Mark Reviewed,
+  Assign Coaching, Assign Drill, Review CRM link — existing handlers).
+- **Review audit (#review)**: "Why this call scored N/100" — criteria
+  rows for the existing rubric stages (intro/discovery/pitch/objection/
+  close where present) with Strong/Developing/Needs-work verdict chips
+  at the established score-status thresholds, score bars, and the stage
+  notes surfaced as labelled evidence. "Gravix default rubric" chip is
+  shown only when rubric data exists.
+- **Voice Personality Score** kept in full but reframed as a supporting
+  signal inside the audit, not the lead review section. "Review Bot"
+  internal label retired.
+- **Post-action** reframed as "What to practise next" (coaching
+  priority): XP tile removed (arcade), CTA now "Practise this next"
+  (UK spelling), same /sparring/default deep link.
+- Empty states upgraded across transcript/player/pins/whisperer/coach
+  on the shared EmptyState primitive (validator-pinned copy preserved
+  byte-identical). Non-status blue accents calmed (low-severity moment
+  chip, non-rep speaker colour); `console.debug` removed.
+
+Not built / not claimed: no custom scorecards, no per-criterion
+weighting, no new scoring, no fake criteria — the audit presents the
+real four/five-stage rubric honestly. When Scorecard Studio ships
+(Day 209 blueprint), the criteria rows and the rubric transparency chip
+are the integration points: the chip becomes the active scorecard's
+name/version and the rows render its criteria.
+
+Behaviour preserved: all fetches, polling, drawers (CRM/Coach), deep
+links (?panel=, ?crm=1, ?assign=1), keyboard shortcuts (c/a), section
+anchors + IntersectionObserver nav, pins, audio playback + re-signing,
+CRM link/unlink/search, assign coaching/drill, mark reviewed, Whisperer
+moment outcomes, score history/trend.
+
+Companion validator: `scripts/validate-premium-ux-day-215.sh`.
