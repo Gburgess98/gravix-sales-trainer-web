@@ -362,3 +362,54 @@ Careful with the seed: the Context tab can **publish**. Publishing from the UI
 creates context v2 and archives v1, so `validate:ufc-intelligence-seed` (which
 asserts v1) will then fail. If you publish while rehearsing, re-run
 `npm run seed:ufc-intelligence` before the demo.
+
+## Day 226 — /intelligence scorecard workspace QA
+
+Extends the Day 225 checklist. Reseed first (`seed:demo` → `seed:ufc-story` →
+`seed:ufc-intelligence`) so the UFC assets are present.
+
+### Authenticated QA status
+
+**Pending.** The Day 226 build was verified by validator, fixtures, typecheck
+and build, and the data path was proven end-to-end through the WEB proxy as
+Dana (context v1 published; UFC Sales Scorecard v1 active/company-default;
+relational stage weights 20/30/30/20 and 4 criteria present). The logged-in
+**render** is still unproven: it needs a Dana Supabase session, which must be
+created by hand. Sessions are per-origin, so log in on the same origin the
+preview is served from — a session on `:3000` will not apply to a preview port.
+
+Note: a long-running dev server on `:3000` predates the Day 225 route and 404s
+on `/intelligence`. Don't QA against it.
+
+### Scorecards tab (Day 226)
+
+- [ ] Selecting the UFC card shows a status row: version, Active pill,
+      activated date, and "Every call type" for the company default.
+- [ ] A read-only **Currently active** panel appears — status only, with no
+      Activate button anywhere on the page.
+- [ ] Stage weights render with a stated total (UFC: 20/30/30/20, totals 100%)
+      and per-stage guidance beneath.
+- [ ] Criteria render grouped per stage, each stage card showing its weight and
+      criterion count, with emphasis/Critical/Pass-fail chips where set.
+- [ ] **Gravix Default** still renders read-only with even 25% weights and the
+      explanation of why it can't be edited.
+- [ ] No raw UUIDs: scorecards read by name throughout.
+
+### Activation readiness (Day 226)
+
+The UFC seed has only an **active** v1 and no draft version, so the readiness
+panel is **expected not to render** on the seeded demo — that is correct, not a
+bug. It appears only for a card carrying a draft version. If you want to see it,
+create a draft scorecard via the API; the panel then shows the four checks
+mirrored from the API's activation gate, plus any conflict preview.
+
+- [ ] No Activate button, and nothing on the page sends `replace_conflicts`.
+
+### Context tab (unchanged from Day 225, re-check)
+
+- [ ] Published context v1 + compiled block still render.
+- [ ] Publish copy now states scoring is future-only and nothing is re-scored.
+
+Careful with the seed: the Context tab can still publish, which creates context
+v2 and archives v1, breaking `validate:ufc-intelligence-seed` (asserts v1).
+Re-run `npm run seed:ufc-intelligence` if anyone publishes while rehearsing.

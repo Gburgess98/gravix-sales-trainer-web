@@ -2752,3 +2752,80 @@ context lists. None have an API behind them today, so none are drawn — no
 stubs, no "coming soon".
 
 Validate: `npm run validate-premium-ux-day-225`.
+
+## Day 226 — intelligence scorecard workspace (WEB-only)
+
+Day 225 shipped `/intelligence` with the Scorecards tab deliberately read-only.
+Day 226 keeps it read-only and deepens it: a richer detail view, and an
+activation **readiness** panel that tells a manager whether a draft version
+would activate — without this app ever calling `POST /activate`.
+
+### Why readiness, and why no activation button
+
+Activating a scorecard changes how every subsequent call is scored, and the API
+gate has real teeth: four validation rules, a 409 on call-type or
+company-default conflicts, and a `replace_conflicts` flag that supersedes live
+scoring rules. Shipping a button without the confirmation + diff UX from
+`SCORECARD_STUDIO_UX_BLUEPRINT.md` would risk exactly the silent replacement
+Day 220 designed against. So Day 226 takes the safer half: show the checks,
+send nothing.
+
+`src/lib/scorecardReadiness.ts` mirrors the API's `validateForActivation`
+(api `src/lib/scorecardStudio.ts`). Each check's `id` **is** the API error code
+it mirrors — `missing_stage_weights`, `weights_must_total_100`,
+`at_least_one_criterion_required`, `call_type_or_company_default_required` —
+and `scripts/validate-scorecard-readiness-day-226.mts` pins that mapping. The
+panel is only honest if it agrees with the API; the fixtures are what stop the
+two drifting into a lie.
+
+Two details worth keeping:
+
+- Readiness is computed for the **draft** version, because that is what
+  `POST /activate` targets — never for the version on screen.
+- `previewConflicts` mirrors the API's conflict rules over the company-wide list
+  the tab already holds. It is a *preview*: the API re-checks at activation and
+  answers 409, and `replace_conflicts` is never sent from this app at all.
+
+### Detail UX
+
+Status row (version · status · activated date · call-type coverage), stage
+weights with a stated total, per-stage criteria cards carrying weight, count,
+emphasis/critical/pass-fail chips and the criterion description, plus stage
+guidance where the API returns it. An active version renders a read-only
+"Currently active" panel — status, not a control — which also states plainly
+that already-scored calls keep their scores.
+
+The empty state now explains what a company scorecard would buy you, and the
+Gravix Default card explains *why* it is read-only: it is part of the product
+rather than your data, and a company scorecard takes precedence once activated.
+
+### Context publish copy
+
+Publishing now states that it affects future scoring only and that nothing is
+re-scored — which is what the API actually does (publish never rescores). The
+publish behaviour itself is unchanged.
+
+### Validator bug found and fixed (applies to Days 223/225/226)
+
+The loop-based negative checks used `for f in …; do if grep -q BAD; then false;
+break; fi; done; check "…" $?`. `break` resets `$?` to 0, so **every one of those
+checks passed unconditionally** — including Day 225's "no direct-backend calls",
+"no AI Autofill / AI Builder", "no arcade colour", and Day 226's
+`replace_conflicts` guard. They were decoration, not tests.
+
+All twelve now use an explicit `ok=1` flag that `break` cannot clobber, and each
+was verified by planting a real violation (a direct `fetch("http://…")`, a
+`POST …/activate` carrying `replace_conflicts: true`) and confirming the check
+fails. `code_of` also now strips `/* … */` block-comment lines, not just `//`,
+so honest comments naming what was *not* built can't trip the greps.
+
+Lesson for future validators: a negative check that has never been seen to fail
+is not a check. Plant the violation once.
+
+### Deliberately not built
+
+No activation action, no `replace_conflicts`, no scorecard editor (no create,
+edit, fork or archive), no AI Builder, no Autofill, no website scraping, no
+Objection/Playbook library, no custom stages.
+
+Validate: `npm run validate-premium-ux-day-226`.

@@ -669,7 +669,7 @@ export default function ContextTab() {
           <p className="text-xs text-neutral-500">
             {dirty
               ? "You have unsaved changes. Saving updates the draft only — scoring keeps using the published version."
-              : "Publishing creates a new version. The previous one is archived, never deleted."}
+              : "Publishing creates a new version and affects future scoring only. Calls already scored keep their scores — nothing is re-scored. The previous version is archived, never deleted."}
           </p>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={() => void save()} disabled={saving || !dirty}>

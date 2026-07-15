@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { computeReadiness, previewConflicts } from "@/lib/scorecardReadiness";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -286,7 +287,7 @@ export default function ScorecardsTab() {
         {items.length === 0 ? (
           <EmptyState
             message="No company scorecards yet"
-            sub="Until one is active, every call is scored with the Gravix default rubric."
+            sub="Every call is scored with the Gravix Default rubric below. A company scorecard lets you set your own stages, weights and criteria — building one arrives with the Scorecard Studio editor."
           />
         ) : (
           <div className="divide-y divide-neutral-900">
@@ -350,7 +351,11 @@ export default function ScorecardsTab() {
                           </button>
                         </p>
                       ) : (
-                        <VersionDetailView versions={detail[card.id] ?? []} />
+                        <VersionDetailView
+                          versions={detail[card.id] ?? []}
+                          card={card}
+                          siblings={items}
+                        />
                       )}
                     </div>
                   )}
@@ -385,8 +390,11 @@ export default function ScorecardsTab() {
               />
             </div>
             <p className="mt-3 text-[11px] text-neutral-600">
-              A fixed set of call stages, weighted evenly. It can't be edited —
-              company scorecards are how you change what good looks like.
+              Gravix&apos;s built-in rubric: the same four call stages, weighted
+              evenly, applied to every call type. It&apos;s part of the product
+              rather than your data, so it can&apos;t be edited, archived or
+              switched off — a company scorecard simply takes precedence over it
+              once activated.
             </p>
           </div>
         </SectionCard>
@@ -443,12 +451,23 @@ function StageWeightBars({ weights }: { weights: StageWeight[] }) {
   );
 }
 
-function VersionDetailView({ versions }: { versions: VersionDetail[] }) {
+function VersionDetailView({
+  versions,
+  card,
+  siblings,
+}: {
+  versions: VersionDetail[];
+  card: ScorecardItem;
+  siblings: ScorecardItem[];
+}) {
   if (!versions.length) {
     return <p className="text-xs text-neutral-500">This scorecard has no versions yet.</p>;
   }
   // Show the active version if there is one, else the newest.
   const version = versions.find((v) => v.status === "active") ?? versions[0];
+  // POST /activate always targets the card's draft version, so readiness is
+  // about the draft — never about the version being displayed.
+  const draft = versions.find((v) => v.status === "draft") ?? null;
   const weights = version.stage_weights ?? [];
   const criteria = version.criteria ?? [];
   const stages = weights.length
@@ -456,17 +475,29 @@ function VersionDetailView({ versions }: { versions: VersionDetail[] }) {
     : Array.from(new Set(criteria.map((c) => c.stage)));
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500">
-        <span>Version {version.version}</span>
+    <div className="space-y-5">
+      {/* STATUS ROW */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+        <span className="font-medium text-neutral-300">Version {version.version}</span>
         <StatusPill status={version.status} />
-        <span>
+        <span className="text-neutral-500">
           {version.status === "active"
             ? `Activated ${formatDate(version.activated_at)}`
             : "Not applied to scoring"}
         </span>
+        <span className="text-neutral-600">·</span>
+        <span className="text-neutral-500">
+          {version.call_types?.length
+            ? version.call_types.map(callTypeLabel).join(" · ")
+            : card.is_company_default
+            ? "Every call type"
+            : "No call types set"}
+        </span>
         {versions.length > 1 && (
-          <span className="text-neutral-600">{versions.length} versions in history</span>
+          <>
+            <span className="text-neutral-600">·</span>
+            <span className="text-neutral-600">{versions.length} versions in history</span>
+          </>
         )}
       </div>
 
@@ -474,50 +505,101 @@ function VersionDetailView({ versions }: { versions: VersionDetail[] }) {
         <p className="text-xs text-neutral-500">Note: {version.activation_note}</p>
       )}
 
-      {weights.length > 0 && (
-        <div>
-          <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-neutral-600">
-            Stage weights
-          </div>
-          <StageWeightBars weights={weights} />
+      {/* CURRENTLY ACTIVE — read-only status, not a control. */}
+      {version.status === "active" && (
+        <div className="rounded-lg border border-brand-500/25 bg-brand-500/5 px-3 py-2.5">
+          <p className="text-xs text-brand-300">
+            Currently active — this version scores new calls.
+          </p>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            Already-scored calls keep the score they were given. Changing the
+            active scorecard isn&apos;t available here yet.
+          </p>
         </div>
       )}
 
+      {/* STAGE WEIGHTS */}
+      {weights.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-600">
+              Stage weights
+            </span>
+            <span className="text-[10px] tabular-nums text-neutral-600">
+              Totals {weights.reduce((s, w) => s + (Number(w.weight) || 0), 0)}%
+            </span>
+          </div>
+          <StageWeightBars weights={weights} />
+          {weights.some((w) => w.guidance) && (
+            <ul className="mt-3 space-y-1">
+              {weights
+                .filter((w) => w.guidance)
+                .map((w) => (
+                  <li key={w.stage} className="text-[11px] text-neutral-500">
+                    <span className="text-neutral-400">{stageLabel(w.stage)}:</span>{" "}
+                    {w.guidance}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* CRITERIA */}
       {criteria.length > 0 ? (
         <div>
-          <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-neutral-600">
-            Criteria
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-600">
+              Criteria
+            </span>
+            <span className="text-[10px] tabular-nums text-neutral-600">
+              {criteria.length} across {stages.length} stages
+            </span>
           </div>
           <div className="space-y-3">
             {stages.map((stage) => {
               const forStage = criteria.filter((c) => c.stage === stage);
               if (!forStage.length) return null;
+              const weight = weights.find((w) => w.stage === stage)?.weight;
               return (
-                <div key={stage}>
-                  <div className="text-xs font-medium text-neutral-300">
-                    {stageLabel(stage)}
-                    <span className="ml-1.5 text-[10px] tabular-nums text-neutral-600">
-                      {forStage.length}
+                <div
+                  key={stage}
+                  className="rounded-lg border border-neutral-800/70 px-3 py-2.5"
+                >
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-medium text-neutral-300">
+                      {stageLabel(stage)}
+                    </span>
+                    <span className="text-[10px] tabular-nums text-neutral-600">
+                      {weight != null ? `${weight}% · ` : ""}
+                      {forStage.length} criteri{forStage.length === 1 ? "on" : "a"}
                     </span>
                   </div>
-                  <ul className="mt-1.5 space-y-1.5">
+                  <ul className="mt-2 space-y-2">
                     {forStage.map((c) => (
-                      <li key={c.id} className="flex flex-wrap items-baseline gap-2">
-                        <span className="text-xs text-neutral-400">{c.label}</span>
-                        {c.emphasis && c.emphasis !== "standard" && (
-                          <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
-                            {EMPHASIS_LABELS[c.emphasis] ?? c.emphasis}
-                          </span>
-                        )}
-                        {c.critical && (
-                          <span className="rounded border border-warning-500/30 bg-warning-500/10 px-1 text-[10px] text-warning-300">
-                            Critical
-                          </span>
-                        )}
-                        {c.pass_fail && (
-                          <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
-                            Pass / fail
-                          </span>
+                      <li key={c.id}>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <span className="text-xs text-neutral-300">{c.label}</span>
+                          {c.emphasis && c.emphasis !== "standard" && (
+                            <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                              {EMPHASIS_LABELS[c.emphasis] ?? c.emphasis}
+                            </span>
+                          )}
+                          {c.critical && (
+                            <span className="rounded border border-warning-500/30 bg-warning-500/10 px-1 text-[10px] text-warning-300">
+                              Critical
+                            </span>
+                          )}
+                          {c.pass_fail && (
+                            <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                              Pass / fail
+                            </span>
+                          )}
+                        </div>
+                        {(c.description || c.scoring_guidance) && (
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
+                            {c.description || c.scoring_guidance}
+                          </p>
                         )}
                       </li>
                     ))}
@@ -532,6 +614,104 @@ function VersionDetailView({ versions }: { versions: VersionDetail[] }) {
           No criteria on this version — stage weights alone decide the score.
         </p>
       )}
+
+      {/* DRAFT READINESS — display only, no activation action. */}
+      {draft && <ReadinessPanel draft={draft} card={card} siblings={siblings} />}
+    </div>
+  );
+}
+
+/**
+ * Shows whether a draft version WOULD pass the API's activation gate. Display
+ * only: Day 226 ships no activation action, so this never sends POST /activate
+ * and never sends replace_conflicts.
+ */
+function ReadinessPanel({
+  draft,
+  card,
+  siblings,
+}: {
+  draft: VersionDetail;
+  card: ScorecardItem;
+  siblings: ScorecardItem[];
+}) {
+  const readiness = computeReadiness({
+    weights: (draft.stage_weights ?? []).map((w) => ({ stage: w.stage, weight: w.weight })),
+    criteriaCount: (draft.criteria ?? []).length,
+    callTypes: draft.call_types ?? [],
+    isCompanyDefault: card.is_company_default,
+  });
+
+  const conflicts = previewConflicts(
+    {
+      scorecardId: card.id,
+      isCompanyDefault: card.is_company_default,
+      callTypes: draft.call_types ?? [],
+    },
+    siblings.map((s) => ({
+      scorecardId: s.id,
+      scorecardName: scorecardLabel(s.name),
+      isCompanyDefault: s.is_company_default,
+      status: s.status,
+      activeVersion: s.active_version
+        ? { version: s.active_version.version, call_types: s.active_version.call_types ?? [] }
+        : null,
+    }))
+  );
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs font-medium text-neutral-300">
+          Draft version {draft.version} — activation readiness
+        </span>
+        <span
+          className={
+            readiness.ready
+              ? "inline-flex items-center rounded-full border border-success-500/30 bg-success-500/10 px-2 py-0.5 text-[10px] text-success-300"
+              : "inline-flex items-center rounded-full border border-warning-500/30 bg-warning-500/10 px-2 py-0.5 text-[10px] text-warning-300"
+          }
+        >
+          {readiness.ready ? "Meets requirements" : "Not ready"}
+        </span>
+      </div>
+
+      <ul className="mt-2.5 space-y-1.5">
+        {readiness.checks.map((c) => (
+          <li key={c.id} className="flex items-baseline gap-2 text-[11px]">
+            <span className={c.ok ? "text-success-300" : "text-neutral-600"}>
+              {c.ok ? "✓" : "○"}
+            </span>
+            <span className={c.ok ? "text-neutral-400" : "text-neutral-300"}>{c.label}</span>
+            <span className="text-neutral-600">{c.detail}</span>
+          </li>
+        ))}
+      </ul>
+
+      {conflicts.length > 0 && (
+        <div className="mt-3 border-t border-neutral-900 pt-2.5">
+          <p className="text-[11px] text-warning-300">
+            Would clash with {conflicts.length} active scorecard
+            {conflicts.length === 1 ? "" : "s"}
+          </p>
+          <ul className="mt-1 space-y-1">
+            {conflicts.map((c) => (
+              <li key={`${c.scorecardName}-${c.version}`} className="text-[11px] text-neutral-500">
+                {c.scorecardName} v{c.version} —{" "}
+                {c.reason === "call_type"
+                  ? `already active for ${c.callTypes.map(callTypeLabel).join(", ")}`
+                  : "is the current company default"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="mt-3 text-[11px] text-neutral-600">
+        A preview of the checks Gravix runs at activation — nothing is activated
+        or replaced from this page. Activation arrives with the Scorecard Studio
+        editor.
+      </p>
     </div>
   );
 }

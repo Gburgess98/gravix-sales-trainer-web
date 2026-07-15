@@ -33,9 +33,10 @@ check() {
   [[ "$ok" == "0" ]] || fail=1
 }
 
-# Code only — strips `//` comment lines so the honest comments describing what
-# was deliberately NOT built can't trip the "no fake controls" greps below.
-code_of() { grep -vE '^[[:space:]]*//' "$1"; }
+# Code only — strips `//` line comments AND `/* … */` block-comment lines, so the
+# honest comments describing what was deliberately NOT built (which necessarily
+# name /activate, AI Builder…) can't trip the "no fake controls" greps below.
+code_of() { grep -vE '^[[:space:]]*(//|/\*|\*)' "$1"; }
 
 echo "Premium UX / Day 225 — Intelligence workspace MVP (own checks only)"
 
@@ -78,10 +79,11 @@ grep -q 'proxyFetch(`/v1/intelligence/scorecards/${id}`' "$SC"
 check "Scorecard detail reads GET /v1/intelligence/scorecards/:id" $?
 
 # Nothing may bypass the proxy or invent an endpoint.
+ok=0
 for f in "$CTX" "$SC" "$PAGE"; do
-  if code_of "$f" | grep -qE 'fetch\("http|fetch\(`http|NEXT_PUBLIC_API|localhost:'; then false; break; fi
+  if code_of "$f" | grep -qE 'fetch\("http|fetch\(`http|NEXT_PUBLIC_API|localhost:'; then ok=1; fi
 done
-check "no direct-backend calls — everything goes through proxyFetch" $?
+check "no direct-backend calls — everything goes through proxyFetch" $ok
 
 if code_of "$CTX" | grep -oE '/v1/intelligence[a-z/{}$`?=&.-]*' |
    grep -vE '^/v1/intelligence/context(/compiled\?state=|/publish)?' | grep -q .; then false; else true; fi
@@ -102,20 +104,23 @@ grep -q 'read-only here for now' "$SC"
 check "read-only status stated honestly to the manager" $?
 
 # --- No fake controls anywhere ---------------------------------------------
+ok=0
 for f in "$PAGE" "$CTX" "$SC"; do
-  if code_of "$f" | grep -qiE 'autofill|auto-fill|ai builder|build with ai|generate with ai|scrape|crawl website|import from website'; then false; break; fi
+  if code_of "$f" | grep -qiE 'autofill|auto-fill|ai builder|build with ai|generate with ai|scrape|crawl website|import from website'; then ok=1; fi
 done
-check "no AI Autofill / AI Builder / website scraping controls" $?
+check "no AI Autofill / AI Builder / website scraping controls" $ok
 
+ok=0
 for f in "$PAGE" "$CTX" "$SC"; do
-  if code_of "$f" | grep -qiE 'coming soon|not yet available</|placeholder button'; then false; break; fi
+  if code_of "$f" | grep -qiE 'coming soon|not yet available</|placeholder button'; then ok=1; fi
 done
-check "no 'coming soon' stub controls" $?
+check "no 'coming soon' stub controls" $ok
 
+ok=0
 for f in "$PAGE" "$CTX" "$SC"; do
-  if code_of "$f" | grep -qiE 'objection library|playbook library|sparring scenario engine'; then false; break; fi
+  if code_of "$f" | grep -qiE 'objection library|playbook library|sparring scenario engine'; then ok=1; fi
 done
-check "no Objection/Playbook library surfaces smuggled in" $?
+check "no Objection/Playbook library surfaces smuggled in" $ok
 
 # Only the tabs that exist may be advertised.
 if code_of "$PAGE" | grep -qiE 'id: "(objections|playbook|team|builder|settings)"'; then false; else true; fi
@@ -185,10 +190,11 @@ grep -q 'Intelligence is available to managers' "$CTX" &&
   grep -q 'Intelligence is available to managers' "$SC"
 check "reps get a calm no-access state, not an error" $?
 
+ok=0
 for f in "$CTX" "$SC"; do
-  grep -q 'EmptyState' "$f" && grep -q 'animate-pulse' "$f" || { false; break; }
+  grep -q 'EmptyState' "$f" && grep -q 'animate-pulse' "$f" || ok=1
 done
-check "loading + empty/error states present on both tabs" $?
+check "loading + empty/error states present on both tabs" $ok
 
 # --- Raw identifier safety --------------------------------------------------
 grep -q 'UUID_RE' "$SC" && grep -q 'function scorecardLabel' "$SC"
@@ -201,10 +207,11 @@ if code_of "$CTX" | grep -qE '>\{(draftRow|published)\.id\}<'; then false; else 
 check "no raw context id rendered as a visible label" $?
 
 # --- Colour discipline ------------------------------------------------------
+ok=0
 for f in "$PAGE" "$CTX" "$SC"; do
-  if grep -qE 'fuchsia|purple-|pink-|cyan-[0-9]' "$f"; then false; break; fi
+  if grep -qE 'fuchsia|purple-|pink-|cyan-[0-9]' "$f"; then ok=1; fi
 done
-check "no arcade colour reintroduced" $?
+check "no arcade colour reintroduced" $ok
 
 # --- Nav wiring -------------------------------------------------------------
 grep -q "{ label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: \['manager'\] }" "$NAV"

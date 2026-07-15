@@ -38,10 +38,11 @@ check "provenance helper module exists" $?
 grep -q 'export function getScoringProvenance' "$HELPER"
 check "helper exports getScoringProvenance" $?
 
+ok=0
 for f in scorecardLabel scorecardSourceLabel contextLabel modelLabel hasCustomScorecard hasCompanyContext detailTitle; do
-  grep -q "$f" "$HELPER" || { false; break; }
+  grep -q "$f" "$HELPER" || ok=1
 done
-check "helper returns the normalised provenance shape" $?
+check "helper returns the normalised provenance shape" $ok
 
 grep -q 'getScoringProvenance' "$CALL" && grep -q 'const provenance' "$CALL"
 check "call review page consumes the helper" $?
