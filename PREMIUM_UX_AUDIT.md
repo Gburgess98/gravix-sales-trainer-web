@@ -2669,3 +2669,86 @@ behavioural fixtures — old/absent meta, default, company default, call-type,
 context, UUID-shaped and missing names, junk shapes). The fixtures run on
 Node's native type stripping, so they add no dependency to a repo with no
 test runner.
+
+## Day 225 — Intelligence workspace MVP (WEB-only)
+
+Days 218–224 built the Intelligence Layer data plane and proved it live: UFC
+context v1 published, "UFC Sales Scorecard" v1 active/company-default, and
+`/calls/[id]` showing "Scored with UFC Sales Scorecard v1" (Day 223). None of
+it had a manager-facing surface — the only way to see or change company
+intelligence was the API. Day 225 adds that surface at `/intelligence`.
+Additive: no API changes, no scoring changes, no migrations.
+
+### Route and nav
+
+`/intelligence` with two tabs, deep-linked via `?tab=context` (default) and
+`?tab=scorecards`. Per `CONTEXT_ENGINE_ROUTE_PLAN.md` §1–2, executed as
+planned: `Sparkles` icon, Admin section between Analytics and Settings,
+`roles: ['manager']`, plus `/intelligence` in `SHELL_PATHS`.
+
+The naming collision with the "Intelligence Cockpit" branding on
+`/crm/analytics` is resolved by role, not by renaming:
+
+- `/crm/analytics` — **observe**: what the team is doing.
+- `/intelligence` — **teach**: what Gravix knows about how you sell.
+
+Sidebar labels ("Analytics" vs "Intelligence") keep them apart, and neither
+page cross-links yet — Day 208 called for that only if testing shows confusion.
+
+Tab state reads `window.location` rather than `useSearchParams`, matching the
+Day 165/178 pattern, which keeps the page out of a Suspense boundary.
+
+### Context tab
+
+Reads `GET /v1/intelligence/context` (draft + published) and
+`GET /v1/intelligence/context/compiled?state=` for the preview. Shows published
+version and date, draft state, section coverage across the six API sections,
+and the compiled block — labelled "What Gravix reads", because it is literally
+the text handed to scoring, built deterministically with no AI involved.
+
+Editing is scoped to the free-text fields the API's `compileContextBlock`
+consumes: `profile.*`, `offering.pricing_positioning.*`, `tone.*`. Save via
+`PUT`, publish via `POST /context/publish`, and the two stay separate steps —
+saving never publishes, matching the API's own contract.
+
+**The data-safety rule that shapes this tab:** `PUT /context` replaces the
+entire draft context object. The editor therefore keeps the loaded context as
+its merge base and writes edits into it immutably (`writePath`), so the
+structured lists it does not expose — products, objections, competitors,
+compliance — survive every round-trip. Building the payload from the form
+fields alone would have silently deleted the seeded UFC products and objections
+on a manager's first save. Those lists are rendered read-only rather than
+hidden, so the manager sees the whole picture and knows they are in play.
+
+A second guard: when no draft row exists, the editor seeds from the published
+context, so a first save can never produce a draft emptier than what is live.
+
+### Scorecards tab
+
+Reads `GET /v1/intelligence/scorecards` (company cards + the code-defined
+`default_rubric`) and fetches `GET /:id` on demand for the detail panel, since
+the list endpoint omits stage weights and criteria. Shows status, version,
+call types, company-default flag, stage weights and a criteria summary grouped
+by stage, with emphasis/critical/pass-fail chips.
+
+Read-only by design. The API also exposes create/update/activate/archive/fork,
+but activation changes how every subsequent call is scored, and doing that
+justice needs the confirmation + diff UX from `SCORECARD_STUDIO_UX_BLUEPRINT.md`.
+Rather than ship a half-safe mutation path, the tab renders no mutating
+controls at all — and says so in plain copy rather than greying out fake
+buttons.
+
+The "scoring today" card derives its claim from the API (`active_version` +
+`is_company_default`), never from copy. With the UFC seed it honestly reads
+"UFC Sales Scorecard v1"; on a company with nothing active it reads "Gravix
+Default rubric", which is the truth.
+
+### Deliberately not built
+
+AI Builder, AI Autofill, website scraping, Objection Library, Playbook
+Library, manager team management, runtime scoring controls, custom stage
+editor, arbitrary scorecard sections, and repeater editors for the structured
+context lists. None have an API behind them today, so none are drawn — no
+stubs, no "coming soon".
+
+Validate: `npm run validate-premium-ux-day-225`.

@@ -1,0 +1,537 @@
+"use client";
+
+// Intelligence Layer — Day 225: Scorecard Studio tab (read-only MVP).
+//
+// Backed by the Day 219B/220 API (manager-gated, company-scoped):
+//   GET /v1/intelligence/scorecards       company cards + the Gravix default
+//   GET /v1/intelligence/scorecards/:id   versions with stage weights + criteria
+//
+// READ-ONLY BY DESIGN. The API also exposes create/update/activate/archive/fork,
+// but lifecycle actions carry real scoring consequences (activating a scorecard
+// changes how every subsequent call is scored), and doing them justice needs the
+// confirmation + diff UX from SCORECARD_STUDIO_UX_BLUEPRINT.md. Until that ships
+// this tab renders no mutating controls at all — no fake buttons, no disabled
+// "coming soon" stubs, and no AI Builder (which has no API behind it yet).
+//
+// The list endpoint omits stage weights and criteria, so the detail panel
+// fetches GET /:id on demand rather than inventing a summary from the list.
+
+import { useCallback, useEffect, useState } from "react";
+import { proxyFetch } from "@/lib/api";
+import { SectionCard } from "@/components/ui/section-card";
+import { EmptyState } from "@/components/ui/empty-state";
+
+/* ----------------------------- Types ----------------------------- */
+
+type VersionSummary = {
+  id: string;
+  version: number;
+  status: string;
+  call_types: string[];
+  origin: string;
+  activated_at: string | null;
+};
+
+type ScorecardItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  is_company_default: boolean;
+  updated_at: string | null;
+  latest_version: VersionSummary | null;
+  active_version: VersionSummary | null;
+};
+
+type Criterion = {
+  id: string;
+  stage: string;
+  label: string;
+  description: string | null;
+  scoring_guidance: string | null;
+  pass_fail: boolean;
+  critical: boolean;
+  emphasis: string;
+};
+
+type StageWeight = { stage: string; weight: number; guidance: string | null };
+
+type VersionDetail = VersionSummary & {
+  stage_weights?: StageWeight[];
+  criteria?: Criterion[];
+  activation_note: string | null;
+};
+
+type DefaultRubric = {
+  id: string;
+  name: string;
+  version: string;
+  read_only: boolean;
+  stages: { stage: string; weight: number }[];
+};
+
+type LoadError = "forbidden" | "not_migrated" | "failed";
+
+/* ---------------------------- Labels ----------------------------- */
+
+const STAGE_LABELS: Record<string, string> = {
+  intro: "Intro",
+  discovery: "Discovery",
+  objection: "Objection",
+  close: "Close",
+};
+
+const CALL_TYPE_LABELS: Record<string, string> = {
+  outbound_cold: "Outbound cold",
+  inbound_enquiry: "Inbound enquiry",
+  discovery: "Discovery",
+  demo: "Demo",
+  objection_heavy: "Objection heavy",
+  renewal_upsell: "Renewal & upsell",
+};
+
+const EMPHASIS_LABELS: Record<string, string> = {
+  minor: "Minor",
+  standard: "Standard",
+  major: "Major",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  active: "Active",
+  archived: "Archived",
+  superseded: "Superseded",
+};
+
+function stageLabel(stage: string): string {
+  return STAGE_LABELS[stage] ?? stage.replace(/_/g, " ");
+}
+
+function callTypeLabel(t: string): string {
+  return CALL_TYPE_LABELS[t] ?? t.replace(/_/g, " ");
+}
+
+function statusLabel(s: string): string {
+  return STATUS_LABELS[s] ?? s.replace(/_/g, " ");
+}
+
+// Never let a UUID-shaped or missing name become a visible label
+// (PREMIUM_UX_AUDIT §38, same rule as Day 223's provenance helper).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function scorecardLabel(name: string | null | undefined): string {
+  const s = String(name ?? "").trim();
+  if (!s || UUID_RE.test(s)) return "Untitled scorecard";
+  return s;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/* --------------------------- Component --------------------------- */
+
+export default function ScorecardsTab() {
+  const [items, setItems] = useState<ScorecardItem[]>([]);
+  const [defaultRubric, setDefaultRubric] = useState<DefaultRubric | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
+
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Record<string, VersionDetail[]>>({});
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoaded(false);
+    setLoadError(null);
+    try {
+      const res = await proxyFetch(`/v1/intelligence/scorecards`, { cache: "no-store" });
+      if (res.status === 401 || res.status === 403) {
+        setLoadError("forbidden");
+        return;
+      }
+      const json = await res.json();
+      if (res.status === 503 || json?.error === "scorecard_studio_not_migrated") {
+        setLoadError("not_migrated");
+        return;
+      }
+      if (!res.ok || json?.ok !== true) {
+        setLoadError("failed");
+        return;
+      }
+      setItems(Array.isArray(json.items) ? json.items : []);
+      setDefaultRubric(json.default_rubric ?? null);
+    } catch {
+      setLoadError("failed");
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openDetail = useCallback(
+    async (id: string) => {
+      if (openId === id) {
+        setOpenId(null);
+        return;
+      }
+      setOpenId(id);
+      setDetailError(false);
+      if (detail[id]) return;
+      setDetailLoading(true);
+      try {
+        const res = await proxyFetch(`/v1/intelligence/scorecards/${id}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (!res.ok || json?.ok !== true) {
+          setDetailError(true);
+          return;
+        }
+        setDetail((prev) => ({ ...prev, [id]: json.versions ?? [] }));
+      } catch {
+        setDetailError(true);
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [openId, detail]
+  );
+
+  /* -------------------------- Render -------------------------- */
+
+  if (loaded && loadError === "forbidden") {
+    return (
+      <SectionCard padded>
+        <EmptyState
+          message="Intelligence is available to managers"
+          sub="Ask your manager or administrator if you need access to scorecards."
+        />
+      </SectionCard>
+    );
+  }
+
+  if (loaded && loadError) {
+    return (
+      <SectionCard padded>
+        <EmptyState
+          message={
+            loadError === "not_migrated"
+              ? "Scorecards aren't switched on for this environment yet"
+              : "Scorecards are unavailable right now"
+          }
+          sub="Your scoring hasn't changed — this is just a loading problem."
+          action={{ label: "Try again", onClick: () => void load() }}
+        />
+      </SectionCard>
+    );
+  }
+
+  if (!loaded) {
+    return (
+      <div className="space-y-3">
+        {[0, 1].map((i) => (
+          <div key={i} className="h-28 animate-pulse rounded-xl bg-neutral-900/60" />
+        ))}
+      </div>
+    );
+  }
+
+  const activeCard = items.find((i) => i.active_version && i.is_company_default) ?? null;
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-neutral-400">
+        Scorecards teach Gravix what a good call looks like — the stages that
+        matter and how much each one counts. The active company scorecard is
+        applied when calls are scored.
+      </p>
+
+      {/* WHAT IS SCORING CALLS TODAY — only ever claims what the API reports. */}
+      <SectionCard
+        variant={activeCard ? "ai" : "default"}
+        padded
+        eyebrow="Scoring today"
+        title={
+          activeCard
+            ? `${scorecardLabel(activeCard.name)} v${activeCard.active_version?.version ?? 1}`
+            : "Gravix Default rubric"
+        }
+        subtitle={
+          activeCard
+            ? "Your company scorecard is active and applied to new calls."
+            : "No company scorecard is active, so calls are scored with the Gravix default."
+        }
+      >
+        <p className="text-xs text-neutral-500">
+          {activeCard
+            ? `Activated ${formatDate(activeCard.active_version?.activated_at ?? null)}. Previous versions are archived, never deleted.`
+            : "Activating a company scorecard is done from the Scorecard Studio lane — it isn't available in this release."}
+        </p>
+      </SectionCard>
+
+      {/* COMPANY SCORECARDS */}
+      <SectionCard
+        eyebrow="Company"
+        title="Your scorecards"
+        subtitle="Built for your business — select one to see its stages and criteria"
+      >
+        {items.length === 0 ? (
+          <EmptyState
+            message="No company scorecards yet"
+            sub="Until one is active, every call is scored with the Gravix default rubric."
+          />
+        ) : (
+          <div className="divide-y divide-neutral-900">
+            {items.map((card) => {
+              const version = card.active_version ?? card.latest_version;
+              const isOpen = openId === card.id;
+              return (
+                <div key={card.id}>
+                  <button
+                    type="button"
+                    onClick={() => void openDetail(card.id)}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-neutral-900/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-neutral-100">
+                          {scorecardLabel(card.name)}
+                        </span>
+                        {version && (
+                          <span className="text-xs text-neutral-500">
+                            v{version.version}
+                          </span>
+                        )}
+                        <StatusPill status={card.status} />
+                        {card.is_company_default && (
+                          <span className="inline-flex items-center rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-300">
+                            Company default
+                          </span>
+                        )}
+                      </div>
+                      {card.description && (
+                        <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
+                          {card.description}
+                        </p>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-neutral-600">
+                        {version?.call_types?.length
+                          ? `Applies to: ${version.call_types.map(callTypeLabel).join(" · ")}`
+                          : "Applies to all call types"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs text-neutral-500">
+                      {isOpen ? "Hide" : "View"}
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-neutral-900 bg-neutral-950/60 px-5 py-4">
+                      {detailLoading && !detail[card.id] ? (
+                        <div className="h-20 animate-pulse rounded-lg bg-neutral-900/60" />
+                      ) : detailError && !detail[card.id] ? (
+                        <p className="text-xs text-neutral-500">
+                          Couldn&apos;t load this scorecard&apos;s detail.{" "}
+                          <button
+                            type="button"
+                            onClick={() => void openDetail(card.id)}
+                            className="underline hover:text-neutral-300"
+                          >
+                            Try again
+                          </button>
+                        </p>
+                      ) : (
+                        <VersionDetailView versions={detail[card.id] ?? []} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* GRAVIX DEFAULT */}
+      {defaultRubric && (
+        <SectionCard
+          eyebrow="Built in"
+          title={defaultRubric.name}
+          subtitle="Gravix's own rubric — used whenever no company scorecard is active"
+        >
+          <div className="px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500">{defaultRubric.version}</span>
+              <span className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                Read-only
+              </span>
+            </div>
+            <div className="mt-3">
+              <StageWeightBars
+                weights={defaultRubric.stages.map((s) => ({
+                  stage: s.stage,
+                  weight: s.weight,
+                  guidance: null,
+                }))}
+              />
+            </div>
+            <p className="mt-3 text-[11px] text-neutral-600">
+              A fixed set of call stages, weighted evenly. It can't be edited —
+              company scorecards are how you change what good looks like.
+            </p>
+          </div>
+        </SectionCard>
+      )}
+
+      <p className="text-xs text-neutral-600">
+        Scorecards are read-only here for now — creating, editing and activating
+        them arrives in a later release. Nothing on this page changes how calls
+        are scored.
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------- Sub-components ------------------------ */
+
+function StatusPill({ status }: { status: string }) {
+  const active = status === "active";
+  return (
+    <span
+      className={
+        active
+          ? "inline-flex items-center rounded-full border border-success-500/30 bg-success-500/10 px-2 py-0.5 text-[10px] text-success-300"
+          : "inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400"
+      }
+    >
+      {statusLabel(status)}
+    </span>
+  );
+}
+
+function StageWeightBars({ weights }: { weights: StageWeight[] }) {
+  if (!weights.length) return null;
+  const max = Math.max(...weights.map((w) => w.weight), 1);
+  return (
+    <div className="space-y-2">
+      {weights.map((w) => (
+        <div key={w.stage} className="flex items-center gap-3">
+          <span className="w-20 shrink-0 text-xs text-neutral-400">
+            {stageLabel(w.stage)}
+          </span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-900">
+            <div
+              className="h-full rounded-full bg-brand-500/60"
+              style={{ width: `${(w.weight / max) * 100}%` }}
+            />
+          </div>
+          <span className="w-10 shrink-0 text-right text-xs tabular-nums text-neutral-500">
+            {w.weight}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VersionDetailView({ versions }: { versions: VersionDetail[] }) {
+  if (!versions.length) {
+    return <p className="text-xs text-neutral-500">This scorecard has no versions yet.</p>;
+  }
+  // Show the active version if there is one, else the newest.
+  const version = versions.find((v) => v.status === "active") ?? versions[0];
+  const weights = version.stage_weights ?? [];
+  const criteria = version.criteria ?? [];
+  const stages = weights.length
+    ? weights.map((w) => w.stage)
+    : Array.from(new Set(criteria.map((c) => c.stage)));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+        <span>Version {version.version}</span>
+        <StatusPill status={version.status} />
+        <span>
+          {version.status === "active"
+            ? `Activated ${formatDate(version.activated_at)}`
+            : "Not applied to scoring"}
+        </span>
+        {versions.length > 1 && (
+          <span className="text-neutral-600">{versions.length} versions in history</span>
+        )}
+      </div>
+
+      {version.activation_note && (
+        <p className="text-xs text-neutral-500">Note: {version.activation_note}</p>
+      )}
+
+      {weights.length > 0 && (
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-neutral-600">
+            Stage weights
+          </div>
+          <StageWeightBars weights={weights} />
+        </div>
+      )}
+
+      {criteria.length > 0 ? (
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-neutral-600">
+            Criteria
+          </div>
+          <div className="space-y-3">
+            {stages.map((stage) => {
+              const forStage = criteria.filter((c) => c.stage === stage);
+              if (!forStage.length) return null;
+              return (
+                <div key={stage}>
+                  <div className="text-xs font-medium text-neutral-300">
+                    {stageLabel(stage)}
+                    <span className="ml-1.5 text-[10px] tabular-nums text-neutral-600">
+                      {forStage.length}
+                    </span>
+                  </div>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {forStage.map((c) => (
+                      <li key={c.id} className="flex flex-wrap items-baseline gap-2">
+                        <span className="text-xs text-neutral-400">{c.label}</span>
+                        {c.emphasis && c.emphasis !== "standard" && (
+                          <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                            {EMPHASIS_LABELS[c.emphasis] ?? c.emphasis}
+                          </span>
+                        )}
+                        {c.critical && (
+                          <span className="rounded border border-warning-500/30 bg-warning-500/10 px-1 text-[10px] text-warning-300">
+                            Critical
+                          </span>
+                        )}
+                        {c.pass_fail && (
+                          <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                            Pass / fail
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-neutral-600">
+          No criteria on this version — stage weights alone decide the score.
+        </p>
+      )}
+    </div>
+  );
+}

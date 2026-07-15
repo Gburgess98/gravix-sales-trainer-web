@@ -10,6 +10,7 @@ import {
   BarChart2,
   Briefcase,
   Settings,
+  Sparkles,
   Handshake,
   ShieldCheck,
   UserCircle,
@@ -49,6 +50,8 @@ export const SHELL_PATHS = [
   '/coaching',
   '/settings',
   '/team',
+  // Day 225 — Intelligence workspace (Context Engine + Scorecard Studio).
+  '/intelligence',
 ]
 
 export function isShellPath(pathname: string): boolean {
@@ -90,6 +93,12 @@ export const navigation: NavSection[] = [
     roles: ['manager'],
     items: [
       { label: 'Analytics', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
+      // Day 225 — Intelligence workspace, per CONTEXT_ENGINE_ROUTE_PLAN.md §2.
+      // Deliberately distinct from Analytics: /crm/analytics is "observe" (what
+      // the team is doing), /intelligence is "teach" (what Gravix knows about
+      // how you sell). Sparkles because Brain is Command Centre and BarChart2
+      // is Analytics — no duplicate labels or icons.
+      { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'] },
     ],
   },

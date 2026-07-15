@@ -325,3 +325,40 @@ deletes them.
 
 Practical effect: the seed survives a full validator sweep, and the validators
 can be run in any order before a demo.
+
+## Day 225 — /intelligence workspace checklist
+
+New manager surface at `/intelligence` (sidebar: Admin → Intelligence). Reseed
+before a demo (`seed:demo` → `seed:ufc-story` → `seed:ufc-intelligence`) so the
+tabs have the UFC assets to show.
+
+Walk it as Dana:
+
+- [ ] Sidebar shows **Intelligence** under Admin, between Analytics and
+      Settings. Analytics still goes to `/crm/analytics` — the two are distinct
+      destinations ("observe" vs "teach"), not duplicates.
+- [ ] `/intelligence` lands on the **Context** tab; the URL gains `?tab=context`
+      when you switch tabs, and `/intelligence?tab=scorecards` deep-links.
+- [ ] Context tab: "Published context" reads **v1** with a publish date, not
+      "None". Section coverage shows the seeded sections as **Taught**.
+- [ ] Context tab: the free-text fields are populated from the UFC context.
+      Editing one enables **Save draft**; **Publish context** stays disabled
+      until the draft is saved.
+- [ ] Context tab: "What Gravix reads" preview shows the compiled block for
+      **Published**; the Draft toggle shows the draft's block.
+- [ ] Context tab: products, objections and competitors appear under
+      "Reference" and are labelled read-only.
+- [ ] Scorecards tab: "Scoring today" reads **UFC Sales Scorecard v1**, not the
+      Gravix default.
+- [ ] Scorecards tab: the UFC card shows Active + Company default; selecting it
+      reveals stage weights and criteria grouped by stage.
+- [ ] Scorecards tab: **Gravix Default** still appears as a read-only card with
+      its even 25% stage weights.
+- [ ] No Autofill, no AI Builder, no "coming soon" buttons anywhere.
+- [ ] No raw UUIDs on screen — scorecards read by name, never by id.
+- [ ] Layout holds at desktop and narrow widths; no arcade colour.
+
+Careful with the seed: the Context tab can **publish**. Publishing from the UI
+creates context v2 and archives v1, so `validate:ufc-intelligence-seed` (which
+asserts v1) will then fail. If you publish while rehearsing, re-run
+`npm run seed:ufc-intelligence` before the demo.
