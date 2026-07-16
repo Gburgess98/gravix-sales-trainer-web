@@ -1265,7 +1265,9 @@ function ActivateModal({
                     : "every call type (company default)"
                   : callTypes.map((t) => CALL_TYPE_LABELS[t] ?? t).join(", ") || "—"}
               </li>
-              <li>{criteriaCount} criteria across the four stages</li>
+              <li>
+                {criteriaCount} criteri{criteriaCount === 1 ? "on" : "a"} across the four stages
+              </li>
               <li>{readinessReady ? "Meets every activation requirement" : "Not ready"}</li>
             </ul>
           </div>

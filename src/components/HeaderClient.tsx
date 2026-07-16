@@ -1,18 +1,14 @@
 // src/components/HeaderClient.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase-browser';
 import { useSession } from '@/lib/useSession';
 import Link from 'next/link';
 
 export default function HeaderClient() {
   const { session } = useSession();
-
-  // Optional: keep for debugging
-  useEffect(() => {
-    console.log('HeaderClient session →', session);
-  }, [session]);
+  const pathname = usePathname();
 
   // Retained for future use; header now avoids intercepting clicks
   const logout = async () => {
@@ -43,6 +39,10 @@ export default function HeaderClient() {
     // Hard redirect to login to reset all client state
     window.location.href = "/login";
   };
+
+  // The login page is a full-screen brand surface — a header whose only
+  // action would be "Login" (a link to the page itself) adds nothing.
+  if (pathname === '/login') return null;
 
   return (
     <header className="w-full border-b">

@@ -47,7 +47,9 @@ export default function LoginPage() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) throw authError;
-      router.replace("/recent-calls");
+      // Same destination as before, minus the hop through the deprecated
+      // /recent-calls redirect stub (Day 184 pattern).
+      router.replace("/call-library");
     } catch (err: any) {
       setError(err?.message || "Invalid email or password.");
     } finally {
@@ -70,7 +72,7 @@ export default function LoginPage() {
         {/* Brand */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1.5">
-            <Zap size={20} className="text-emerald-400" />
+            <Zap size={20} className="text-brand-400" />
             <span className="text-lg font-semibold tracking-tight text-white">Gravix</span>
           </div>
           <p className="text-sm text-neutral-500">AI Sales Training Platform</p>
@@ -93,7 +95,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-cyan-500/50 placeholder:text-neutral-600"
+                className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-600"
               />
             </div>
             <div>
@@ -108,7 +110,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 pr-10 text-sm text-white outline-none transition-colors focus:border-cyan-500/50 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 pr-10 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-600"
                 />
                 <button
                   type="button"

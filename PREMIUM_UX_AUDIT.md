@@ -2904,3 +2904,60 @@ scorecards, un-archive, version diffing, and any scoring-runtime change. The
 runtime path from Days 221–222 is untouched.
 
 Validate: `npm run validate-premium-ux-day-227`.
+
+## Day 228 — auth first impression (WEB-only)
+
+The two highest-trust findings from the Day 227 route audit, fixed:
+
+### Login page branding
+
+The login page still wore the retired emerald brand bolt (indigo has been the
+product brand since Day 194) and cyan focus rings from the arcade era. Both now
+use the brand token (`text-brand-400`, `focus:border-brand-500/50`). The
+legacy header rendered a "Login" button *on the login page itself* — a link to
+the current page; `HeaderClient` now renders nothing on `/login`, making it a
+clean full-screen brand surface. Its debug `console.log` of the session on
+every render went too. Post-login navigation goes straight to `/call-library`
+instead of hopping through the deprecated `/recent-calls` redirect stub — same
+destination, one less redirect.
+
+### Logged-out shell routes
+
+Logged-out visits to any shell route used to render the full sidebar shell
+with every proxy call quietly 401ing into "getting started" empty states — a
+convincing fake of a broken product, and exactly what a buyer would see if a
+session expired mid-demo. `ShellGate` now wraps the shell in the existing
+`AuthGate` (previously used only by `/calls/[id]`): while the session
+resolves it renders nothing, and without a session it redirects to `/login`.
+No loop is possible — `/login` and `/auth/*` are not shell paths. Manager-gate
+states for *authenticated* users ("Intelligence is available to managers")
+are untouched: they render after the gate passes.
+
+Known no-op found while wiring this: `middleware.ts` stamps `x-open-route: 1`
+on `/crm/overview` and `/recent-calls` **response** headers, but
+`layout.tsx` reads **request** headers, so `data-open-route` has never been
+stamped and the "open route" carve-out has never functioned (confirmed in the
+browser: `document.body.dataset.openRoute` is undefined on a direct visit).
+`AuthGate` honours the attribute anyway, so fixing the plumbing later will
+not fight the gate. Left as-is deliberately — auth-adjacent middleware is not
+patch-mode territory.
+
+### QA blocker found and fixed: proxy leaked the browser Origin
+
+Authenticated QA hit a hard blocker: every Scorecard Studio mutation answered
+500 `Internal error` while every GET worked. Root cause (proven with curl
+probes): browsers attach an `Origin` header to every POST/PUT — even
+same-origin — and the proxy forwarded it verbatim to the API, whose CORS
+allow-list only knows the configured `WEB_ORIGIN` plus the Vercel origins.
+Any other origin (dev previews on random ports, alternate deploys) threw in
+the CORS callback and surfaced as the global 500. GETs sailed through because
+same-origin GETs carry no Origin header at all.
+
+Fix: the proxy now strips `Origin` and `Referer` before forwarding — it is a
+server-to-server client of the API, and the API treats an absent Origin as
+exactly that. Same hygiene family as the Day 175 identity-header stripping.
+Editor create/save/fork/activate then passed end-to-end in the browser (see
+DEMO_VISUAL_QA_NOTES §Day 228), with the QA cards archived via the API's own
+lifecycle and `seed:ufc-intelligence` re-asserted (57/57).
+
+Validate: `npm run validate-premium-ux-day-228`.

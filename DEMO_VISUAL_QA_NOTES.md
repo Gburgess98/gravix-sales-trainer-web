@@ -467,3 +467,54 @@ Open `/intelligence?tab=scorecards` as Dana (manager).
 Careful with the seed: activating a draft over the UFC Sales Scorecard's call
 types supersedes the seeded active version. Re-run `npm run
 seed:ufc-intelligence` after rehearsing any replace flow.
+
+## Day 228 — auth first impression + Scorecard Studio authenticated QA
+
+### Login / logged-out behaviour (browser-verified, logged out)
+
+- [x] `/login` shows the indigo brand bolt, no header, no self-linking
+      "Login" button; form focus rings are brand-coloured.
+- [x] Logged-out `/dashboard` redirects cleanly to `/login` — no shell, no
+      fake empty states, no loop.
+- [x] Logged-out `/crm/overview` also redirects (the `x-open-route` carve-out
+      has never actually functioned — see PREMIUM_UX_AUDIT §Day 228).
+- [x] No console errors on the login page.
+
+### Scorecard Studio authenticated QA (as Dana) — PASSED 16 Jul 2026
+
+Walked live on the preview origin (localhost, non-3000 port):
+
+- [x] Context tab: UFC context v1 published, compiled block renders, publish
+      copy safe, coverage honest (competitors EMPTY). Narrow viewport holds.
+- [x] Scorecards list: UFC Sales Scorecard v1 Active + Company default;
+      Gravix Default read-only; "New scorecard" action present.
+- [x] UFC detail: weights 20/30/30/20 totalling 100% with guidance, 4
+      criteria with emphasis chips, active version locked with fork CTA and
+      zero editable fields.
+- [x] Create: modal → draft v1 at 25/25/25/25, auto-opened in the editor.
+- [x] Edit: call type tick, weight edits (95% total shows the warning
+      "must be 100% to activate (saving is fine)"), criterion with label /
+      emphasis Major / description / scoring guidance / good example;
+      Critical disabled until Pass/fail ticked; dirty chip live.
+- [x] Save: "Draft saved. Scoring is unchanged until you activate this
+      version." Readiness flips to Meets requirements.
+- [x] Activate: confirmation modal (summary + future-scoring-only copy +
+      activation note) → confirmed → card flips to locked read view with
+      fork CTA. No silent path anywhere.
+- [x] Fork: locked v1 → draft v2 with weights/criteria/call types copied;
+      readiness green; archive link correctly HIDDEN for the active card
+      (it only renders for never-active cards).
+- [x] Cleanup: all QA/probe cards archived via the API's own lifecycle,
+      `seed:ufc-intelligence` re-run, seed validator 57/57.
+
+**Blocker found & fixed during QA** — every mutation via the proxy answered
+500 while GETs worked: browsers attach `Origin` to all POSTs, the proxy
+forwarded it, and the API's CORS allow-list rejects any origin that isn't the
+configured WEB_ORIGIN. The proxy now strips `Origin`/`Referer` (it is a
+server-to-server client). See PREMIUM_UX_AUDIT §Day 228.
+
+Known cosmetic leftovers: archived Day 228 QA/probe cards remain visible in
+the scorecard list as honest history (nothing is ever deleted); a deletion
+script exists in the session scratchpad if a pristine list is wanted before
+demos. Readiness detail line says "1 criteria defined" (Day 226 helper,
+fixture-pinned).

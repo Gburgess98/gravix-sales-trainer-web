@@ -526,6 +526,16 @@ async function handle(req: NextRequest, context: any) {
     headers.delete("connection");
     headers.delete("content-length"); // important when we stream
 
+    // Day 228 — this proxy is a server-to-server client of the API, so the
+    // browser's Origin/Referer must not leak through. Browsers attach Origin
+    // to every POST/PUT (even same-origin), and the API's CORS allow-list
+    // only knows the configured WEB_ORIGIN — any other port or host (dev
+    // previews, alternate deploys) made every mutation 500 while GETs
+    // sailed through. The API treats an absent Origin as a trusted
+    // server-to-server call, which is exactly what this is.
+    headers.delete("origin");
+    headers.delete("referer");
+
     // Force plain text/JSON from origin (avoid gzipped bytes leaking through)
     headers.set("accept-encoding", "identity");
 
