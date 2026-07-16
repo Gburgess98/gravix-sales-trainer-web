@@ -413,3 +413,57 @@ mirrored from the API's activation gate, plus any conflict preview.
 Careful with the seed: the Context tab can still publish, which creates context
 v2 and archives v1, breaking `validate:ufc-intelligence-seed` (asserts v1).
 Re-run `npm run seed:ufc-intelligence` if anyone publishes while rehearsing.
+
+## Day 227 — Scorecard Studio editor QA
+
+Open `/intelligence?tab=scorecards` as Dana (manager).
+
+### Create
+
+- [ ] "New scorecard" opens a modal (name, optional description, company
+      default) — no templates, no AI anything.
+- [ ] Creating selects the new card, already expanded, with the draft editor
+      open on version 1 at 25/25/25/25.
+- [ ] A duplicate name answers "That name is already used by another
+      scorecard", not a raw error code.
+
+### Draft editing
+
+- [ ] Stage rail shows all four fixed stages with weight + criteria count;
+      no way to add or remove a stage exists anywhere.
+- [ ] Setting weights to a non-100 total still saves; the total line warns
+      "must be 100% to activate (saving is fine)" and Activate is blocked
+      with the reason listed.
+- [ ] A criterion expands to label, emphasis, description, scoring guidance,
+      good example, weak example, coaching prompt, pass/fail, critical.
+- [ ] Critical is disabled until pass/fail is ticked; unticking pass/fail
+      clears critical.
+- [ ] Add criterion stops at 12 per stage with the limit shown.
+- [ ] Reordering with ↑/↓ survives a save and reload (sort order persisted).
+- [ ] "Unsaved changes" chip appears on any edit; Save clears it and the
+      notice says scoring is unchanged until activation.
+
+### Fork / locked versions
+
+- [ ] The UFC Sales Scorecard's active version shows the locked panel with
+      "Create editable draft" — no editable fields on the active version.
+- [ ] Gravix Default card stays read-only with no workbench at all.
+
+### Activation
+
+- [ ] Activate opens a confirmation modal summarising name/version, call
+      types or company default, criteria count — with "future scoring only"
+      copy and an optional activation note.
+- [ ] On a call-type clash the modal switches to the conflict list naming
+      the other scorecard (name, never an id) and requires the checkbox
+      before "Replace and activate" enables. Cancel leaves everything as-is.
+- [ ] Nothing anywhere activates or replaces without those confirmations.
+
+### Archive
+
+- [ ] Archive appears only on never-activated scorecards, asks for
+      confirmation, and the copy states nothing is deleted.
+
+Careful with the seed: activating a draft over the UFC Sales Scorecard's call
+types supersedes the seeded active version. Re-run `npm run
+seed:ufc-intelligence` after rehearsing any replace flow.

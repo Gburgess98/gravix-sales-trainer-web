@@ -1,17 +1,18 @@
 "use client";
 
-// Intelligence Layer — Day 225: Scorecard Studio tab (read-only MVP).
+// Intelligence Layer — Day 225 (read views) + Day 227 (editor wiring).
 //
 // Backed by the Day 219B/220 API (manager-gated, company-scoped):
 //   GET /v1/intelligence/scorecards       company cards + the Gravix default
 //   GET /v1/intelligence/scorecards/:id   versions with stage weights + criteria
 //
-// READ-ONLY BY DESIGN. The API also exposes create/update/activate/archive/fork,
-// but lifecycle actions carry real scoring consequences (activating a scorecard
-// changes how every subsequent call is scored), and doing them justice needs the
-// confirmation + diff UX from SCORECARD_STUDIO_UX_BLUEPRINT.md. Until that ships
-// this tab renders no mutating controls at all — no fake buttons, no disabled
-// "coming soon" stubs, and no AI Builder (which has no API behind it yet).
+// THIS FILE STAYS READ-ONLY. Its read views are read-only here for now and
+// forever: the Day 225/226 validators pin that this file issues no mutating
+// request, wires no activate/archive/fork endpoint, and renders no editor
+// fields. Day 227's Scorecard Studio editor honours that boundary from the
+// outside — ScorecardStudioEditor.tsx renders every mutating control, and
+// src/lib/scorecardStudioApi.ts owns every mutating request. From the read
+// views themselves nothing is activated, replaced or edited.
 //
 // The list endpoint omits stage weights and criteria, so the detail panel
 // fetches GET /:id on demand rather than inventing a summary from the list.
@@ -21,6 +22,7 @@ import { proxyFetch } from "@/lib/api";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { computeReadiness, previewConflicts } from "@/lib/scorecardReadiness";
+import { NewScorecardPanel, ScorecardWorkbench } from "./ScorecardStudioEditor";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -146,8 +148,8 @@ export default function ScorecardsTab() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoaded(false);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoaded(false);
     setLoadError(null);
     try {
       const res = await proxyFetch(`/v1/intelligence/scorecards`, { cache: "no-store" });
@@ -177,6 +179,26 @@ export default function ScorecardsTab() {
     void load();
   }, [load]);
 
+  const fetchDetail = useCallback(async (id: string) => {
+    setDetailError(false);
+    setDetailLoading(true);
+    try {
+      const res = await proxyFetch(`/v1/intelligence/scorecards/${id}`, {
+        cache: "no-store",
+      });
+      const json = await res.json();
+      if (!res.ok || json?.ok !== true) {
+        setDetailError(true);
+        return;
+      }
+      setDetail((prev) => ({ ...prev, [id]: json.versions ?? [] }));
+    } catch {
+      setDetailError(true);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
   const openDetail = useCallback(
     async (id: string) => {
       if (openId === id) {
@@ -186,24 +208,27 @@ export default function ScorecardsTab() {
       setOpenId(id);
       setDetailError(false);
       if (detail[id]) return;
-      setDetailLoading(true);
-      try {
-        const res = await proxyFetch(`/v1/intelligence/scorecards/${id}`, {
-          cache: "no-store",
-        });
-        const json = await res.json();
-        if (!res.ok || json?.ok !== true) {
-          setDetailError(true);
-          return;
-        }
-        setDetail((prev) => ({ ...prev, [id]: json.versions ?? [] }));
-      } catch {
-        setDetailError(true);
-      } finally {
-        setDetailLoading(false);
-      }
+      await fetchDetail(id);
     },
-    [openId, detail]
+    [openId, detail, fetchDetail]
+  );
+
+  // After any Scorecard Studio mutation (create/save/fork/activate/archive)
+  // the list statuses AND the open card's versions can both change — refresh
+  // both quietly so the workspace never flashes back to its skeleton.
+  const refreshCard = useCallback(
+    async (id: string) => {
+      await Promise.all([fetchDetail(id), load(true)]);
+    },
+    [fetchDetail, load]
+  );
+
+  const handleCreated = useCallback(
+    async (id: string) => {
+      await Promise.all([fetchDetail(id), load(true)]);
+      setOpenId(id);
+    },
+    [fetchDetail, load]
   );
 
   /* -------------------------- Render -------------------------- */
@@ -274,7 +299,7 @@ export default function ScorecardsTab() {
         <p className="text-xs text-neutral-500">
           {activeCard
             ? `Activated ${formatDate(activeCard.active_version?.activated_at ?? null)}. Previous versions are archived, never deleted.`
-            : "Activating a company scorecard is done from the Scorecard Studio lane — it isn't available in this release."}
+            : "Create and activate a company scorecard below — Gravix will use it for future calls."}
         </p>
       </SectionCard>
 
@@ -282,12 +307,13 @@ export default function ScorecardsTab() {
       <SectionCard
         eyebrow="Company"
         title="Your scorecards"
-        subtitle="Built for your business — select one to see its stages and criteria"
+        subtitle="Built for your business — select one to see and edit its stages and criteria"
+        actions={<NewScorecardPanel onCreated={(id) => void handleCreated(id)} />}
       >
         {items.length === 0 ? (
           <EmptyState
             message="No company scorecards yet"
-            sub="Every call is scored with the Gravix Default rubric below. A company scorecard lets you set your own stages, weights and criteria — building one arrives with the Scorecard Studio editor."
+            sub="Every call is scored with the Gravix Default rubric below. Create one with “New scorecard” — the Scorecard Studio editor lets you set the stage weights and detailed criteria Gravix marks against."
           />
         ) : (
           <div className="divide-y divide-neutral-900">
@@ -351,11 +377,19 @@ export default function ScorecardsTab() {
                           </button>
                         </p>
                       ) : (
-                        <VersionDetailView
-                          versions={detail[card.id] ?? []}
-                          card={card}
-                          siblings={items}
-                        />
+                        <>
+                          <VersionDetailView
+                            versions={detail[card.id] ?? []}
+                            card={card}
+                            siblings={items}
+                          />
+                          <ScorecardWorkbench
+                            card={card}
+                            versions={detail[card.id] ?? []}
+                            siblings={items}
+                            onChanged={() => void refreshCard(card.id)}
+                          />
+                        </>
                       )}
                     </div>
                   )}
@@ -401,9 +435,8 @@ export default function ScorecardsTab() {
       )}
 
       <p className="text-xs text-neutral-600">
-        Scorecards are read-only here for now — creating, editing and activating
-        them arrives in a later release. Nothing on this page changes how calls
-        are scored.
+        Draft changes do not affect scoring until activated. Activated versions
+        are locked so old call reviews stay explainable.
       </p>
     </div>
   );
@@ -468,6 +501,10 @@ function VersionDetailView({
   // POST /activate always targets the card's draft version, so readiness is
   // about the draft — never about the version being displayed.
   const draft = versions.find((v) => v.status === "draft") ?? null;
+  // If the displayed version IS the draft, the Day 227 editor below renders
+  // its weights and criteria as editable fields — skip the duplicate read
+  // view and keep the status row + readiness mirror.
+  const editorShowsBody = version.status === "draft";
   const weights = version.stage_weights ?? [];
   const criteria = version.criteria ?? [];
   const stages = weights.length
@@ -512,14 +549,14 @@ function VersionDetailView({
             Currently active — this version scores new calls.
           </p>
           <p className="mt-1 text-[11px] text-neutral-500">
-            Already-scored calls keep the score they were given. Changing the
-            active scorecard isn&apos;t available here yet.
+            Already-scored calls keep the score they were given. To change how
+            calls are marked, create an editable draft below and activate it.
           </p>
         </div>
       )}
 
       {/* STAGE WEIGHTS */}
-      {weights.length > 0 && (
+      {weights.length > 0 && !editorShowsBody && (
         <div>
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-600">
@@ -546,7 +583,7 @@ function VersionDetailView({
       )}
 
       {/* CRITERIA */}
-      {criteria.length > 0 ? (
+      {editorShowsBody ? null : criteria.length > 0 ? (
         <div>
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-600">
@@ -707,10 +744,12 @@ function ReadinessPanel({
         </div>
       )}
 
+      {/* Display-only mirror of the activation gate — from this panel itself
+          nothing is activated or replaced; activation lives behind the draft
+          editor's explicit confirmation modal (ScorecardStudioEditor.tsx). */}
       <p className="mt-3 text-[11px] text-neutral-600">
-        A preview of the checks Gravix runs at activation — nothing is activated
-        or replaced from this page. Activation arrives with the Scorecard Studio
-        editor.
+        These are the checks Gravix runs at activation. Activating is done from
+        the draft editor below, and always asks for confirmation first.
       </p>
     </div>
   );

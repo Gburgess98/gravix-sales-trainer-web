@@ -277,3 +277,16 @@ Integration points once the runtime emits criteria-level results:
 
 No WEB work is blocked on design: the page needs only the new fields on
 the existing call payload.
+
+---
+
+## Implementation status — Day 227
+
+The editor MVP is live in `/intelligence?tab=scorecards`
+(`src/app/intelligence/ScorecardStudioEditor.tsx` +
+`src/lib/scorecardStudioApi.ts`): create scorecard, draft metadata + version
+editing (weights, guidance, full-detail criteria with reordering), fork of
+locked versions, confirmed activation with the 409 conflict → second-confirm
+replace flow, and archive for never-active scorecards only. Fixed four-stage
+frame throughout — no custom stages, no AI Builder, no Autofill (per this
+spec's MVP scope). Validated by `scripts/validate-premium-ux-day-227.sh`.

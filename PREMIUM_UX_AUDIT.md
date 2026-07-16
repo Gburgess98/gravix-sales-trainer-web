@@ -2829,3 +2829,78 @@ edit, fork or archive), no AI Builder, no Autofill, no website scraping, no
 Objection/Playbook library, no custom stages.
 
 Validate: `npm run validate-premium-ux-day-226`.
+
+## Day 227 — Scorecard Studio editor MVP (WEB-only)
+
+Day 226 ended with "show the checks, send nothing". Day 227 ships the other
+half: the first real manager-facing editor for Scorecard Studio. A manager can
+now create a company scorecard, edit a draft version's stage weights and
+detailed criteria, fork a locked version into an editable draft, and activate
+a draft behind an explicit confirmation — all against the real Day 219B/220
+API. This is the customisation moat: a company tells Gravix exactly what to
+mark calls against, in as much detail as it wants, within the fixed four-stage
+frame.
+
+### Where the code lives, and why
+
+`ScorecardsTab.tsx` is pinned read-only by the Day 225/226 validators (no
+mutating request, no lifecycle endpoint, no editor fields), and those pins are
+**not weakened** — they are re-asserted by the Day 227 validator. Instead:
+
+- `src/lib/scorecardStudioApi.ts` owns every mutating request (create, meta
+  PUT, draft version PUT, fork, activate, archive), all via `proxyFetch`, all
+  against `/v1/intelligence/scorecards…` only;
+- `src/app/intelligence/ScorecardStudioEditor.tsx` renders every mutating
+  control: the "New scorecard" modal, the per-card workbench, the draft
+  editor, and the activation/archive confirmations;
+- the tab imports both and stays the read spine: list, detail, readiness.
+
+### The draft editor
+
+Fixed-stage rail (Intro / Discovery / Objection / Close) with weight and
+criteria count per stage and a running weights total. Weights may be invalid
+while editing — saving is never blocked (the API checks totals only at
+activation) and the blocker is spelled out: "must be 100% to activate (saving
+is fine)". Criteria carry the full detail field set — label, description,
+scoring guidance, good example, weak example, coaching prompt, pass/fail,
+critical, emphasis (Minor/Standard/Major, never numeric weights per the Day
+209 blueprint) — plus reordering, which serialises as `sort_order`. The
+API's `critical_requires_pass_fail` rule is mirrored in the UI: turning
+pass/fail off clears critical, and critical is disabled until pass/fail is on.
+The 12-criteria-per-stage cap is enforced with the reason shown.
+
+### Lifecycle safety
+
+- **Create** starts a draft with even weights (the API's own default) — no
+  fake templates.
+- **Locked versions are never edited.** An active/superseded version offers
+  "Create editable draft" (fork). If a draft already exists the API's 409
+  `draft_already_exists` is surfaced and the existing draft is opened —
+  never silently reused, never discarded.
+- **Activation is never silent.** The Activate button only opens a
+  confirmation modal (readiness must pass and the draft must be saved first).
+  The first POST never carries `replace_conflicts`. If the API answers 409,
+  the named conflicts are listed and a second, separate confirmation — an
+  explicit checkbox plus a "Replace and activate" button — is required before
+  `replace_conflicts: true` is sent. The flag appears exactly once in the
+  editor and only behind `if (!replaceArmed) return`.
+- **Archive** renders only for never-active (card status `draft`) scorecards,
+  behind its own confirmation, and the copy states nothing is deleted. Active
+  scorecards cannot be archived from this MVP at all.
+
+### Honest copy
+
+"Scorecards teach Gravix what good calls look like", "Draft changes do not
+affect scoring until activated", "Activation affects future scoring only —
+calls already scored keep their scores", "Activated versions are locked so old
+call reviews stay explainable". No "AI generated", no Autofill, no custom
+stages claimed — the stage rail comment states criteria live inside the four
+core sales stages.
+
+### Deliberately not built
+
+AI Builder, Autofill, templates, custom/arbitrary stages, archive for active
+scorecards, un-archive, version diffing, and any scoring-runtime change. The
+runtime path from Days 221–222 is untouched.
+
+Validate: `npm run validate-premium-ux-day-227`.
