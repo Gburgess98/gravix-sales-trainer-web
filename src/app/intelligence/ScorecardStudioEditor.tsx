@@ -151,6 +151,62 @@ function safeName(name: string | null | undefined): string {
 const INPUT_CLASS =
   "w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-brand-500/50 focus:outline-none";
 
+/** Chip toggle recipe — call types and company default read as selections,
+ * not a settings-form checkbox wall. */
+function toggleChipClass(on: boolean): string {
+  return clsx(
+    "rounded-full border px-2.5 py-1 text-xs transition-colors",
+    on
+      ? "border-brand-500/40 bg-brand-500/10 text-brand-200"
+      : "border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-300"
+  );
+}
+
+/* ------------------------- Weight distribution ------------------------ */
+// One glance answers "where do the 100 points go?". Purely visual — the
+// stage rail below is the selector, and weights are edited in the stage
+// panel. Total is advisory while editing: saving is never blocked,
+// activation requires exactly 100.
+
+const STAGE_SEGMENT_TINT: Record<ScorecardStage, string> = {
+  intro: "bg-brand-500/90",
+  discovery: "bg-brand-500/65",
+  objection: "bg-brand-500/45",
+  close: "bg-brand-500/25",
+};
+
+function WeightStrip({
+  state,
+  selected,
+}: {
+  state: EditableVersionState;
+  selected: ScorecardStage;
+}) {
+  return (
+    <div
+      className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full bg-neutral-900"
+      aria-hidden="true"
+    >
+      {SCORECARD_STAGES.map((s) => {
+        const w = clampWeight(state.stages[s].weight);
+        if (w === 0) return null;
+        return (
+          <div
+            key={s}
+            title={`${STAGE_LABELS[s]} ${w}%`}
+            className={clsx(
+              "h-full rounded-sm transition-all",
+              STAGE_SEGMENT_TINT[s],
+              selected === s && "ring-1 ring-inset ring-brand-200/50"
+            )}
+            style={{ width: `${w}%` }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /* ------------------------------- Modal ------------------------------- */
 
 function Modal({
@@ -645,44 +701,46 @@ function DraftEditor({
             Pick the call types this scorecard should mark, or make it the
             company default for everything else.
           </p>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-            {SCORECARD_CALL_TYPES.map((t) => (
-              <label key={t} className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={state.call_types.includes(t)}
-                  onChange={(e) =>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {SCORECARD_CALL_TYPES.map((t) => {
+              const on = state.call_types.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
                     setState((prev) => ({
                       ...prev,
-                      call_types: e.target.checked
-                        ? [...prev.call_types, t]
-                        : prev.call_types.filter((x) => x !== t),
+                      call_types: on
+                        ? prev.call_types.filter((x) => x !== t)
+                        : [...prev.call_types, t],
                     }))
                   }
-                  className="h-3.5 w-3.5 accent-brand-500"
-                />
-                <span className="text-xs text-neutral-400">{CALL_TYPE_LABELS[t]}</span>
-              </label>
-            ))}
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="h-3.5 w-3.5 accent-brand-500"
-              />
-              <span className="text-xs text-neutral-300">Company default</span>
-            </label>
+                  className={toggleChipClass(on)}
+                >
+                  {CALL_TYPE_LABELS[t]}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              aria-pressed={isDefault}
+              onClick={() => setIsDefault(!isDefault)}
+              className={toggleChipClass(isDefault)}
+            >
+              Company default
+            </button>
           </div>
         </div>
 
         {/* STAGE RAIL — the fixed four-stage frame. Custom sections are not
             available in this MVP; criteria live inside the four core sales
-            stages. */}
+            stages (stated in UI copy below, not just here). */}
         <div>
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-600">
-              Stages
+              Stage weights
             </span>
             <span
               className={clsx(
@@ -694,10 +752,12 @@ function DraftEditor({
               {total !== 100 && " — must be 100% to activate (saving is fine)"}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <WeightStrip state={state} selected={stage} />
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {SCORECARD_STAGES.map((s) => {
               const selected = s === stage;
               const st = state.stages[s];
+              const criticalCount = st.criteria.filter((c) => c.critical).length;
               return (
                 <button
                   key={s}
@@ -711,26 +771,49 @@ function DraftEditor({
                       : "border-neutral-800 hover:border-neutral-700"
                   )}
                 >
-                  <span
-                    className={clsx(
-                      "block text-xs font-medium",
-                      selected ? "text-brand-200" : "text-neutral-300"
-                    )}
-                  >
-                    {STAGE_LABELS[s]}
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={clsx(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        STAGE_SEGMENT_TINT[s]
+                      )}
+                    />
+                    <span
+                      className={clsx(
+                        "text-xs font-medium",
+                        selected ? "text-brand-200" : "text-neutral-300"
+                      )}
+                    >
+                      {STAGE_LABELS[s]}
+                    </span>
                   </span>
                   <span className="mt-0.5 block text-[11px] tabular-nums text-neutral-500">
                     {clampWeight(st.weight)}% · {st.criteria.length} criteri
                     {st.criteria.length === 1 ? "on" : "a"}
+                    {criticalCount > 0 && (
+                      <span className="text-warning-300/80">
+                        {" "}
+                        · {criticalCount} critical
+                      </span>
+                    )}
                   </span>
+                  {st.criteria.length === 0 && (
+                    <span className="mt-0.5 block text-[10px] text-warning-300/70">
+                      No criteria yet
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+          <p className="mt-2 text-[11px] text-neutral-600">
+            Criteria live inside the four core sales stages — the stage frame
+            itself is fixed in this release.
+          </p>
         </div>
 
-        {/* SELECTED STAGE */}
-        <div className="rounded-lg border border-neutral-800/70 px-3.5 py-3">
+        {/* SELECTED STAGE — the active work area, visibly tied to the rail. */}
+        <div className="rounded-lg border border-brand-500/15 bg-neutral-900/20 px-3.5 py-3">
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <label
@@ -960,26 +1043,35 @@ function CriterionRow({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5 text-left"
+          className="min-w-0 flex-1 text-left"
         >
-          {c.label.trim() ? (
-            <span className="truncate text-xs text-neutral-200">{c.label}</span>
-          ) : (
-            <span className="text-xs italic text-neutral-500">New criterion — add a label</span>
-          )}
-          {c.emphasis !== "standard" && (
-            <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
-              {EMPHASIS_LABELS[c.emphasis]}
-            </span>
-          )}
-          {c.critical && (
-            <span className="rounded border border-warning-500/30 bg-warning-500/10 px-1 text-[10px] text-warning-300">
-              Critical
-            </span>
-          )}
-          {c.pass_fail && (
-            <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
-              Pass / fail
+          <span className="flex min-w-0 flex-wrap items-baseline gap-1.5">
+            {c.label.trim() ? (
+              <span className="truncate text-xs text-neutral-200">{c.label}</span>
+            ) : (
+              <span className="text-xs italic text-neutral-500">New criterion — add a label</span>
+            )}
+            {c.emphasis !== "standard" && (
+              <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                {EMPHASIS_LABELS[c.emphasis]}
+              </span>
+            )}
+            {c.critical && (
+              <span className="rounded border border-warning-500/30 bg-warning-500/10 px-1 text-[10px] text-warning-300">
+                Critical
+              </span>
+            )}
+            {c.pass_fail && (
+              <span className="rounded border border-neutral-800 px-1 text-[10px] text-neutral-500">
+                Pass / fail
+              </span>
+            )}
+          </span>
+          {/* Compact-row preview: enough to recognise the criterion without
+              opening it — the full fields live in the expanded detail. */}
+          {!expanded && (c.description.trim() || c.scoring_guidance.trim()) && (
+            <span className="mt-0.5 line-clamp-1 block text-[11px] text-neutral-600">
+              {c.description.trim() || c.scoring_guidance.trim()}
             </span>
           )}
         </button>
@@ -1033,6 +1125,9 @@ function CriterionRow({
                 onChange={(e) => onChange({ label: e.target.value })}
                 className={clsx(INPUT_CLASS, "mt-1")}
                 placeholder="e.g. Quantifies the cost of doing nothing"
+                // A freshly added criterion opens expanded with the label
+                // focused, so "Add criterion" flows straight into typing.
+                autoFocus={!c.label}
               />
             </div>
             <div>

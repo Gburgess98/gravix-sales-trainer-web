@@ -713,7 +713,8 @@ function ReadinessPanel({
         </span>
       </div>
 
-      <ul className="mt-2.5 space-y-1.5">
+      {/* Two-up on wider screens so the four checks scan in one glance. */}
+      <ul className="mt-2.5 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
         {readiness.checks.map((c) => (
           <li key={c.id} className="flex items-baseline gap-2 text-[11px]">
             <span className={c.ok ? "text-success-300" : "text-neutral-600"}>

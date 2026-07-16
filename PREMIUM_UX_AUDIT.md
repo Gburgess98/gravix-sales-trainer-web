@@ -2961,3 +2961,44 @@ DEMO_VISUAL_QA_NOTES §Day 228), with the QA cards archived via the API's own
 lifecycle and `seed:ufc-intelligence` re-asserted (57/57).
 
 Validate: `npm run validate-premium-ux-day-228`.
+
+## Day 229 — Scorecard Studio builder UX (WEB-only)
+
+Days 227/228 made the editor functional, safe and QA-proven; the user's honest
+verdict was that it still read like a long developer form next to competitor
+scorecard builders. Day 229 changes the interaction model without touching the
+data model, the endpoints or any safeguard.
+
+### What changed
+
+- **Weight distribution strip.** A segmented bar above the stage rail answers
+  "where do the 100 points go?" at a glance, one brand tint per stage, with
+  the same total line as before — invalid totals still save, activation still
+  requires exactly 100%, and the copy says so.
+- **Richer stage rail.** Each tile now carries its tint dot, weight, criteria
+  count, a critical-criteria count when present, and a "No criteria yet" hint
+  in warning tone — a manager can see which stage needs work before opening
+  it. The selected stage panel is brand-tinted so the active work area is
+  visually tied to the rail.
+- **Chip toggles for call types.** The checkbox wall became aria-pressed chip
+  toggles (same pattern as the compiled-context state switch), including
+  Company default.
+- **Compact criteria rows.** Collapsed rows show label, emphasis/critical/
+  pass-fail chips and now a one-line preview of the description or scoring
+  guidance; the full seven-field detail only exists in the expanded area.
+  "Add criterion" opens the new row expanded with the label focused, so
+  adding flows straight into typing.
+- **Scope stated in UI.** "Criteria live inside the four core sales stages —
+  custom stages aren't available in this release" is now visible copy under
+  the rail rather than a code comment.
+- **Readiness scan.** The Day 226 readiness checks render two-up on wider
+  screens; the helper, the rules and the display-only guarantee are untouched.
+
+### Deliberately not built
+
+AI Builder, Autofill, helper-prompt fields that could read as generation,
+drag-and-drop reordering (↑/↓ kept), custom stages, any activation behaviour
+change. Kendo-class builders were inspiration for *principles* (focus, density,
+progressive disclosure) — no layout, wording or assets were copied.
+
+Validate: `npm run validate-premium-ux-day-229`.

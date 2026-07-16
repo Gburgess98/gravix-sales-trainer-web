@@ -518,3 +518,23 @@ the scorecard list as honest history (nothing is ever deleted); a deletion
 script exists in the session scratchpad if a pristine list is wanted before
 demos. Readiness detail line says "1 criteria defined" (Day 226 helper,
 fixture-pinned).
+
+## Day 229 — Scorecard Studio builder UX QA
+
+Open `/intelligence?tab=scorecards` as Dana, open/create a draft.
+
+- [ ] Weight distribution strip renders above the stage rail; segments match
+      the rail tint dots; changing a weight moves the strip immediately.
+- [ ] Invalid total shows "must be 100% to activate (saving is fine)" and
+      Save still works.
+- [ ] Stage tiles show weight · criteria count, critical count when > 0, and
+      "No criteria yet" on empty stages.
+- [ ] Call types are chip toggles; selected chips read brand-tinted.
+- [ ] Collapsed criteria rows show a one-line description/guidance preview;
+      expanding reveals the full field set; Done collapses back.
+- [ ] "Add criterion" opens the new row expanded with the label focused.
+- [ ] "Criteria live inside the four core sales stages" copy visible; no AI
+      Builder/Autofill controls anywhere.
+- [ ] Readiness checks render two-up; activation still opens the
+      confirmation modal; nothing activates silently.
+- [ ] UFC Sales Scorecard stays locked/active with the fork CTA.
