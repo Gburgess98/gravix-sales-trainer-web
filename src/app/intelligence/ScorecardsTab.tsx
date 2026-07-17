@@ -1,6 +1,7 @@
 "use client";
 
-// Intelligence Layer — Day 225 (read views) + Day 227 (editor wiring).
+// Intelligence Layer — Day 225 (read views) + Day 227 (editor wiring)
+// + Day 230 (list demo hygiene: archived cards collapse into Archived history).
 //
 // Backed by the Day 219B/220 API (manager-gated, company-scoped):
 //   GET /v1/intelligence/scorecards       company cards + the Gravix default
@@ -148,6 +149,12 @@ export default function ScorecardsTab() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
 
+  // Day 230 — Archived history is collapsed by default so QA/probe leftovers
+  // never dominate the primary list. Collapse is display-only: nothing is
+  // deleted, nothing gains an un-archive control, and every archived card
+  // stays clickable/readable once the section is expanded.
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoaded(false);
     setLoadError(null);
@@ -178,6 +185,15 @@ export default function ScorecardsTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // If the open card is (or becomes) archived — e.g. the manager just archived
+  // it from the workbench — auto-expand Archived history so the selection is
+  // never hidden by the collapse. Direct selection from the list is untouched.
+  useEffect(() => {
+    if (openId && items.some((i) => i.id === openId && i.status === "archived")) {
+      setArchiveOpen(true);
+    }
+  }, [openId, items]);
 
   const fetchDetail = useCallback(async (id: string) => {
     setDetailError(false);
@@ -272,6 +288,96 @@ export default function ScorecardsTab() {
 
   const activeCard = items.find((i) => i.active_version && i.is_company_default) ?? null;
 
+  // Day 230 grouping — demo-safe ordering. Primary list: active cards first
+  // (company default leading), then drafts. Archived cards move to the
+  // collapsed Archived history section after everything else.
+  const archivedItems = items.filter((i) => i.status === "archived");
+  const primaryItems = items.filter((i) => i.status !== "archived");
+  const activeItems = primaryItems
+    .filter((i) => i.active_version)
+    .sort((a, b) => Number(b.is_company_default) - Number(a.is_company_default));
+  const draftItems = primaryItems.filter((i) => !i.active_version);
+
+  const renderCard = (card: ScorecardItem) => {
+    const version = card.active_version ?? card.latest_version;
+    const isOpen = openId === card.id;
+    return (
+      <div key={card.id}>
+        <button
+          type="button"
+          onClick={() => void openDetail(card.id)}
+          aria-expanded={isOpen}
+          className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-neutral-900/40"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-neutral-100">
+                {scorecardLabel(card.name)}
+              </span>
+              {version && (
+                <span className="text-xs text-neutral-500">
+                  v{version.version}
+                </span>
+              )}
+              <StatusPill status={card.status} />
+              {card.is_company_default && (
+                <span className="inline-flex items-center rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-300">
+                  Company default
+                </span>
+              )}
+            </div>
+            {card.description && (
+              <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
+                {card.description}
+              </p>
+            )}
+            <p className="mt-1.5 text-[11px] text-neutral-600">
+              {version?.call_types?.length
+                ? `Applies to: ${version.call_types.map(callTypeLabel).join(" · ")}`
+                : "Applies to all call types"}
+            </p>
+          </div>
+          <span className="shrink-0 text-xs text-neutral-500">
+            {isOpen ? "Hide" : "View"}
+          </span>
+        </button>
+
+        {isOpen && (
+          <div className="border-t border-neutral-900 bg-neutral-950/60 px-5 py-4">
+            {detailLoading && !detail[card.id] ? (
+              <div className="h-20 animate-pulse rounded-lg bg-neutral-900/60" />
+            ) : detailError && !detail[card.id] ? (
+              <p className="text-xs text-neutral-500">
+                Couldn&apos;t load this scorecard&apos;s detail.{" "}
+                <button
+                  type="button"
+                  onClick={() => void openDetail(card.id)}
+                  className="underline hover:text-neutral-300"
+                >
+                  Try again
+                </button>
+              </p>
+            ) : (
+              <>
+                <VersionDetailView
+                  versions={detail[card.id] ?? []}
+                  card={card}
+                  siblings={items}
+                />
+                <ScorecardWorkbench
+                  card={card}
+                  versions={detail[card.id] ?? []}
+                  siblings={items}
+                  onChanged={() => void refreshCard(card.id)}
+                />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-neutral-400">
@@ -303,11 +409,11 @@ export default function ScorecardsTab() {
         </p>
       </SectionCard>
 
-      {/* COMPANY SCORECARDS */}
+      {/* COMPANY SCORECARDS — active + drafts only; archived lives below. */}
       <SectionCard
         eyebrow="Company"
         title="Your scorecards"
-        subtitle="Built for your business — select one to see and edit its stages and criteria"
+        subtitle="Scorecards define what Gravix marks calls against — select one to see and edit its stages and criteria"
         actions={<NewScorecardPanel onCreated={(id) => void handleCreated(id)} />}
       >
         {items.length === 0 ? (
@@ -315,87 +421,35 @@ export default function ScorecardsTab() {
             message="No company scorecards yet"
             sub="Every call is scored with the Gravix Default rubric below. Create one with “New scorecard” — the Scorecard Studio editor lets you set the stage weights and detailed criteria Gravix marks against."
           />
+        ) : primaryItems.length === 0 ? (
+          <EmptyState
+            message="No active or draft scorecards"
+            sub="Earlier scorecards are kept in Archived history below and never affect scoring. Create a fresh one with “New scorecard” whenever you're ready."
+          />
         ) : (
-          <div className="divide-y divide-neutral-900">
-            {items.map((card) => {
-              const version = card.active_version ?? card.latest_version;
-              const isOpen = openId === card.id;
-              return (
-                <div key={card.id}>
-                  <button
-                    type="button"
-                    onClick={() => void openDetail(card.id)}
-                    aria-expanded={isOpen}
-                    className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-neutral-900/40"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-neutral-100">
-                          {scorecardLabel(card.name)}
-                        </span>
-                        {version && (
-                          <span className="text-xs text-neutral-500">
-                            v{version.version}
-                          </span>
-                        )}
-                        <StatusPill status={card.status} />
-                        {card.is_company_default && (
-                          <span className="inline-flex items-center rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] text-brand-300">
-                            Company default
-                          </span>
-                        )}
-                      </div>
-                      {card.description && (
-                        <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
-                          {card.description}
-                        </p>
-                      )}
-                      <p className="mt-1.5 text-[11px] text-neutral-600">
-                        {version?.call_types?.length
-                          ? `Applies to: ${version.call_types.map(callTypeLabel).join(" · ")}`
-                          : "Applies to all call types"}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-neutral-500">
-                      {isOpen ? "Hide" : "View"}
-                    </span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="border-t border-neutral-900 bg-neutral-950/60 px-5 py-4">
-                      {detailLoading && !detail[card.id] ? (
-                        <div className="h-20 animate-pulse rounded-lg bg-neutral-900/60" />
-                      ) : detailError && !detail[card.id] ? (
-                        <p className="text-xs text-neutral-500">
-                          Couldn&apos;t load this scorecard&apos;s detail.{" "}
-                          <button
-                            type="button"
-                            onClick={() => void openDetail(card.id)}
-                            className="underline hover:text-neutral-300"
-                          >
-                            Try again
-                          </button>
-                        </p>
-                      ) : (
-                        <>
-                          <VersionDetailView
-                            versions={detail[card.id] ?? []}
-                            card={card}
-                            siblings={items}
-                          />
-                          <ScorecardWorkbench
-                            card={card}
-                            versions={detail[card.id] ?? []}
-                            siblings={items}
-                            onChanged={() => void refreshCard(card.id)}
-                          />
-                        </>
-                      )}
-                    </div>
-                  )}
+          <div>
+            {activeItems.length > 0 && (
+              <>
+                <GroupHeading
+                  label="Active"
+                  copy="Active scorecards affect future scoring."
+                />
+                <div className="divide-y divide-neutral-900">
+                  {activeItems.map(renderCard)}
                 </div>
-              );
-            })}
+              </>
+            )}
+            {draftItems.length > 0 && (
+              <>
+                <GroupHeading
+                  label="Drafts"
+                  copy="Drafts do not affect scoring until activated."
+                />
+                <div className="divide-y divide-neutral-900">
+                  {draftItems.map(renderCard)}
+                </div>
+              </>
+            )}
           </div>
         )}
       </SectionCard>
@@ -434,10 +488,61 @@ export default function ScorecardsTab() {
         </SectionCard>
       )}
 
+      {/* ARCHIVED HISTORY — collapsed by default; only rendered when it has
+          something to show. Cards stay clickable/readable once expanded.
+          Display-only: history is kept as-is and gains no controls. */}
+      {archivedItems.length > 0 && (
+        <SectionCard
+          eyebrow="History"
+          title="Archived history"
+          subtitle="Archived scorecards stay available for history, but do not affect future scoring."
+          actions={
+            <button
+              type="button"
+              onClick={() => setArchiveOpen((v) => !v)}
+              aria-expanded={archiveOpen}
+              className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-neutral-900"
+            >
+              {archiveOpen
+                ? "Collapse"
+                : `Show ${archivedItems.length} archived`}
+            </button>
+          }
+        >
+          {archiveOpen ? (
+            <div className="divide-y divide-neutral-900">
+              {archivedItems.map(renderCard)}
+            </div>
+          ) : (
+            <p className="px-5 py-4 text-xs text-neutral-600">
+              {archivedItems.length} archived scorecard
+              {archivedItems.length === 1 ? "" : "s"} — collapsed to keep the
+              studio focused. Nothing here is deleted, and archived scorecards
+              never score new calls.
+            </p>
+          )}
+        </SectionCard>
+      )}
+
       <p className="text-xs text-neutral-600">
         Draft changes do not affect scoring until activated. Activated versions
         are locked so old call reviews stay explainable.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Day 230 — small group heading inside the primary list, carrying the honest
+ * one-line effect of each group on scoring.
+ */
+function GroupHeading({ label, copy }: { label: string; copy: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-2 border-b border-neutral-900 bg-neutral-950/40 px-5 py-2">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+        {label}
+      </span>
+      <span className="text-[11px] text-neutral-600">{copy}</span>
     </div>
   );
 }

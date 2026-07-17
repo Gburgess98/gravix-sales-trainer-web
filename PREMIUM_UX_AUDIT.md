@@ -3002,3 +3002,40 @@ change. Kendo-class builders were inspiration for *principles* (focus, density,
 progressive disclosure) — no layout, wording or assets were copied.
 
 Validate: `npm run validate-premium-ux-day-229`.
+
+## Day 230 — Scorecard list demo hygiene / Archived history (WEB-only)
+
+Days 227–229 built and polished the editor; the list around it had grown messy.
+Archived Day 228 QA/probe cards and an old user test draft sat inline with the
+real scorecards, so the first thing a buyer saw in Scorecard Studio was its own
+test debris. Day 230 groups the list without touching endpoints, safeguards or
+the editor.
+
+### What changed
+
+- **Grouped primary list.** "Your scorecards" now shows active cards first
+  (company default leading), then drafts — each group under a small heading
+  with an honest one-line effect on scoring ("Active scorecards affect future
+  scoring." / "Drafts do not affect scoring until activated.").
+- **Archived history section.** Archived cards move out of the primary list
+  into a separate section after the Gravix Default card, collapsed by default
+  with a clean count ("Show N archived"). Expanded, the same clickable card
+  rows appear — read-only, as before (archived cards have never had a
+  workbench). Copy: "Archived scorecards stay available for history, but do
+  not affect future scoring."
+- **Selection safety.** If the open card is or becomes archived (e.g. the
+  manager just archived it), Archived history auto-expands so the collapse
+  never hides the selection. Nothing is auto-selected by default.
+- **Empty states.** The archive section renders only when something is
+  archived; if only archived cards remain, the primary list shows a calm
+  "No active or draft scorecards" state pointing at Archived history.
+- **Main framing.** Section subtitle now leads with "Scorecards define what
+  Gravix marks calls against".
+
+### Deliberately not built
+
+Restore/un-archive controls (no such endpoint exists — faking one would be
+worse than the mess), destructive delete, hiding history permanently, any
+editor/activation/fork/archive behaviour change.
+
+Validate: `npm run validate-premium-ux-day-230`.

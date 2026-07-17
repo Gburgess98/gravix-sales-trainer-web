@@ -538,3 +538,27 @@ Open `/intelligence?tab=scorecards` as Dana, open/create a draft.
 - [ ] Readiness checks render two-up; activation still opens the
       confirmation modal; nothing activates silently.
 - [ ] UFC Sales Scorecard stays locked/active with the fork CTA.
+
+## Day 230 — Scorecard list demo hygiene QA
+
+Open `/intelligence?tab=scorecards` as Dana. This closes the Day 228 "known
+cosmetic leftover": archived QA/probe cards no longer sit inline — they live
+in a collapsed Archived history section.
+
+- [ ] "Scoring today" still names the UFC Sales Scorecard as active.
+- [ ] Primary list shows Active first (UFC Sales Scorecard with Company
+      default pill), then Drafts under their own heading — no archived cards
+      inline.
+- [ ] Group headings carry the honest copy: "Active scorecards affect future
+      scoring." / "Drafts do not affect scoring until activated."
+- [ ] Gravix Default card unchanged, read-only, in its usual position.
+- [ ] Archived history sits last, collapsed, with a clean count
+      ("Show N archived"); copy says archived cards stay available for
+      history but do not affect future scoring.
+- [ ] Expanding Archived history reveals the archived QA/probe cards, still
+      clickable and readable — and with no restore or delete controls.
+- [ ] Opening a draft still mounts the Day 229 builder (strip, chips,
+      compact rows); create / save / fork / confirmed activation unchanged.
+- [ ] Archiving a safe draft moves it into Archived history and the section
+      auto-expands so the card is not hidden mid-action.
+- [ ] If nothing is archived, no archive section renders at all.
