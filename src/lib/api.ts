@@ -504,6 +504,31 @@ export async function listCrmActionsToday(opts: {
   return j.items || [];
 }
 
+// ---------------------------------------
+// Coaching assignments (manager overview)
+// ---------------------------------------
+
+/**
+ * Day 232 — /crm/overview imported this helper before it existed in this
+ * module (the import resolved to undefined, every call threw, and the
+ * overview's catch blocks quietly showed empty panels). Backed by the real
+ * manager endpoint:
+ *   GET /v1/assignments/manager?rep_id=&status=&limit=
+ * which returns { ok, items, assignments, summary, nextCursor }.
+ * There is deliberately no getTopObjections twin: the API has no objection
+ * aggregation endpoint, and we don't fake helpers for endpoints that don't
+ * exist.
+ */
+export async function listCoachAssignments(
+  opts: { limit?: number; status?: string; repId?: string } = {}
+): Promise<{ ok: boolean; items: any[]; assignments?: any[]; summary?: any }> {
+  const qs = new URLSearchParams();
+  if (opts.repId) qs.set("rep_id", opts.repId);
+  if (opts.status) qs.set("status", opts.status);
+  qs.set("limit", String(opts.limit ?? 25));
+  return proxyGet(`/v1/assignments/manager?${qs.toString()}`);
+}
+
 export async function completeCrmAction(actionId: string): Promise<{
   ok: true;
   action: CrmActionRow;

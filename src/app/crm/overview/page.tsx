@@ -11,7 +11,6 @@ import nextDynamic from "next/dynamic";
 import clsx from "clsx";
 import {
   listCoachAssignments,
-  getTopObjections,
   type DashboardKpisResp,
 } from "@/lib/api";
 import { isOpenPath, guardDisabled } from "@/lib/openRoutes";
@@ -560,10 +559,12 @@ export default function CrmOverviewPage() {
     })();
     (async () => {
       try {
-        const res: any =
-          typeof (getTopObjections as any) === "function"
-            ? await (getTopObjections as any)({ limit: 8 })
-            : { ok: true, items: [] };
+        // Day 232 — the API has no objection-aggregation endpoint yet, so this
+        // panel keeps its honest empty state rather than importing a phantom
+        // helper (the old getTopObjections import never existed in lib/api and
+        // only produced build warnings). Wire a real helper here when the
+        // endpoint ships.
+        const res: any = { ok: true, items: [] };
         if (!alive) return;
 
         let rows: ObjectionDatum[] = [];

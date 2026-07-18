@@ -562,3 +562,26 @@ in a collapsed Archived history section.
 - [ ] Archiving a safe draft moves it into Archived history and the section
       auto-expands so the card is not hidden mid-action.
 - [ ] If nothing is archived, no archive section renders at all.
+
+## Day 232 — Context Engine workspace QA
+
+Open `/intelligence?tab=context` as Dana.
+
+- [ ] Hero band reads "Teach Gravix how your company sells" with the UFC
+      published version (v1+) and honest draft status.
+- [ ] Module rail shows eight modules with Not taught / Basic / Strong
+      labels that match the seeded UFC content.
+- [ ] Clicking a module swaps the focus editor; fields carry hints and
+      character counts; nothing autosaves.
+- [ ] Products / objections / competitors / compliance render read-only
+      inside their modules with the "Read-only for now" note.
+- [ ] Guidance panel is clearly static — no AI assistant, no Autofill,
+      no website import anywhere.
+- [ ] "View as Gravix sees it" shows the compiled block; Published/Draft
+      toggle works.
+- [ ] Save draft → publish flow unchanged; publish copy still says future
+      scoring only.
+- [ ] Scorecards tab still renders (Archived history collapse intact).
+- [ ] DEMO NOTE: if a rehearsal edits/publishes over the seeded UFC
+      context, re-run API `seed:ufc-intelligence` to restore the demo
+      story before showing buyers.

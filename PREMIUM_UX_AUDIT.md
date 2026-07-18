@@ -3064,3 +3064,45 @@ Deviation noted: the brief asked for the "Anthropic Design plugin"; no such
 critique plugin is installed in this environment (DesignSync is a
 claude.ai/design uploader, not a critique tool), so direction was derived
 from the sprint's own established principles.
+
+## Day 232 — Context Engine premium workspace (WEB-only)
+
+Day 231's audit graded the Context tab C+ — functionally complete but a
+settings form, sitting next to a Scorecard Studio that had three polish
+days. Day 232 rebuilds the tab's shape without touching a single endpoint,
+save/publish behaviour or the merge-base rule.
+
+### What changed
+
+- **Hero band.** "Teach Gravix how your company sells" with published
+  version, draft status, modules-taught count and objections taught — all
+  derived from the API rows, nothing invented.
+- **Module rail + focus editor.** The six API sections present as eight
+  focused modules (profile split into company/motion/ICP). One module in
+  view at a time; the rail carries a deterministic strength label per
+  module — Not taught / Basic / Strong — computed from content
+  (field coverage + list depth), never a score, never blocking publish.
+  Weak modules read as warnings so gaps are obvious.
+- **Structured lists live in their modules.** Products, objections,
+  competitors and compliance render read-only inside the module they
+  belong to (was: one "Reference" dump at the bottom), still labelled
+  "Read-only for now".
+- **Static guidance panel.** Each module shows "What strong context looks
+  like" — three fixed example lines plus an explicit "Static guidance.
+  Gravix never writes your context for you." No AI assistant, no
+  Autofill, no scraping — same as Day 225, now stated in the UI.
+- **Compiled preview** retitled "View as Gravix sees it", same
+  deterministic endpoint and published/draft toggle.
+- **Save/publish bar unchanged**, including the future-scoring-only copy.
+
+### Side-fixes (documented in Day 231 audit)
+
+- `listCoachAssignments` now actually exists in lib/api, backed by the
+  real `GET /v1/assignments/manager` endpoint — /crm/overview's coaching
+  panels stop silently failing into fallbacks. `getTopObjections` was NOT
+  faked: the API has no objection-aggregation endpoint, so the phantom
+  import was removed and the panel keeps its honest empty state.
+- The home route awaits `searchParams` (Next 15 sync-dynamic-apis error
+  that logged on every hit of `/`). Behaviour identical.
+
+Validate: `npm run validate-context-engine-day-232`.

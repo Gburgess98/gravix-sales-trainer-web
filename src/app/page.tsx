@@ -29,8 +29,12 @@ function isSafePath(path: string) {
   return true;
 }
 
-export default function Home(props: { searchParams?: Record<string, string | string[]> }) {
-  const sp = props?.searchParams || {};
+// Next 15: searchParams is async and must be awaited (Day 232 — this was the
+// sync-dynamic-apis error logged on every hit of "/"). Behaviour is unchanged.
+export default async function Home(props: {
+  searchParams?: Promise<Record<string, string | string[]>>;
+}) {
+  const sp = (await props?.searchParams) || {};
   const raw = Array.isArray(sp.redirect) ? sp.redirect[0] : sp.redirect;
 
   if (raw && isSafePath(raw)) {

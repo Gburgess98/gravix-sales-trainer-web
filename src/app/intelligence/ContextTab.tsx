@@ -1,6 +1,7 @@
 "use client";
 
-// Intelligence Layer — Day 225: Context Engine tab (manager MVP).
+// Intelligence Layer — Day 225 (Context Engine MVP) + Day 232 (premium
+// workspace pass: hero band, module rail, focus editor, static guidance).
 //
 // Backed entirely by the Day 218 API (manager-gated, company-scoped):
 //   GET  /v1/intelligence/context            draft + published rows
@@ -8,14 +9,16 @@
 //   POST /v1/intelligence/context/publish    publish the draft as a new version
 //   GET  /v1/intelligence/context/compiled   deterministic compiled block
 //
-// Scope decisions for this MVP (deliberate, see PREMIUM_UX_AUDIT.md §Day 225):
+// Scope decisions (deliberate, see PREMIUM_UX_AUDIT.md §Day 225/§Day 232):
 //  - Editing covers the free-text fields only. The structured lists (products,
 //    objections, competitors, compliance) are READ-ONLY here — they need real
-//    repeater editors, which is a later lane. They are still rendered so the
-//    manager sees the whole picture rather than a page that pretends they
-//    don't exist.
+//    repeater editors, which is a later lane. Each list is shown inside its
+//    module so the manager sees the whole picture.
 //  - No AI Autofill, no website scraping, no "AI assistant" — none of that
-//    exists in the API, so none of it is drawn here.
+//    exists in the API, so none of it is drawn here. The guidance panel is
+//    static example copy, clearly labelled as such.
+//  - Module strength labels (Not taught / Basic / Strong) are deterministic
+//    functions of the draft content — never scores, never model output.
 //
 // SAFETY — the PUT replaces the entire draft context object. Every save must
 // therefore start from the context we loaded and merge the edited fields into
@@ -26,7 +29,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 import { SectionCard } from "@/components/ui/section-card";
-import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -53,25 +55,54 @@ type LoadError = "forbidden" | "not_migrated" | "failed";
 /* --------------------------- Field map --------------------------- */
 // Mirrors the API's CONTEXT_SECTION_KEYS / compileContextBlock contract
 // (api src/lib/contextEngine.ts). Unknown top-level keys are a hard 400, so
-// this map must never invent a section.
+// this map must never invent a section — every editable path below starts
+// with one of the six real section keys.
 
 type FieldDef = { path: string[]; label: string; hint: string; rows: number };
-type FieldGroup = { key: string; title: string; blurb: string; fields: FieldDef[] };
 
 const MAX_FIELD_CHARS = 1000; // API clips at 1,000 per field
 
-const FIELD_GROUPS: FieldGroup[] = [
+/* --------------------------- Modules ----------------------------- */
+// The manager-facing shape of the six API sections: eight focused modules,
+// one in view at a time. Modules only regroup the same six keys — they never
+// add sections the API doesn't have.
+
+type ListKind = "products" | "objections" | "competitors" | "compliance";
+
+type ModuleDef = {
+  id: string;
+  label: string;
+  blurb: string;
+  fields: FieldDef[];
+  lists: ListKind[];
+  guidance: string[];
+};
+
+const MODULES: ModuleDef[] = [
   {
-    key: "profile",
-    title: "Company profile",
-    blurb: "Who you are and who you sell to.",
+    id: "company",
+    label: "Company profile",
+    blurb: "What the company does, in the words reps should use.",
     fields: [
       {
         path: ["profile", "about"],
         label: "About the company",
         hint: "What the company does, in the words you'd use on a call.",
-        rows: 4,
+        rows: 5,
       },
+    ],
+    lists: [],
+    guidance: [
+      "Two or three sentences a new rep could say out loud on a first call.",
+      "Name the market and the problem you remove, not the org chart.",
+      "Skip mission-statement language — write how your best rep talks.",
+    ],
+  },
+  {
+    id: "motion",
+    label: "Sales motion",
+    blurb: "How selling actually runs day to day.",
+    fields: [
       {
         path: ["profile", "sales_motion"],
         label: "Sales motion",
@@ -84,18 +115,37 @@ const FIELD_GROUPS: FieldGroup[] = [
         hint: "How the motion actually runs — cycle length, who decides.",
         rows: 3,
       },
+    ],
+    lists: [],
+    guidance: [
+      "State the motion in one line: outbound, inbound, field, partner-led.",
+      "Add the two facts that change coaching: cycle length and who signs.",
+      "If discovery and demo are separate calls, say so — scoring reads this.",
+    ],
+  },
+  {
+    id: "icp",
+    label: "ICP & buyer",
+    blurb: "The customer this team should be winning.",
+    fields: [
       {
         path: ["profile", "icp"],
         label: "Ideal customer",
         hint: "The buyer this team should be winning.",
-        rows: 3,
+        rows: 4,
       },
+    ],
+    lists: [],
+    guidance: [
+      "Describe the buyer, not just the company: role, pressure, budget.",
+      "Include one disqualifier — who reps should politely walk away from.",
+      "Concrete beats broad: “50–500 seat ops teams” over “companies”. ",
     ],
   },
   {
-    key: "offering",
-    title: "Pricing & positioning",
-    blurb: "How you price and how you frame value.",
+    id: "products",
+    label: "Products & positioning",
+    blurb: "What you sell, how you price it, and the value story.",
     fields: [
       {
         path: ["offering", "pricing_positioning", "pricing_notes"],
@@ -110,11 +160,53 @@ const FIELD_GROUPS: FieldGroup[] = [
         rows: 3,
       },
     ],
+    lists: ["products"],
+    guidance: [
+      "Pricing notes should say what a rep may promise without approval.",
+      "Positioning is the sentence you want repeated on every call.",
+      "Products ride along read-only below — they publish with the rest.",
+    ],
   },
   {
-    key: "tone",
-    title: "Tone & coaching style",
-    blurb: "How Gravix should coach your reps.",
+    id: "objections",
+    label: "Objections",
+    blurb: "The pushback reps hear and the approved responses.",
+    fields: [],
+    lists: ["objections"],
+    guidance: [
+      "Strong objection entries pair the exact words a prospect uses with the response you want repeated.",
+      "Three to five well-chosen objections beat a long unranked list.",
+      "These entries come from your seeded context and publish as-is.",
+    ],
+  },
+  {
+    id: "competitors",
+    label: "Competitors",
+    blurb: "Who you lose to and how you position against them.",
+    fields: [],
+    lists: ["competitors"],
+    guidance: [
+      "Name the two or three you actually meet in deals, not the whole market.",
+      "For each: the honest reason you win, in words reps can say.",
+      "Never coach reps to rubbish a competitor — position, don't attack.",
+    ],
+  },
+  {
+    id: "compliance",
+    label: "Compliance & no-go",
+    blurb: "Language reps must avoid and disclosures they must make.",
+    fields: [],
+    lists: ["compliance"],
+    guidance: [
+      "No-go language is scored hard — keep it to genuinely banned phrases.",
+      "Required disclosures should be word-for-word, not paraphrased.",
+      "If regulation applies to you, this is the module to keep strongest.",
+    ],
+  },
+  {
+    id: "tone",
+    label: "Tone & coaching style",
+    blurb: "How Gravix should sound when it coaches your reps.",
     fields: [
       {
         path: ["tone", "playbook_guidance"],
@@ -128,6 +220,12 @@ const FIELD_GROUPS: FieldGroup[] = [
         hint: "How feedback should read — direct, supportive, formal.",
         rows: 3,
       },
+    ],
+    lists: [],
+    guidance: [
+      "Name the method if you use one — reps get coached towards it.",
+      "One line on tone changes every piece of feedback: “direct but warm”.",
+      "Say what great sounds like, not just what to avoid.",
     ],
   },
 ];
@@ -217,14 +315,58 @@ const SECTION_KEYS = [
   "tone",
 ] as const;
 
-const SECTION_LABELS: Record<string, string> = {
-  profile: "Company profile",
-  offering: "Products & pricing",
-  objections: "Objections",
-  competitors: "Competitors",
-  compliance: "Compliance",
-  tone: "Tone",
+type Strength = "empty" | "basic" | "strong";
+
+const STRENGTH_LABELS: Record<Strength, string> = {
+  empty: "Not taught",
+  basic: "Basic",
+  strong: "Strong",
 };
+
+/**
+ * Deterministic strength per module, from the draft content only. "Strong"
+ * needs every field filled with some depth (or a well-stocked list) — an
+ * honest nudge, not a score, and it never blocks saving or publishing.
+ */
+function moduleStrength(m: ModuleDef, ctx: Record<string, any>): Strength {
+  const fieldValues = m.fields.map((f) => readPath(ctx, f.path).trim());
+  const filledFields = fieldValues.filter(Boolean).length;
+  const fieldChars = fieldValues.join("").length;
+
+  let listCount = 0;
+  let listStrong = false;
+  for (const kind of m.lists) {
+    if (kind === "products") {
+      const n = asList(ctx?.offering?.products_services).length;
+      listCount += n;
+      if (n >= 2) listStrong = true;
+    } else if (kind === "objections") {
+      const n = asList(ctx?.objections).length;
+      listCount += n;
+      if (n >= 3) listStrong = true;
+    } else if (kind === "competitors") {
+      const n = asList(ctx?.competitors).length;
+      listCount += n;
+      if (n >= 2) listStrong = true;
+    } else {
+      const noGo = asTags(ctx?.compliance?.no_go_language).length;
+      const disclosures = asTags(ctx?.compliance?.required_disclosures).length;
+      listCount += noGo + disclosures;
+      if (noGo >= 3 || (noGo >= 1 && disclosures >= 1)) listStrong = true;
+    }
+  }
+
+  const hasAny = filledFields > 0 || listCount > 0;
+  if (!hasAny) return "empty";
+
+  const fieldsStrong =
+    m.fields.length > 0 && filledFields === m.fields.length && fieldChars >= 150;
+  if (m.fields.length > 0 && m.lists.length > 0) {
+    return fieldsStrong && listStrong ? "strong" : "basic";
+  }
+  if (m.fields.length > 0) return fieldsStrong ? "strong" : "basic";
+  return listStrong ? "strong" : "basic";
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -250,6 +392,8 @@ export default function ContextTab() {
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
+
+  const [activeModule, setActiveModule] = useState<string>(MODULES[0].id);
 
   const [compiled, setCompiled] = useState<string>("");
   const [compiledState, setCompiledState] = useState<"published" | "draft">("published");
@@ -443,13 +587,13 @@ export default function ContextTab() {
     );
   }
 
+  const strengths = new Map(MODULES.map((m) => [m.id, moduleStrength(m, draftContext)]));
+  const taughtCount = MODULES.filter((m) => strengths.get(m.id) !== "empty").length;
   const filledCount = SECTION_KEYS.filter((k) => sectionFilled(draftContext, k)).length;
-  const products = asList(draftContext?.offering?.products_services);
   const objections = asList(draftContext?.objections);
-  const competitors = asList(draftContext?.competitors);
-  const noGo = asTags(draftContext?.compliance?.no_go_language);
-  const disclosures = asTags(draftContext?.compliance?.required_disclosures);
   const hasDraftRow = !!draftRow;
+  const active = MODULES.find((m) => m.id === activeModule) ?? MODULES[0];
+  const activeStrength = strengths.get(active.id) ?? "empty";
 
   const draftStatus = !hasDraftRow
     ? "Not started"
@@ -468,145 +612,194 @@ export default function ContextTab() {
         scored.
       </p>
 
-      {/* STATUS */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="Published context"
-          value={published ? `v${published.version}` : "None"}
-          subtext={
-            published
-              ? `Published ${formatDate(published.published_at)}`
-              : "Gravix scores without company context"
-          }
-          variant={published ? "default" : "warning"}
-        />
-        <StatCard
-          label="Draft"
-          value={draftStatus}
-          subtext={
-            hasDraftRow
-              ? `Last saved ${formatDate(draftRow?.updated_at ?? null)}`
-              : "Edits start a draft — publishing stays a separate step"
-          }
-          variant={dirty ? "warning" : "default"}
-        />
-        <StatCard
-          label="Sections with content"
-          value={`${filledCount}/${SECTION_KEYS.length}`}
-          subtext="Empty sections are simply left out"
-        />
-        <StatCard
-          label="Objections taught"
-          value={objections.length}
-          subtext="Approved responses Gravix can coach towards"
-        />
-      </div>
-
-      {/* SECTION COMPLETENESS */}
+      {/* HERO / STATUS BAND */}
       <SectionCard
-        eyebrow="Coverage"
-        title="What Gravix knows"
-        subtitle="Each section you fill in is added to the block Gravix reads when scoring"
+        variant="ai"
+        eyebrow="Company intelligence"
+        title="Teach Gravix how your company sells"
+        subtitle={
+          published
+            ? "Your published context shapes how every new call is scored and coached."
+            : "Nothing is published yet — Gravix currently scores without company context."
+        }
       >
-        <div className="flex flex-wrap gap-2 px-5 py-4">
-          {SECTION_KEYS.map((key) => {
-            const filled = sectionFilled(draftContext, key);
-            return (
-              <span
-                key={key}
-                className={
-                  filled
-                    ? "inline-flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs text-brand-300"
-                    : "inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-500"
-                }
-              >
-                {SECTION_LABELS[key]}
-                <span className="text-[10px] uppercase tracking-wider opacity-70">
-                  {filled ? "Taught" : "Empty"}
-                </span>
-              </span>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 px-5 py-4 sm:grid-cols-4">
+          <HeroStat
+            label="Published"
+            value={published ? `v${published.version}` : "None"}
+            detail={
+              published
+                ? `Published ${formatDate(published.published_at)}`
+                : "Publish below when ready"
+            }
+          />
+          <HeroStat
+            label="Draft"
+            value={draftStatus}
+            detail={
+              hasDraftRow
+                ? `Last saved ${formatDate(draftRow?.updated_at ?? null)}`
+                : "Edits start a draft"
+            }
+          />
+          <HeroStat
+            label="Modules taught"
+            value={`${taughtCount}/${MODULES.length}`}
+            detail={`${filledCount}/${SECTION_KEYS.length} sections in the compiled block`}
+          />
+          <HeroStat
+            label="Objections taught"
+            value={String(objections.length)}
+            detail="Approved responses Gravix coaches towards"
+          />
         </div>
       </SectionCard>
 
-      {/* EDITOR */}
-      {FIELD_GROUPS.map((group) => (
-        <SectionCard key={group.key} eyebrow="Draft" title={group.title} subtitle={group.blurb}>
-          <div className="space-y-5 px-5 py-4">
-            {group.fields.map((field) => {
-              const value = readPath(draftContext, field.path);
+      {/* MODULE RAIL + FOCUS EDITOR */}
+      <SectionCard
+        eyebrow="Draft"
+        title="Company knowledge"
+        subtitle="Work one module at a time — everything saves together as one draft"
+      >
+        <div className="grid lg:grid-cols-[230px_minmax(0,1fr)]">
+          {/* Rail */}
+          <div className="flex gap-1 overflow-x-auto border-b border-neutral-900 p-2 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r">
+            {MODULES.map((m) => {
+              const s = strengths.get(m.id) ?? "empty";
+              const isActive = m.id === activeModule;
               return (
-                <div key={field.path.join(".")}>
-                  <label
-                    htmlFor={`ctx-${field.path.join("-")}`}
-                    className="block text-xs font-medium text-neutral-300"
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setActiveModule(m.id)}
+                  aria-pressed={isActive}
+                  className={
+                    isActive
+                      ? "flex shrink-0 items-center justify-between gap-3 rounded-lg border border-brand-500/40 bg-brand-500/10 px-3 py-2 text-left lg:w-full"
+                      : "flex shrink-0 items-center justify-between gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:bg-neutral-900/60 lg:w-full"
+                  }
+                >
+                  <span
+                    className={
+                      isActive ? "text-xs font-medium text-brand-200" : "text-xs text-neutral-300"
+                    }
                   >
-                    {field.label}
-                  </label>
-                  <p className="mt-0.5 text-[11px] text-neutral-500">{field.hint}</p>
-                  <textarea
-                    id={`ctx-${field.path.join("-")}`}
-                    rows={field.rows}
-                    maxLength={MAX_FIELD_CHARS}
-                    value={value}
-                    onChange={(e) => onField(field.path, e.target.value)}
-                    className="mt-2 w-full resize-y rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-brand-500/50 focus:outline-none"
-                    placeholder="Not taught yet"
-                  />
-                  <div className="mt-1 text-right text-[10px] tabular-nums text-neutral-600">
-                    {value.length}/{MAX_FIELD_CHARS}
-                  </div>
-                </div>
+                    {m.label}
+                  </span>
+                  <StrengthPill strength={s} />
+                </button>
               );
             })}
           </div>
-        </SectionCard>
-      ))}
 
-      {/* READ-ONLY STRUCTURED SECTIONS */}
-      <SectionCard
-        eyebrow="Reference"
-        title="Products, objections & competitors"
-        subtitle="Read-only for now — these are part of your published context and are used when scoring"
-      >
-        <div className="space-y-5 px-5 py-4">
-          <ReadOnlyList
-            title="Products & services"
-            empty="No products taught yet."
-            items={products.map((p) => ({
-              head: String(p.name ?? "").trim(),
-              body: String(p.description ?? "").trim(),
-            }))}
-          />
-          <ReadOnlyList
-            title="Objections & approved responses"
-            empty="No objections taught yet."
-            items={objections.map((o) => ({
-              head: String(o.objection ?? "").trim(),
-              body: String(o.approved_response ?? "").trim(),
-            }))}
-          />
-          <ReadOnlyList
-            title="Competitors"
-            empty="No competitors taught yet."
-            items={competitors.map((c) => ({
-              head: String(c.name ?? "").trim(),
-              body: String(c.positioning ?? c.notes ?? "").trim(),
-            }))}
-          />
-          <div>
-            <div className="text-xs font-medium text-neutral-300">Compliance</div>
-            {noGo.length === 0 && disclosures.length === 0 ? (
-              <p className="mt-1 text-xs text-neutral-600">No compliance guidance taught yet.</p>
-            ) : (
-              <div className="mt-2 space-y-1.5 text-xs text-neutral-400">
-                {noGo.length > 0 && <p>Never say: {noGo.join(" · ")}</p>}
-                {disclosures.map((d) => (
-                  <p key={d}>Required disclosure: {d}</p>
-                ))}
+          {/* Focus editor */}
+          <div className="min-w-0 px-5 py-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">{active.label}</h3>
+                <p className="mt-0.5 text-xs text-neutral-500">{active.blurb}</p>
+              </div>
+              <StrengthPill strength={activeStrength} withLabel />
+            </div>
+
+            {/* Editable fields */}
+            {active.fields.length > 0 && (
+              <div className="mt-4 space-y-5">
+                {active.fields.map((field) => {
+                  const value = readPath(draftContext, field.path);
+                  return (
+                    <div key={field.path.join(".")}>
+                      <label
+                        htmlFor={`ctx-${field.path.join("-")}`}
+                        className="block text-xs font-medium text-neutral-300"
+                      >
+                        {field.label}
+                      </label>
+                      <p className="mt-0.5 text-[11px] text-neutral-500">{field.hint}</p>
+                      <textarea
+                        id={`ctx-${field.path.join("-")}`}
+                        rows={field.rows}
+                        maxLength={MAX_FIELD_CHARS}
+                        value={value}
+                        onChange={(e) => onField(field.path, e.target.value)}
+                        className="mt-2 w-full resize-y rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-brand-500/50 focus:outline-none"
+                        placeholder="Not taught yet"
+                      />
+                      <div className="mt-1 text-right text-[10px] tabular-nums text-neutral-600">
+                        {value.length}/{MAX_FIELD_CHARS}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+
+            {/* Read-only structured lists for this module */}
+            {active.lists.length > 0 && (
+              <div className="mt-4 rounded-lg border border-neutral-800/70 bg-neutral-950 px-4 py-3">
+                <p className="text-[11px] text-neutral-500">
+                  Read-only for now — these entries are part of your context and
+                  publish with everything else.
+                </p>
+                <div className="mt-3 space-y-4">
+                  {active.lists.includes("products") && (
+                    <ReadOnlyList
+                      title="Products & services"
+                      empty="No products taught yet."
+                      items={asList(draftContext?.offering?.products_services).map((p) => ({
+                        head: String(p.name ?? "").trim(),
+                        body: String(p.description ?? "").trim(),
+                      }))}
+                    />
+                  )}
+                  {active.lists.includes("objections") && (
+                    <ReadOnlyList
+                      title="Objections & approved responses"
+                      empty="No objections taught yet."
+                      items={asList(draftContext?.objections).map((o) => ({
+                        head: String(o.objection ?? "").trim(),
+                        body: String(o.approved_response ?? "").trim(),
+                      }))}
+                    />
+                  )}
+                  {active.lists.includes("competitors") && (
+                    <ReadOnlyList
+                      title="Competitors"
+                      empty="No competitors taught yet."
+                      items={asList(draftContext?.competitors).map((c) => ({
+                        head: String(c.name ?? "").trim(),
+                        body: String(c.positioning ?? c.notes ?? "").trim(),
+                      }))}
+                    />
+                  )}
+                  {active.lists.includes("compliance") && (
+                    <ComplianceView
+                      noGo={asTags(draftContext?.compliance?.no_go_language)}
+                      disclosures={asTags(draftContext?.compliance?.required_disclosures)}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Static guidance — example copy only, nothing generated. */}
+            <div className="mt-4 rounded-lg border border-neutral-800/70 bg-neutral-900/30 px-4 py-3">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                What strong context looks like
+              </div>
+              <ul className="mt-2 space-y-1.5">
+                {active.guidance.map((g) => (
+                  <li key={g} className="flex gap-2 text-[11px] leading-relaxed text-neutral-400">
+                    <span className="text-neutral-600">—</span>
+                    <span>{g}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[10px] text-neutral-600">
+                Static guidance. Gravix never writes your context for you — what
+                you save here is exactly what scoring reads.
+              </p>
+            </div>
           </div>
         </div>
       </SectionCard>
@@ -614,7 +807,7 @@ export default function ContextTab() {
       {/* COMPILED PREVIEW */}
       <SectionCard
         eyebrow="Preview"
-        title="What Gravix reads"
+        title="View as Gravix sees it"
         subtitle="The exact block handed to scoring — built from your context, no AI involved"
         actions={
           <div className="flex items-center gap-1">
@@ -697,6 +890,65 @@ export default function ContextTab() {
 }
 
 /* ------------------------- Sub-components ------------------------ */
+
+function HeroStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
+      <div className="mt-0.5 text-[11px] text-neutral-500">{detail}</div>
+    </div>
+  );
+}
+
+function StrengthPill({
+  strength,
+  withLabel = false,
+}: {
+  strength: Strength;
+  withLabel?: boolean;
+}) {
+  const cls =
+    strength === "strong"
+      ? "inline-flex items-center rounded-full border border-success-500/30 bg-success-500/10 px-2 py-0.5 text-[10px] text-success-300"
+      : strength === "basic"
+      ? "inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400"
+      : "inline-flex items-center rounded-full border border-warning-500/30 bg-warning-500/10 px-2 py-0.5 text-[10px] text-warning-300";
+  return (
+    <span className={cls}>
+      {STRENGTH_LABELS[strength]}
+      {withLabel && strength === "empty" ? " — fill it in below" : ""}
+    </span>
+  );
+}
+
+function ComplianceView({ noGo, disclosures }: { noGo: string[]; disclosures: string[] }) {
+  if (noGo.length === 0 && disclosures.length === 0) {
+    return <p className="text-xs text-neutral-600">No compliance guidance taught yet.</p>;
+  }
+  return (
+    <div className="space-y-1.5 text-xs text-neutral-400">
+      {noGo.length > 0 && (
+        <p>
+          <span className="text-neutral-200">Never say:</span> {noGo.join(" · ")}
+        </p>
+      )}
+      {disclosures.map((d) => (
+        <p key={d}>
+          <span className="text-neutral-200">Required disclosure:</span> {d}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 function ReadOnlyList({
   title,
