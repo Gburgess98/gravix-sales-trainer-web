@@ -44,7 +44,8 @@ export const SHELL_PATHS = [
   '/admin',
   '/sparring',
   '/reps',
-  '/rewards',
+  // Day 231 — '/rewards' removed: the legacy arcade page is now a server
+  // redirect to /dashboard (same pattern as '/review' on Day 185).
   '/upload',
   '/whisperer',
   '/coaching',
