@@ -3039,3 +3039,28 @@ worse than the mess), destructive delete, hiding history permanently, any
 editor/activation/fork/archive behaviour change.
 
 Validate: `npm run validate-premium-ux-day-230`.
+
+## Gravix Design System foundation (Day 187 brief · executed Day 231)
+
+The Day 187 design-system brief arrived after the Premium UX sprint had
+already built its foundation piecemeal (Command Centre direction Day 194,
+Geist + depth shell Day 195, Button primitive Day 198, semantic tokens Day
+203). Rather than duplicate any of that, this pass consolidates it:
+
+- **GRAVIX_DESIGN_SYSTEM.md** now codifies the live system — visual
+  direction, type scale, spacing/page width, colour roles, CTA hierarchy,
+  card hierarchy, badge/status rules, table/list rules, empty states, form
+  fields, theme direction, and an explicit what-not-to-do list. Every rule
+  cites the shared component that enforces it; nothing aspirational.
+- **Code**: comment-only pointers added in `ui/button.tsx` (CTA hierarchy)
+  and `globals.css` (token usage rules). No behaviour, markup or style
+  changes; no page rewrites.
+- **Validator**: `validate-design-system-day-187` pins the doc's required
+  sections and re-asserts the foundation it documents (tokens, Button
+  recipes, PageContainer width, status-only badge colour, no arcade colour
+  in shared UI).
+
+Deviation noted: the brief asked for the "Anthropic Design plugin"; no such
+critique plugin is installed in this environment (DesignSync is a
+claude.ai/design uploader, not a critique tool), so direction was derived
+from the sprint's own established principles.

@@ -12,7 +12,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* Day 203 — semantic colour tokens.
+/* Day 203 — semantic colour tokens. Usage rules live in GRAVIX_DESIGN_SYSTEM.md:
+   new code uses the role names below (brand/accent/success/warning/danger),
+   never the raw palette, and success stays status-only.
    Each role aliases the current Tailwind palette 1:1 via var(), so the compiled
    output (including /opacity modifiers, which Tailwind resolves through the var
    chain at build time) is byte-identical to the raw utility it replaces. No

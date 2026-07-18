@@ -66,7 +66,10 @@ grep -qE "danger: 'border border-(red|danger)-500/30 text-(red|danger)-300 hover
 check "danger recipe is bordered danger (red/danger token)" $?
 
 # --- Adoption in the two touched routes ---
-grep -q 'SectionCard, Button, buttonClasses } from "@/components/ui"' "$CALLS" 2>/dev/null
+# Pin refreshed Day 231: later days appended imports (e.g. EmptyState, Day
+# 215/216), so assert the intent — Button + buttonClasses via the barrel —
+# rather than the Day-198 byte-exact import line.
+grep -qE 'import \{[^}]*Button, buttonClasses[^}]*\} from "@/components/ui"' "$CALLS" 2>/dev/null
 check "calls/[id] imports Button + buttonClasses" $?
 CALLS_BTN=$(grep -c '<Button' "$CALLS" 2>/dev/null || echo 0)
 [[ "$CALLS_BTN" -ge 10 ]]

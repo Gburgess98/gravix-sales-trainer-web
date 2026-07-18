@@ -6,6 +6,9 @@ export type ButtonSize = 'sm' | 'md'
 
 // Day 198 — canonical Command Centre button recipes (Days 195–197 hand-copied
 // these per call site). brand = action/AI, neutral = secondary, danger = red.
+// CTA hierarchy (GRAVIX_DESIGN_SYSTEM.md): at most ONE primary per view;
+// ghost is the default for filters/toggles/row actions; danger only behind a
+// confirmation modal. Links share these recipes via buttonClasses().
 // Day 203 — recipes now use the semantic colour roles (brand/danger) instead of
 // raw indigo/red; the tokens alias the same palette so rendered output is
 // unchanged, and a white-label can retint via the token layer alone.
