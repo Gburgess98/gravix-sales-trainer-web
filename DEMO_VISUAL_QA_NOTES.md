@@ -605,3 +605,32 @@ like, and that only future scoring is affected by changes.
       to /call-library; a recent call's review page shows provenance.
 - [ ] No AI Builder / Autofill / scraping anywhere on the page.
 - [ ] Band disappears cleanly for a rep login (tabs show the manager gate).
+
+## Day 233 addendum — signed-in proof PASSED (Dana, 19 Jul 2026)
+
+User signed in as dana.white@ufcelite.demo inside the preview browser; the
+Day 230, Day 232 and Day 233 walkthroughs were all run live and PASSED:
+
+- Command band: both pillars with real status ("Published v1 · draft in
+  progress" / "UFC Sales Scorecard v1 active · 1 draft waiting"), all three
+  chips, four-cell strip matching seeded state. Pillar click switches tab
+  and writes ?tab=.
+- Context tab: hero stats (v1 published 16 Jul, 7/8 modules taught, 3
+  objections), module rail strengths from real content (Company profile
+  Strong, Sales motion Basic, ICP Basic, Products Strong, Objections
+  Strong), focus editor switching, static guidance, "View as Gravix sees
+  it" compiled block with Published/Draft toggle. No saves or publishes
+  were made during proof.
+- Scorecards tab: "Scoring today: UFC Sales Scorecard v1", Active/Drafts
+  group copy, Gravix Default read-only bars, Archived history collapsed
+  with "Show 6 archived"; expanded, the six Day 228 QA/probe cards are
+  readable with no restore/delete controls.
+- Scoring impact panel: all five facts + provenance bridge + Open call
+  library. Zero console errors throughout; no Autofill/AI-assistant text
+  anywhere.
+
+Environment gotcha recorded: running `npm run build` and then starting
+`next dev` on the same .next serves a blank page (chunk 404, empty body,
+no error). Fix: stop server, `rm -rf .next`, restart. A pinned-port
+launch config (`web-proof`, port 49361) exists so a dev restart keeps the
+per-origin login alive.
