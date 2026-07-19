@@ -4,6 +4,9 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabaseClient";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
+import { buttonClasses } from "@/components/ui/button";
 
 type TaskItem = {
   id: string;
@@ -223,33 +226,28 @@ export default function CrmTasksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <div className="mx-auto max-w-7xl px-6 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-xs uppercase tracking-[0.22em] text-neutral-500">CRM</div>
-            <h1 className="mt-2 text-xl font-semibold tracking-tight">Tasks</h1>
-            <p className="mt-2 max-w-2xl text-sm text-neutral-400">
-              Follow-ups and next actions across your pipeline. Keep reps focused on what needs doing next.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/crm/pipeline"
-              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
-            >
-              ← Pipeline
-            </Link>
-            <button
-              type="button"
-              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
-              onClick={() => void loadTasks()}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+    <PageContainer>
+      {/* Day 235 — shell adoption: PageContainer/PageHeader replace the local
+          full-screen wrapper and hand-rolled header; list logic untouched. */}
+      <div>
+        <PageHeader
+          title="Tasks"
+          subtitle="Follow-ups and next actions across your pipeline. Keep reps focused on what needs doing next."
+          actions={
+            <>
+              <Link href="/crm/pipeline" className={buttonClasses("ghost", "md")}>
+                ← Pipeline
+              </Link>
+              <button
+                type="button"
+                className={buttonClasses("ghost", "md")}
+                onClick={() => void loadTasks()}
+              >
+                Refresh
+              </button>
+            </>
+          }
+        />
 
         <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="rounded-2xl border border-neutral-900 bg-neutral-950 p-4">
@@ -373,6 +371,6 @@ export default function CrmTasksPage() {
           {toast}
         </div>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }

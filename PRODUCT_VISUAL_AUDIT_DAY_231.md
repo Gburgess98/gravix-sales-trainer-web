@@ -64,10 +64,10 @@ C = weak/basic, hurts trust · D = hide from demo until fixed.
 
 | Route | Grade | Demo decision |
 | --- | --- | --- |
-| /admin/users | C | Hide — pre-shell layout; use /team instead |
+| /admin/users | C → resolved Day 235 | Kept as internal control plane (impersonation); shell-adopted + "Internal admin" framing; partneradmin-only nav. Keep out of demos on principle |
 | /admin/assignments | B− | Neutral; fine via the manager flow |
-| /crm/actions | C+ | Hide — no shell primitives, local layout |
-| /crm/tasks | C+ | Hide — same |
+| /crm/actions | C+ → resolved Day 235 | Orphan; now a server redirect → /crm/overview |
+| /crm/tasks | C+ → resolved Day 235 | Kept (linked from Pipeline); shell-adopted, demo-safe |
 | /crm/accounts | B | Show if the CRM story needs it |
 | /crm/reps/[id] | B− | Show via CRM links only |
 | /rewards | D → fixed | Was: orphaned arcade page whose data calls could only throw (imports removed from lib/api on Day 205A). Now a server redirect → /dashboard |

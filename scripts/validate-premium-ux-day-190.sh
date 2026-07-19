@@ -27,7 +27,9 @@ grep -q "Day 190" "$AUDIT" 2>/dev/null
 check "PREMIUM_UX_AUDIT.md includes Day 190" $?
 
 # --- /crm/tasks ---
-grep -q '<h1 className="mt-2 text-xl font-semibold tracking-tight">Tasks</h1>' "$TASKS" 2>/dev/null
+# Pin refreshed Day 235: the hand-rolled h1 became the shared PageHeader
+# (same text-xl title scale via the primitive) during shell adoption.
+grep -q 'title="Tasks"' "$TASKS" 2>/dev/null && grep -q 'PageHeader' "$TASKS" 2>/dev/null
 check "/crm/tasks header normalised to text-xl" $?
 ! grep -q 'bg-white px-3 py-2 text-sm font-medium text-neutral-950' "$TASKS" 2>/dev/null
 check "/crm/tasks loud white Refresh button removed" $?
@@ -40,22 +42,16 @@ grep -q 'border-emerald-900/80 bg-emerald-950/30 text-emerald-300' "$TASKS" 2>/d
 check "/crm/tasks keeps emerald done status pill" $?
 
 # --- /crm/actions ---
-grep -q 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200' "$ACTIONS" 2>/dev/null
-check "/crm/actions filter active tab is calm indigo" $?
-! grep -q 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200' "$ACTIONS" 2>/dev/null
-check "/crm/actions no cyan active-tab remains" $?
-# Complete action button no longer emerald-filled.
-! grep -q 'border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20' "$ACTIONS" 2>/dev/null
-check "/crm/actions Complete action button off emerald" $?
-grep -q 'rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60' "$ACTIONS" 2>/dev/null
-check "/crm/actions Complete action button now neutral" $?
-# green kept for status only: Done status pill still emerald.
-grep -q 'border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-\[10px\] uppercase tracking-wide text-emerald-300' "$ACTIONS" 2>/dev/null
-check "/crm/actions keeps emerald Done status pill" $?
-grep -q 'completeAction' "$ACTIONS" 2>/dev/null
-check "/crm/actions preserves completeAction handler" $?
-grep -q 'STATUS_TABS' "$ACTIONS" 2>/dev/null
-check "/crm/actions preserves filter tabs" $?
+# Pins refreshed Day 235: the standalone actions list was orphaned (no nav
+# entry, no inbound links) and duplicated the overview cockpit's actions
+# panels, so the page became a server redirect stub to /crm/overview (Day
+# 184 pattern). The Day 190 colour-calm intent is preserved trivially —
+# a redirect renders no controls at all.
+grep -q 'redirect("/crm/overview")' "$ACTIONS" 2>/dev/null &&
+  grep -q 'from "next/navigation"' "$ACTIONS" 2>/dev/null
+check "/crm/actions is a server redirect to the overview cockpit" $?
+! grep -qE 'border-cyan-500/30|hover:bg-emerald-500/20' "$ACTIONS" 2>/dev/null
+check "/crm/actions renders no loud controls (redirect stub)" $?
 
 # --- getBackendBase cleanup ---
 [[ ! -e "$SRC/lib/config.ts" ]]

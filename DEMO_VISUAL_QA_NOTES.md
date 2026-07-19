@@ -666,3 +666,16 @@ Known cosmetic (not a blocker): the seeded proof call has no audio object,
 so GET /signed-audio returns 500 in the network log; the page degrades to
 the honest "No audio available for this call" state. If audio matters for
 a demo beat, use the hero call's player instead.
+
+## Day 235 — demo route guidance
+
+Show freely: /dashboard, /call-library, /calls/[id], /coaching,
+/assignments, /upload, /crm/analytics, /crm/overview, /crm/manager,
+/crm/accounts, /team, /intelligence.
+
+Resolved former C-grades:
+- /crm/actions now redirects to /crm/overview (orphan demoted).
+- /crm/tasks is shell-adopted and safe if reached via Pipeline → Tasks.
+- /admin/users is explicitly framed "Control Plane · Internal admin";
+  partneradmin-only nav; managers get a calm access-denied. Keep it out
+  of demos on principle — it is internal tooling, not product story.

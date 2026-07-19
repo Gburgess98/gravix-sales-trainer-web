@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { proxyFetch } from '@/lib/api'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageContainer } from '@/components/layout/page-container'
+import { PageHeader } from '@/components/layout/page-header'
 import { setImpersonationState, clearImpersonationState, getImpersonationState } from '@/lib/impersonation'
 
 type UserRow = {
@@ -132,12 +134,18 @@ export default function UsersPage() {
   }, [users, search, tierFilter])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6">
-      {/* Header */}
+    <PageContainer>
+      {/* Day 235 — shell adoption + explicit internal framing. This is the
+          partner/superadmin control plane (impersonation lives here); it is
+          not a manager demo surface and its nav entry is partneradmin-only. */}
       <div>
-        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Control Plane</p>
-        <h1 className="mt-0.5 text-xl font-semibold text-white">Users</h1>
-        <p className="mt-0.5 text-sm text-neutral-400">Reps and managers visible to your partner scope.</p>
+        <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+          Control Plane · Internal admin
+        </p>
+        <PageHeader
+          title="Users"
+          subtitle="Reps and managers visible to your partner scope. Internal administration — not part of the manager workspace."
+        />
       </div>
 
       {loading && <LoadingText text="Loading users…" />}
@@ -263,6 +271,6 @@ export default function UsersPage() {
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

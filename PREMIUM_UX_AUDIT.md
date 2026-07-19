@@ -3134,3 +3134,29 @@ recomposes the page without touching either tab's behaviour.
   Day 232/230; the page keeps ?tab= deep links.
 
 Validate: `npm run validate-intelligence-workspace-day-233`.
+
+## Day 235 — C-grade surface cleanup (WEB-only)
+
+Follow-up to the Day 231 audit's three remaining C-grade routes. Decisions,
+route by route:
+
+- **/crm/actions → redirect.** Fully orphaned (no sidebar entry, no inbound
+  links) and duplicating the overview cockpit's actions panels, so it became
+  a server redirect stub to /crm/overview (Day 184 pattern). Day 190's
+  colour-calm pins on the old file were refreshed to assert the stub.
+- **/crm/tasks → kept + shell pass.** Linked from /crm/pipeline and carrying
+  real behaviour (loadTasks refresh, completeTask). Adopted PageContainer/
+  PageHeader/buttonClasses; the local min-h-screen wrapper and hand-rolled
+  header retired; list logic and the emerald done-status pill untouched.
+  Day 190's h1 pin refreshed to the PageHeader equivalent.
+- **/admin/users → kept as internal control plane.** It hosts impersonation
+  (app-shell's exit-impersonation lands here) so it must exist; its nav
+  entry was already partneradmin-only and the page gates with a calm
+  access-denied. Adopted PageContainer/PageHeader and gained explicit
+  "Control Plane · Internal admin" framing so it can never read as a buyer
+  surface. Impersonation handlers untouched.
+
+Result: no route a wandering buyer can hit now renders a pre-shell,
+half-product surface.
+
+Validate: `npm run validate-premium-ux-day-235`.

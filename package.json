@@ -138,6 +138,7 @@
     "validate-design-system-day-187": "bash scripts/validate-design-system-day-187.sh",
     "validate-context-engine-day-232": "bash scripts/validate-context-engine-day-232.sh",
     "validate-intelligence-workspace-day-233": "bash scripts/validate-intelligence-workspace-day-233.sh",
+    "validate-premium-ux-day-235": "bash scripts/validate-premium-ux-day-235.sh",
     "validate-premium-ux-day-206": "bash scripts/validate-premium-ux-day-206.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",
     "test:sparring-summary": "playwright test tests/e2e/sparring-summary.spec.ts",
