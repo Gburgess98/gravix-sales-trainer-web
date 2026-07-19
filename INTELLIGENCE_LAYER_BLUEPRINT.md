@@ -9,8 +9,12 @@ byte-identical). Day 224 seeded the UFC demo assets, and **Day 225 shipped the
 first WEB surface** — `/intelligence` with the Context and Scorecards tabs
 (route/nav exactly as planned in `CONTEXT_ENGINE_ROUTE_PLAN.md` §1–2). That
 MVP reads the real APIs and allows context draft editing + publish; the
-Scorecard Studio tab is read-only, and the AI Builder, Autofill, Objection
-Library and team-management modules remain unbuilt (see
+Scorecard Studio tab is read-only. **Day 236 shipped the Objection Library
+data layer** (`/v1/intelligence/objections` — items + evidence +
+suggestion-decision tables, draft → approved → archived lifecycle; see
+`OBJECTION_LIBRARY_BLUEPRINT.md` §10 for implementation status); its WEB
+tab, suggestion mining and runtime consumption remain unbuilt, as do the
+AI Builder and Autofill modules (see
 `PREMIUM_UX_AUDIT.md` §Day 225 for the scope boundary and the
 whole-object-`PUT` merge rule the Context editor must honour).
 Implementation detail lives in the "Implementation status" /

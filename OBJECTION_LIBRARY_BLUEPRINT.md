@@ -1,7 +1,8 @@
 # Objection Library — Blueprint (Day 210)
 
-Status: **Design documentation only.** No routes, backend, migrations, or
-runtime changes. Third Intelligence Layer module
+Status: **Data layer implemented (Day 236 — see §10).** UX sections remain
+design documentation; no WEB UI, suggestion mining, or runtime consumption
+is built yet. Third Intelligence Layer module
 (`INTELLIGENCE_LAYER_BLUEPRINT.md`), following the Context Engine (Day 208)
 and Scorecard Studio (Day 209) UX blueprints. Companions:
 `OBJECTION_LIBRARY_FIELD_SPEC.md` (fields + entities),
@@ -324,3 +325,41 @@ data + runtime lanes in the Day 207 sequence)
 
 Each day independently shippable; runtime-touching days (OL-5, OL-6) need
 live proofs before merging, per house rules.
+
+---
+
+## 10. Implementation status (Day 236 — OL-1 shipped)
+
+API repo, `sql/20260719_objection_library.sql` +
+`src/routes/intelligenceObjections.ts`, validated by
+`npm run validate:intelligence-objections`.
+
+**Built:**
+- Tables: `objection_library_items`, `objection_evidence`,
+  `objection_suggestion_decisions` (decision table ships now so the model
+  is fixed early; the mining endpoint that writes to it is OL-3).
+- Endpoints under `/v1/intelligence/objections`: list (status/category
+  filters), create draft, detail + evidence, draft update, approve,
+  archive, manual evidence attach. All requireManager-gated, company
+  resolved from the requester (cross-company ids → 404), no hard-delete
+  path anywhere. Fail-soft 503 `objection_library_not_migrated` until the
+  SQL is applied.
+- Lifecycle: draft → approved → archived. Approval gate: label, category,
+  ≥1 buyer phrase, approved response, and a coaching note or
+  why-it-matters. Archive marks, never deletes; archiving frees the label
+  (live-label uniqueness is a partial index excluding archived rows).
+- Audit events: `create_objection`, `update_objection_draft`,
+  `approve_objection`, `archive_objection`, `add_objection_evidence`.
+
+**Deviations from this blueprint (deliberate, Day 236 scope):**
+- §3.2 said approved items autosave edits; Day 236 makes approved items
+  **immutable** (409 `immutable_approved`) until a fork/revision model
+  ships — safer default, mirrors Scorecard Studio.
+- §3.3 restore (archived → draft) is not built yet; archived items are
+  read-only history.
+- Field-spec naming drift is recorded in
+  `OBJECTION_LIBRARY_FIELD_SPEC.md` §7.
+
+**Not built (later lanes):** WEB tab (OL-2), suggestion mining + review
+(OL-3), scenarios (OL-4), runtime/sparring consumption (OL-5), context
+supersession + seed (OL-6).

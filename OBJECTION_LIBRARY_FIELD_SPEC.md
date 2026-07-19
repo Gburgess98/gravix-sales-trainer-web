@@ -1,8 +1,8 @@
 # Objection Library — Field Specification & Data Entities (Day 210)
 
-Status: **Design documentation only.** Exact MVP fields and the logical
-data model. UX: `OBJECTION_LIBRARY_BLUEPRINT.md`. Scenario fields:
-`SPARRING_SCENARIO_ENGINE_SPEC.md`.
+Status: **Data layer implemented (Day 236)** — see §7 for where the built
+schema deviates from this spec. UX: `OBJECTION_LIBRARY_BLUEPRINT.md`.
+Scenario fields: `SPARRING_SCENARIO_ENGINE_SPEC.md`.
 
 Conventions match Days 208–209: examples are **UFC Gyms demo org** values
 (placeholder text + Day-216-style seed content); "Effect" is the honest
@@ -111,3 +111,35 @@ count this automatically on new calls").
    restore returns to draft.
 5. Merge only into non-archived items.
 6. Company-scoped reads/writes; suggestion mining company-scoped.
+
+## 7. As-built deviations (Day 236 data layer)
+
+Implemented in the API repo (`sql/20260719_objection_library.sql`,
+`/v1/intelligence/objections`). Where the build differs from §1–§5:
+
+1. **Column names/types:** `weak_responses` → `weak_response_patterns`;
+   list fields (`buyer_phrases`, `weak_response_patterns`,
+   `no_go_language`) are `text[]`, not jsonb.
+2. **Links:** `scorecard_criterion_ref` jsonb →
+   `linked_scorecard_criterion_id uuid`; `whisperer_trigger_id` →
+   `linked_trigger_key text`. Both reference-only, unresolved in Day 236.
+3. **Categories:** fixed keys are `price · timing · authority · trust ·
+   competitor · fit · logistics · other` (Day 236 build list) — not the
+   §1 `Pricing · Stall · Competitor · Authority · Need · Trust · Other`
+   set. UI labels can remap when OL-2 ships.
+4. **Approval gate** additionally requires a `coaching_note` **or**
+   `why_it_matters` (beyond §5's label + approved_response + the ≥1
+   buyer-phrase rule).
+5. **Label uniqueness** is enforced among live (non-archived) items only,
+   via a partial unique index — archiving frees the label.
+6. **Approved items are immutable** (409 `immutable_approved`) pending a
+   revision model; §3.1 blueprint autosave-on-approved is deferred.
+7. **`source` on items is not stored yet** — every Day 236 item is
+   manager-created; the column arrives with suggestion mining (OL-3).
+   Evidence rows do carry `source` (`manual · suggestion · moment_match`);
+   only `manual` is writable today. Evidence also gained `confidence
+   numeric` and `occurred_at` for the mining lane, and stores `phrase`
+   rather than `excerpt`/`timestamp_sec`.
+8. **`objection_suggestion_decisions`** ships now (decision `approved ·
+   merged · dismissed`, plus `reason`) but nothing writes to it until
+   OL-3.
