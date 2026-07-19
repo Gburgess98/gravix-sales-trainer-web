@@ -634,3 +634,35 @@ Environment gotcha recorded: running `npm run build` and then starting
 no error). Fix: stop server, `rm -rf .next`, restart. A pinned-port
 launch config (`web-proof`, port 49361) exists so a dev restart keeps the
 per-origin login alive.
+
+## Day 234 — demo reseed + full signed-in proof PASSED (Dana, 19 Jul 2026)
+
+Reseed chain run clean (seed:demo → seed:ufc-story → seed:ufc-intelligence).
+API validators: context PASSED, scorecards PASSED, runtime 53/53, UFC
+intelligence seed 57/57, team management 15/15; API typecheck at the 60
+baseline. WEB validators 233/232/230/229/228 + design-system + smoke all
+PASSED; build warning-free; WEB typecheck at the 186 baseline.
+
+Signed-in walkthrough as dana.white@ufcelite.demo on the pinned proof
+origin (localhost:49361), all PASSED:
+
+- /dashboard renders; logged-out redirect to /login proven earlier same
+  day at this origin; /login brand verified.
+- Call library: proof call under "My calls"; hero call under "Company
+  calls" (it belongs to the rep — this is scoping, not a bug).
+- Hero call (Nate Diaz — Price Objection Call, 45/100): Gravix default
+  rubric, no company provenance — the intended calm default state.
+- Proof call (Nate Diaz — Pricing Follow-up Call, 62/100): "Scored with
+  UFC Sales Scorecard v1 · Company context v1 applied" + review audit
+  with per-stage evidence.
+- /intelligence: command band pillars/chips/strip live; Context tab v1 +
+  7/8 modules + compiled preview; Scorecards tab UFC v1 active, archived
+  collapsed ("Show 6 archived"); Scoring impact panel present.
+- /team and /crm/analytics: human names, no raw UUIDs anywhere.
+- Zero console errors across the whole walkthrough; no Autofill/AI
+  Builder text anywhere.
+
+Known cosmetic (not a blocker): the seeded proof call has no audio object,
+so GET /signed-audio returns 500 in the network log; the page degrades to
+the honest "No audio available for this call" state. If audio matters for
+a demo beat, use the hero call's player instead.
