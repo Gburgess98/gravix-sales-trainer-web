@@ -28,7 +28,7 @@ C = weak/basic, hurts trust · D = hide from demo until fixed.
 | /crm/overview | B+ | Show, after Day 232 helper fix |
 | /crm/manager | B+ | Show |
 | /team | A− | Show |
-| /intelligence | B (Scorecards A− / Context C+) | Show Scorecards tab; keep Context tab brief until its pass |
+| /intelligence | B (Scorecards A− / Context C+) → A− after Days 232–233 (Context workspace rebuilt; page-level Intelligence Command band + scoring-impact panel added; signed-in visual confirmation pending) | Show — flagship surface |
 | /settings/profile | B | Neutral — fine if a buyer clicks it |
 
 ### Notes on the weak spots

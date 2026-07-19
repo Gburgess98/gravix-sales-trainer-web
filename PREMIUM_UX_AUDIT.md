@@ -3106,3 +3106,31 @@ save/publish behaviour or the merge-base rule.
   that logged on every hit of `/`). Behaviour identical.
 
 Validate: `npm run validate-context-engine-day-232`.
+
+## Day 233 — Intelligence Command workspace (WEB-only)
+
+Days 225–232 made both Intelligence tabs strong individually; the page
+around them contributed nothing — two bare tab labels and no cross-tab
+status, so the moat story only emerged after reading tab content. Day 233
+recomposes the page without touching either tab's behaviour.
+
+### What changed
+
+- **Intelligence Command band** (new `IntelligenceCommand.tsx`) between the
+  header and the tabs: two moat pillars that double as tab shortcuts
+  ("Teach Gravix how your company sells" → Context, "Define what good
+  calls look like" → Scorecards), each carrying its live status line;
+  status chips (Published context vN / Active scorecard / Future scoring
+  protected); the safety explanation sentence; and a four-cell status
+  strip (Context / Scorecards / Runtime / Safety). Every status derives
+  from the two real read endpoints — the band renders nothing on 401/403
+  or failure, leaving the tabs' own gate states to carry the page.
+- **Scoring impact panel** below the tab content: the five
+  draft/publish/activation facts stated plainly, plus the provenance
+  bridge ("Newly scored calls show the active context and scorecard on
+  the call review page") linking /call-library — deliberately not a seed
+  call id, which changes on reseed.
+- **Tabs untouched.** ContextTab and ScorecardsTab are byte-identical to
+  Day 232/230; the page keeps ?tab= deep links.
+
+Validate: `npm run validate-intelligence-workspace-day-233`.

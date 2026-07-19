@@ -22,6 +22,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import ContextTab from "./ContextTab";
 import ScorecardsTab from "./ScorecardsTab";
+import { IntelligenceCommand, ScoringImpactPanel } from "./IntelligenceCommand";
 
 type IntelligenceTab = "context" | "scorecards";
 
@@ -59,9 +60,21 @@ export default function IntelligencePage() {
         subtitle="Teach Gravix your business and what a good call sounds like"
       />
 
+      {/* Day 233 — page-level Intelligence Command band: the moat story and
+          cross-tab status, driven by the same two read endpoints the tabs use.
+          Renders nothing for reps (the tabs carry their own gate states). */}
+      <div className="mt-6">
+        <IntelligenceCommand onSelectTab={onTabChange} />
+      </div>
+
       <div className="mt-6">
         <WorkspaceTabs tabs={TABS} active={tab} onChange={onTabChange} />
         {tab === "context" ? <ContextTab /> : <ScorecardsTab />}
+      </div>
+
+      {/* Day 233 — scoring-impact trust panel + provenance bridge. */}
+      <div className="mt-6">
+        <ScoringImpactPanel />
       </div>
     </PageContainer>
   );

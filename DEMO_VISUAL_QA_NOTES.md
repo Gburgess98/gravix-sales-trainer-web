@@ -585,3 +585,23 @@ Open `/intelligence?tab=context` as Dana.
 - [ ] DEMO NOTE: if a rehearsal edits/publishes over the seeded UFC
       context, re-run API `seed:ufc-intelligence` to restore the demo
       story before showing buyers.
+
+## Day 233 — /intelligence premium walkthrough
+
+Open `/intelligence` as Dana. The ten-second test: without clicking, the
+page should say Gravix knows how UFC sells, knows what good calls look
+like, and that only future scoring is affected by changes.
+
+- [ ] Command band shows both pillars with live status lines (UFC context
+      vN published; UFC Sales Scorecard active).
+- [ ] Chips read: Published context vN · Active scorecard · Future scoring
+      protected.
+- [ ] Status strip: Context / Scorecards / Runtime / Safety cells match
+      the seeded state; no invented claims.
+- [ ] Clicking a pillar switches to that tab (same as the tab buttons).
+- [ ] Context tab: Day 232 module rail workspace unchanged.
+- [ ] Scorecards tab: Day 230 grouping + Archived history unchanged.
+- [ ] Scoring impact panel lists the five facts; "Open call library" goes
+      to /call-library; a recent call's review page shows provenance.
+- [ ] No AI Builder / Autofill / scraping anywhere on the page.
+- [ ] Band disappears cleanly for a rep login (tabs show the manager gate).
