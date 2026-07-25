@@ -695,3 +695,54 @@ Resolved former C-grades:
 - [ ] Archive (confirmed) moves the item to Archived history (collapsed).
 - [ ] Evidence panel shows the honest empty message when none exists.
 - [ ] No raw UUID labels; zero console errors.
+
+## Day 251 — Objection Library browser proof (PASSED)
+
+Signed in as Dana (dana.white@ufcelite.demo, UFC Elite) against the running
+web + api dev servers; walked the live rendered UI at
+/intelligence?tab=objections. Library started empty (no seeded UFC
+objections), so a clearly-labelled throwaway "QA TEST — Day 251 (delete me)"
+was used for the full lifecycle — no seeded demo objection was touched.
+
+Result: every checklist item passed. Verified in the real UI:
+- [x] Objections tab loads; Context and Scorecards tabs still load.
+- [x] Command band (Context/Scorecards) + status cards render (Approved /
+      Drafts / Archived / Categories covered).
+- [x] Approved/draft/archived grouping renders; Archived history collapsed by
+      default (disclosure toggle).
+- [x] "New objection" modal opens; hint "Only a label is needed to save a
+      draft." Draft created with label only → appears under Drafts.
+- [x] Readiness lists missing requirements (buyer phrase / approved response /
+      coaching note or why-it-matters). Approve button honestly disabled
+      ("Fill in the required fields before approving").
+- [x] Edited every field — label, category, buyer phrases, why it matters,
+      approved response, weak response patterns, no-go language, coaching note.
+- [x] Save persists (PUT 200); readiness turns green ("Ready to approve — all
+      required guidance is in place").
+- [x] Approve confirmation carries exact copy: "Future coaching can use this
+      approved guidance. Existing call scores do not change." Approve succeeds
+      (POST /approve 200).
+- [x] Approved item is locked/read-only ("Approved guidance is locked. Editing
+      is disabled to keep coaching consistent."); only Archive remains — no
+      edit controls; Categories covered ticked to 1/8.
+- [x] Evidence honest empty state ("Evidence will appear here when this
+      objection is linked to calls or moments.").
+- [x] Archive confirmation ("...move to Archived history and can no longer be
+      edited. Nothing is deleted — you can still read it."); archive succeeds
+      (POST /archive 200); item moves to Archived history, read-only.
+- [x] No delete controls anywhere; no AI Builder / Autofill / suggestion-mining
+      copy; no raw UUID primary labels; zero console errors.
+- [x] All calls went through /api/proxy (GET/POST/PUT only, no DELETE).
+
+Cleanup: the QA test objection was carried through create → approve → archive
+and left in Archived history. The data layer has no hard-delete by design
+(no DELETE endpoint), so archived is the terminal safe state; the item is
+clearly labelled "QA TEST — Day 251 (delete me)" and can be purged directly
+from the DB if desired. No seeded demo objections exist in the UFC org.
+
+Validators (all green): validate-objection-library-day-250,
+validate-intelligence-workspace-day-233, validate-tier-2b-smoke.
+typecheck: one pre-existing failure in src/hooks/useInfiniteScroll.ts (an
+orphaned page component mis-saved as a .ts hook, imported by nothing —
+unrelated to the objection library; flagged for separate cleanup).
+No code changes required.
