@@ -679,3 +679,19 @@ Resolved former C-grades:
 - /admin/users is explicitly framed "Control Plane · Internal admin";
   partneradmin-only nav; managers get a calm access-denied. Keep it out
   of demos on principle — it is internal tooling, not product story.
+
+---
+
+## Day 250 — Objection Library checklist
+
+/intelligence?tab=objections (Dana / manager):
+- [ ] Objections tab loads; Context and Scorecards tabs still load.
+- [ ] Empty state offers "New objection" (no coming-soon buttons).
+- [ ] Create a draft (label only is enough); it appears under Drafts.
+- [ ] Edit draft fields; readiness lists what approval still needs.
+- [ ] Save draft, then Approve — confirmation says "Future coaching can use
+      this approved guidance. Existing call scores do not change."
+- [ ] Approved item is locked/read-only; moves under Approved guidance.
+- [ ] Archive (confirmed) moves the item to Archived history (collapsed).
+- [ ] Evidence panel shows the honest empty message when none exists.
+- [ ] No raw UUID labels; zero console errors.

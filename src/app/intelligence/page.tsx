@@ -3,9 +3,10 @@
 // Intelligence Layer — Day 225: the Intelligence workspace (manager MVP).
 //
 // The first product surface for the Day 207–211 blueprint, backed by the real
-// Day 218–224 APIs. Two tabs only:
-//   ?tab=context      Context Engine  — teach Gravix your business
+// Day 218–236 APIs. Three tabs:
+//   ?tab=context      Context Engine   — teach Gravix your business
 //   ?tab=scorecards   Scorecard Studio — teach Gravix what good calls look like
+//   ?tab=objections   Objection Library — how the team handles buyer pushback
 //
 // Route/nav decisions come from CONTEXT_ENGINE_ROUTE_PLAN.md §1–2 and are
 // deliberate: /crm/analytics stays "observe" (what the team is doing) and
@@ -13,8 +14,9 @@
 // labels — "Analytics" vs "Intelligence" — keep them apart.
 //
 // Not built here on purpose (no API behind them yet, so nothing is drawn):
-// AI Builder, AI Autofill, website scraping, Objection Library, Playbook
-// Library, team management, runtime scoring controls, custom stage editor.
+// AI Builder, AI Autofill, website scraping, objection suggestion mining,
+// Playbook Library, team management, runtime scoring controls, custom stage
+// editor.
 
 import { useEffect, useState } from "react";
 import { PageContainer } from "@/components/layout/page-container";
@@ -22,16 +24,18 @@ import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import ContextTab from "./ContextTab";
 import ScorecardsTab from "./ScorecardsTab";
+import ObjectionsTab from "./ObjectionsTab";
 import { IntelligenceCommand, ScoringImpactPanel } from "./IntelligenceCommand";
 
-type IntelligenceTab = "context" | "scorecards";
+type IntelligenceTab = "context" | "scorecards" | "objections";
 
 const TABS: { id: IntelligenceTab; label: string }[] = [
   { id: "context", label: "Context" },
   { id: "scorecards", label: "Scorecards" },
+  { id: "objections", label: "Objections" },
 ];
 
-const VALID_TABS: IntelligenceTab[] = ["context", "scorecards"];
+const VALID_TABS: IntelligenceTab[] = ["context", "scorecards", "objections"];
 
 export default function IntelligencePage() {
   const [tab, setTab] = useState<IntelligenceTab>("context");
@@ -69,7 +73,13 @@ export default function IntelligencePage() {
 
       <div className="mt-6">
         <WorkspaceTabs tabs={TABS} active={tab} onChange={onTabChange} />
-        {tab === "context" ? <ContextTab /> : <ScorecardsTab />}
+        {tab === "context" ? (
+          <ContextTab />
+        ) : tab === "scorecards" ? (
+          <ScorecardsTab />
+        ) : (
+          <ObjectionsTab />
+        )}
       </div>
 
       {/* Day 233 — scoring-impact trust panel + provenance bridge. */}

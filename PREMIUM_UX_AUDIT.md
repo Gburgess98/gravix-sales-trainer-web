@@ -3160,3 +3160,28 @@ Result: no route a wandering buyer can hit now renders a pre-shell,
 half-product surface.
 
 Validate: `npm run validate-premium-ux-day-235`.
+
+---
+
+## Day 250 — Objection Library workspace (third Intelligence pillar)
+
+Added the manager-facing Objection Library as a third tab on /intelligence
+(`?tab=objections`), after Context and Scorecards. Backed by the Day 236 API
+(`/v1/intelligence/objections`), all requests via
+`src/lib/objectionLibraryApi.ts` → proxyFetch.
+
+- Library view: status cards (Approved / Drafts / Archived / Categories
+  covered), approved guidance first, drafts second, archived collapsed by
+  default (Day 230 hygiene).
+- Lifecycle honoured: draft → approved → archived. Drafts are editable;
+  approval is gated client-side by the same five requirements the API
+  enforces (label, category, ≥1 buyer phrase, approved response, coaching
+  note or why-it-matters) and confirmed with the exact scoring-safety copy;
+  approved items are read-only/locked; archived items are read-only history.
+  No hard delete anywhere.
+- Honest by construction: no AI Builder, no Autofill, no suggestion mining,
+  no fabricated evidence (evidence is read-only from the detail endpoint),
+  no raw UUID primary labels. IntelligenceCommand left untouched (its Day 233
+  validator pins it to the context + scorecards endpoints only).
+
+Validate: `npm run validate-objection-library-day-250`.
