@@ -769,6 +769,15 @@ Proven at the API/DB level (WEB visual proof pending a Dana login):
 - DB confirms 9 UFC objection rows: 8 approved (seed) + 1 archived (the Day 251
   "QA TEST — Day 251 (delete me)" item, untouched by the seed).
 
+Full pre-demo reseed run to close the hero-call gap, in order:
+seed:demo → seed:ufc-story → seed:ufc-intelligence. After the reseed the whole
+UFC demo suite is green together: validate:ufc-intelligence-seed 57/57 (Nate
+Diaz hero call restored, score 45), validate:ufc-objection-seed 22/22,
+validate:intelligence-objections 48/48, validate:crm-account-ownership 8/8,
+validate:schema-selects (no new drift), typecheck 60. The 8 seeded objections
+survive the reseed and the Day 251 QA item stays archived (still 8 approved +
+1 archived). No code changes were needed — the reseed alone closed the gap.
+
 Demo-state expectation for the next WEB proof as Dana: Approved = 8, Categories
 covered = 6/8, approved group shows the 8 seeded objections, and the Day 251 QA
 item remains in Archived history.
