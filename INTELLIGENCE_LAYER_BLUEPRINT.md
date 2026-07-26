@@ -482,6 +482,26 @@ similar) rather than silently reusing the default label.
 7. **Fallback safety** — a broken/missing custom scorecard falls back to the
    default rubric rather than failing the scoring job.
 
+### Day 252 — UFC Objection Library seeded (third pillar no longer empty)
+
+`npm run seed:ufc-intelligence` now also seeds **8 manager-approved Objection
+Library items** for the UFC demo company, so `/intelligence?tab=objections` is
+populated in demos alongside the seeded Context and Scorecard. Each item is a
+complete, approved entry (buyer phrases, approved response, weak-response
+patterns, no-go language, coaching note); categories cover price, timing,
+authority, competitor, trust and fit. Seed content is API-only — nothing in the
+scoring/Whisperer/sparring runtimes reads these tables (Day 236 boundary holds).
+
+Deterministic + idempotent: each item upserts on a `uid("UFC_INTEL",
+"objection-<key>")` id with a pinned `approved_at`, so re-running refreshes the
+same rows and never duplicates. The seed deletes nothing, so manager-created
+objections and the Day 251 archived QA item are left untouched.
+
+Validator: `validate:ufc-objection-seed` 22/22 (server required) — proves the
+seeded set is exactly the deterministic ids, all approved, category coverage,
+content completeness, no duplicate live label, the API lists all 8 to Dana, and
+a cross-company manager sees none of them.
+
 ---
 
 ## 11. Demo story (single login, extends the UFC seed)

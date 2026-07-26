@@ -746,3 +746,29 @@ typecheck: one pre-existing failure in src/hooks/useInfiniteScroll.ts (an
 orphaned page component mis-saved as a .ts hook, imported by nothing —
 unrelated to the objection library; flagged for separate cleanup).
 No code changes required.
+
+## Day 252 — Objection Library seeded with demo content (API seed)
+
+Supersedes the Day 251 note "No seeded demo objections exist in the UFC org."
+`npm run seed:ufc-intelligence` (API repo) now seeds **8 manager-approved
+objections** into the UFC demo company so /intelligence?tab=objections is no
+longer empty in demos: Too expensive (price), Need to think about it (timing),
+Send me more information (timing), Need to speak with my partner (authority),
+We already have training (competitor), Not the right time (timing), I don't
+trust AI coaching (trust), Not sure it fits our team (fit). Six categories
+covered; each carries buyer phrases, an approved response, weak-response
+patterns, no-go language and a coaching note.
+
+Proven at the API/DB level (WEB visual proof pending a Dana login):
+- validate:ufc-objection-seed 22/22 — exactly the 8 deterministic seeded ids
+  exist, all approved, idempotent across re-runs (no duplicates), category
+  coverage, content completeness, no duplicate live label, API lists all 8 to
+  Dana, cross-company manager sees none.
+- validate:intelligence-objections 48/48 · validate:crm-account-ownership 8/8
+  · validate:schema-selects (6 baselined, no new drift) · typecheck 60 (baseline).
+- DB confirms 9 UFC objection rows: 8 approved (seed) + 1 archived (the Day 251
+  "QA TEST — Day 251 (delete me)" item, untouched by the seed).
+
+Demo-state expectation for the next WEB proof as Dana: Approved = 8, Categories
+covered = 6/8, approved group shows the 8 seeded objections, and the Day 251 QA
+item remains in Archived history.
