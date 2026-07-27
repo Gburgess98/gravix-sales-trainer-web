@@ -429,6 +429,62 @@ export async function listUploadAccounts(): Promise<UploadAccountOption[]> {
 }
 
 // -------------------------------
+// Day 254 — Objection → coaching assignment
+// -------------------------------
+// Turn an approved Objection Library item into a coaching assignment for a rep,
+// using the SAME assignment engine the call-review "Assign coaching" flow uses
+// (POST /v1/assignments, type "custom"). No new backend: the objection only
+// supplies deterministic prefill (title + notes) and reference meta; the engine
+// owns the assignment. Creating an assignment never changes the objection or any
+// existing call score. The engine may dedup an active drill for the rep and
+// answer { ok: true, skipped: true } — surfaced honestly by the caller.
+
+export type ObjectionAssignmentInput = {
+  repId: string;
+  title: string;
+  notes: string;
+  dueAt?: string | null; // ISO date, or null for no due date
+  objectionId: string;
+  objectionLabel: string;
+  objectionCategory: string;
+};
+
+export type ObjectionAssignmentResult =
+  | { ok: true; skipped: boolean }
+  | { ok: false; error: string };
+
+export async function assignCoachingFromObjection(
+  input: ObjectionAssignmentInput
+): Promise<ObjectionAssignmentResult> {
+  try {
+    const res = await proxyFetch("/v1/assignments", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rep_id: input.repId,
+        type: "custom",
+        title: input.title,
+        notes: input.notes,
+        due_at: input.dueAt ?? null,
+        target_id: null,
+        source: "objection_library",
+        meta: {
+          assignment_origin: "objection_library",
+          objection_item_id: input.objectionId,
+          objection_label: input.objectionLabel,
+          objection_category: input.objectionCategory,
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({} as any));
+    if (res.ok && data?.ok) return { ok: true, skipped: Boolean(data?.skipped) };
+    return { ok: false, error: String(data?.error ?? `http_${res.status}`) };
+  } catch {
+    return { ok: false, error: "network_error" };
+  }
+}
+
+// -------------------------------
 // Pins
 // -------------------------------
 

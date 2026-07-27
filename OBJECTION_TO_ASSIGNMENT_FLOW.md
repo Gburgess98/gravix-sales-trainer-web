@@ -1,10 +1,17 @@
 # Objection → Assignment Flow & Analytics Loop (Day 210)
 
-Status: **Design documentation only.** The end-to-end coaching loop that
-connects the Objection Library (`OBJECTION_LIBRARY_BLUEPRINT.md`) and
-Scenario Engine (`SPARRING_SCENARIO_ENGINE_SPEC.md`) to assignments,
-sparring, call review, and analytics. No assignment logic, sparring
-runtime, or analytics code changes today.
+Status: **Design documentation. Day 254 shipped the first slice** — the
+"assign-from-item" path (§3, MVP path 1): an approved Objection Library item
+now has an "Assign coaching" manager action that creates a coaching assignment
+through the EXISTING engine (`POST /v1/assignments`, type `custom`) via
+`assignCoachingFromObjection` in `src/lib/api.ts`. The assignment title +
+instructions are prefilled deterministically from the objection's approved
+fields (`buildObjectionAssignmentPrefill` in `src/lib/objectionLibraryApi.ts`)
+and carry `meta.objection_item_id` for traceability. No scenario engine, no
+auto-assignment change, no analytics/trend section yet — those remain the
+design below. Validator: `validate-objection-assignment-day-254`. The rest of
+this document (call-review moment chip, scenario picker, enriched
+auto-assignment, per-item trend/proof) stays design-only.
 
 ## 1. The loop (product story)
 

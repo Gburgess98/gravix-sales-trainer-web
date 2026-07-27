@@ -820,3 +820,53 @@ Verified in the rendered UI:
 
 Supersedes the "WEB visual proof pending" note above — the seeded Objection
 Library is now visually proven end-to-end.
+
+## Day 254 — Objection → coaching assignment flow
+
+Approved objections became actionable: the detail view gains a manager action
+"Assign coaching" (approved items only — draft/archived never show it). It opens
+an assignment modal that reuses the EXISTING assignment engine
+(POST /v1/assignments, type "custom") via proxyFetch — no new backend, same
+engine call review's "Assign coaching" uses.
+
+Modal fields (deterministic prefill, all editable):
+- objection label + category shown read-only;
+- rep selector (listTeamUsers → /v1/team/users);
+- title prefilled "Practise handling: {objection label}";
+- instructions prefilled from the approved response + coaching note (plus buyer
+  phrases / responses to avoid / never-say lines);
+- optional due date;
+- submit → success state; a rep who already has an active drill for the focus
+  returns skipped and is told honestly.
+
+Safety: creating an assignment never edits/approves/archives the objection;
+approved items stay read-only/locked; no hard delete; existing call scores are
+untouched; the assignment carries meta.objection_item_id for traceability.
+
+### Browser proof as Dana (PASSED)
+
+Walked the flow as Dana against the running web + api dev servers. All checks
+passed; no bugs.
+
+- [x] "Assign coaching" shows on the approved objection "Too expensive"
+      (alongside Archive, with the helper "Create a coaching drill for a rep…
+      The objection stays locked"). Collapsed/other items don't show it.
+- [x] Modal prefilled title "Practise handling: Too expensive" and instructions
+      "Approved response: … / Coaching note: … / What the buyer might say / …";
+      objection shown read-only as "Too expensive · Price".
+- [x] Rep selector listed team reps by human name (Anderson Silva, Nate Diaz, …
+      — no UUID labels). Picked Anderson Silva, submitted →
+      POST /api/proxy/v1/assignments 200 → "Coaching assigned. It will appear in
+      the rep's assignments."
+- [x] Objection stayed Approved / read-only after assigning (Assign coaching +
+      Archive still the only actions; counts unchanged 8/0/1).
+- [x] Assignment appeared in /admin/assignments (Queue) under Anderson Silva:
+      "Practise handling: Too expensive [Day 254 QA test]" · Custom · ASSIGNED;
+      DB row carried source=objection_library + meta.objection_item_id for
+      traceability.
+- [x] Zero console errors; no raw UUID labels.
+
+Cleanup: the walkthrough used a clearly-labelled "[Day 254 QA test]" assignment,
+deleted afterwards by exact id (guarded on the QA marker + objection_library
+origin). Zero objection_library assignments remain; the objection itself was
+never modified.

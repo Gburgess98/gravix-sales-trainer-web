@@ -28,6 +28,7 @@ import {
   objectionStatusLabel,
   objectionLabel,
   computeObjectionReadiness,
+  buildObjectionAssignmentPrefill,
   linesToList,
   listToLines,
   listObjections,
@@ -40,6 +41,11 @@ import {
   type ObjectionEvidence,
   type ObjectionPatch,
 } from "@/lib/objectionLibraryApi";
+import {
+  listTeamUsers,
+  assignCoachingFromObjection,
+  type UploadRepOption,
+} from "@/lib/api";
 
 type LoadError = "forbidden" | "not_migrated" | "failed";
 
@@ -467,6 +473,168 @@ function ReadOnlyList({ label, values }: { label: string; values: string[] }) {
 
 /* ------------------------------ Workbench ------------------------------- */
 
+/* ----------------------- Assign coaching (Day 254) ---------------------- */
+// Turn an APPROVED objection into a coaching assignment for a rep, via the same
+// engine call review uses (assignCoachingFromObjection → POST /v1/assignments).
+// The objection is never changed; the prefill is deterministic and editable.
+
+function AssignCoachingModal({ item, onClose }: { item: ObjectionItem; onClose: () => void }) {
+  const prefill = useMemo(() => buildObjectionAssignmentPrefill(item), [item]);
+  const [reps, setReps] = useState<UploadRepOption[]>([]);
+  const [repsLoading, setRepsLoading] = useState(true);
+  const [repId, setRepId] = useState("");
+  const [title, setTitle] = useState(prefill.title);
+  const [notes, setNotes] = useState(prefill.notes);
+  const [dueAt, setDueAt] = useState(""); // yyyy-mm-dd, optional
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<null | { tone: "ok" | "skipped" | "err"; text: string }>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setRepsLoading(true);
+      const list = await listTeamUsers();
+      if (!alive) return;
+      // A drill lands on a rep; keep managers out of the target list where roles exist.
+      const assignable = list.filter((r) => (r.role ?? "").toLowerCase() !== "manager");
+      const pool = assignable.length ? assignable : list;
+      setReps(pool);
+      setRepId(pool[0]?.id ?? "");
+      setRepsLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const canSubmit = Boolean(repId) && title.trim().length >= 3 && !busy;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy(true);
+    setResult(null);
+    const res = await assignCoachingFromObjection({
+      repId,
+      title: title.trim(),
+      notes: notes.trim(),
+      dueAt: dueAt ? new Date(`${dueAt}T09:00:00`).toISOString() : null,
+      objectionId: item.id,
+      objectionLabel: objectionLabel(item.label),
+      objectionCategory: item.category,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setResult({ tone: "err", text: "Could not create the assignment. Please try again." });
+      return;
+    }
+    if (res.skipped) {
+      setResult({
+        tone: "skipped",
+        text: "This rep already has an active drill for this focus — nothing new was created.",
+      });
+      return;
+    }
+    setResult({ tone: "ok", text: "Coaching assigned. It will appear in the rep's assignments." });
+  };
+
+  const done = result?.tone === "ok" || result?.tone === "skipped";
+
+  return (
+    <Modal title="Assign coaching" onClose={onClose} wide>
+      {done ? (
+        <div className="space-y-4">
+          <div
+            className={clsx(
+              "rounded-lg border px-3 py-2 text-sm",
+              result?.tone === "ok"
+                ? "border-success-500/25 bg-success-500/5 text-success-300"
+                : "border-neutral-800 bg-neutral-900/60 text-neutral-300"
+            )}
+          >
+            {result?.text}
+          </div>
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Field label="Objection">
+            <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-sm text-neutral-200">
+              {objectionLabel(item.label)}{" "}
+              <span className="text-neutral-500">· {categoryLabel(item.category)}</span>
+            </div>
+          </Field>
+
+          <Field label="Assign to">
+            <select
+              className={INPUT_CLASS}
+              value={repId}
+              onChange={(e) => setRepId(e.target.value)}
+              disabled={repsLoading || busy}
+            >
+              {repsLoading ? (
+                <option value="">Loading team…</option>
+              ) : reps.length === 0 ? (
+                <option value="">No reps available</option>
+              ) : (
+                reps.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </Field>
+
+          <Field label="Assignment title">
+            <input
+              className={INPUT_CLASS}
+              value={title}
+              maxLength={MAX_LABEL}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+
+          <Field label="Instructions" hint="Prefilled from the approved response and coaching note. Edit if you like.">
+            <textarea
+              className={clsx(INPUT_CLASS, "min-h-[160px] resize-y")}
+              value={notes}
+              maxLength={MAX_TEXT}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+
+          <Field label="Due date" optional>
+            <input
+              type="date"
+              className={INPUT_CLASS}
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+
+          {result?.tone === "err" && <p className="text-xs text-danger-300">{result.text}</p>}
+
+          <div className="flex justify-end gap-2 border-t border-neutral-800 pt-4">
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={submit} disabled={!canSubmit}>
+              {busy ? "Assigning…" : "Assign coaching"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function ObjectionWorkbench({
   item,
   evidence,
@@ -485,6 +653,7 @@ function ObjectionWorkbench({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [confirm, setConfirm] = useState<null | "approve" | "archive">(null);
+  const [assignOpen, setAssignOpen] = useState(false);
 
   // Reset the working copy whenever a different item (or a fresh status) loads.
   useEffect(() => {
@@ -603,12 +772,20 @@ function ObjectionWorkbench({
         </div>
       )}
 
-      {/* Approved actions — archive only, no edit */}
+      {/* Approved actions — assign coaching + archive, no edit (item stays locked) */}
       {isApproved && (
-        <div className="border-t border-neutral-800 pt-4">
-          <Button variant="ghost" onClick={() => setConfirm("archive")} disabled={busy}>
-            Archive
-          </Button>
+        <div className="space-y-2 border-t border-neutral-800 pt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" onClick={() => setAssignOpen(true)} disabled={busy}>
+              Assign coaching
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirm("archive")} disabled={busy}>
+              Archive
+            </Button>
+          </div>
+          <p className="text-[11px] text-neutral-600">
+            Create a coaching drill for a rep from this approved guidance. The objection stays locked.
+          </p>
         </div>
       )}
 
@@ -644,6 +821,9 @@ function ObjectionWorkbench({
           onConfirm={doArchive}
           onClose={() => setConfirm(null)}
         />
+      )}
+      {assignOpen && isApproved && (
+        <AssignCoachingModal item={item} onClose={() => setAssignOpen(false)} />
       )}
     </div>
   );

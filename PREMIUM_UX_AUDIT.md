@@ -3185,3 +3185,24 @@ Added the manager-facing Objection Library as a third tab on /intelligence
   validator pins it to the context + scorecards endpoints only).
 
 Validate: `npm run validate-objection-library-day-250`.
+
+## Day 254 — Objection → coaching assignment
+
+Made the approved Objection Library actionable. An approved objection's detail
+now carries a manager action "Assign coaching" (approved items only; drafts and
+archived never show it — the item stays read-only/locked). It opens a modal that
+reuses the EXISTING assignment engine (`POST /v1/assignments`, type `custom`)
+via `assignCoachingFromObjection` in `src/lib/api.ts` — no new backend, the same
+engine call review uses.
+
+- Deterministic, editable prefill from the objection's approved fields
+  (`buildObjectionAssignmentPrefill`): title "Practise handling: {label}",
+  instructions from the approved response + coaching note (+ buyer phrases /
+  responses to avoid / never-say lines). No AI generation.
+- Rep selector via the existing `listTeamUsers` (`/v1/team/users`); optional due
+  date; honest success/skipped states (the engine may dedup an active drill).
+- Safety: assigning never edits/approves/archives the objection; approved items
+  stay locked; no hard delete; existing call scores untouched; the assignment
+  carries `meta.objection_item_id` for traceability.
+
+Validate: `npm run validate-objection-assignment-day-254`.

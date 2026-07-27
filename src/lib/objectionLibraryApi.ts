@@ -146,6 +146,42 @@ export function computeObjectionReadiness(item: {
   return { ready: missing.length === 0, missing };
 }
 
+/* ----------------------- Assignment prefill (Day 254) ------------------- */
+// Turn an approved objection into a coaching-assignment title + instructions,
+// composed DETERMINISTICALLY from the objection's own approved fields — no
+// generation, no external content. The assignment itself is created by the
+// existing engine (assignCoachingFromObjection in @/lib/api); this only shapes
+// the prefill a manager sees and can edit before submitting.
+
+export function buildObjectionAssignmentPrefill(item: {
+  label?: string | null;
+  approved_response?: string | null;
+  coaching_note?: string | null;
+  buyer_phrases?: string[] | null;
+  weak_response_patterns?: string[] | null;
+  no_go_language?: string[] | null;
+}): { title: string; notes: string } {
+  const label = objectionLabel(item.label);
+  const title = `Practise handling: ${label}`;
+
+  const bullets = (list: string[] | null | undefined) =>
+    (Array.isArray(list) ? list : []).map((s) => `• ${s}`).filter((s) => s.length > 2);
+
+  const blocks: string[] = [];
+  const approved = String(item.approved_response ?? "").trim();
+  if (approved) blocks.push(`Approved response:\n${approved}`);
+  const coaching = String(item.coaching_note ?? "").trim();
+  if (coaching) blocks.push(`Coaching note:\n${coaching}`);
+  const phrases = bullets(item.buyer_phrases);
+  if (phrases.length) blocks.push(`What the buyer might say:\n${phrases.join("\n")}`);
+  const weak = bullets(item.weak_response_patterns);
+  if (weak.length) blocks.push(`Responses to avoid:\n${weak.join("\n")}`);
+  const nogo = bullets(item.no_go_language);
+  if (nogo.length) blocks.push(`Never say:\n${nogo.join("\n")}`);
+
+  return { title, notes: blocks.join("\n\n") };
+}
+
 /* --------------------------- List-field helpers ------------------------- */
 // text[] fields are edited as one-item-per-line textareas. Normalise on the
 // way in and out so the manager never wrestles with array syntax.
