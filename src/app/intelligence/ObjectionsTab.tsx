@@ -44,7 +44,9 @@ import {
 import {
   listTeamUsers,
   assignCoachingFromObjection,
+  listAssignmentsForObjection,
   type UploadRepOption,
+  type ObjectionAssignmentActivity,
 } from "@/lib/api";
 
 type LoadError = "forbidden" | "not_migrated" | "failed";
@@ -444,6 +446,101 @@ function EvidenceList({ evidence }: { evidence: ObjectionEvidence[] }) {
   );
 }
 
+/* --------------------- Assignment activity (Day 255) -------------------- */
+// Closes the loop: the coaching assignments created FROM this objection
+// (via Day 254's Assign coaching) shown back on the item. Read-only; the assign
+// CTA lives in the approved actions above. Fails soft — a load error never
+// blocks the rest of the detail.
+
+function AssignmentStatusBadge({ status, overdue }: { status: string; overdue: boolean }) {
+  const s = status.toLowerCase();
+  const done = s === "completed";
+  const tone = done
+    ? "border-success-500/30 bg-success-500/10 text-success-300"
+    : overdue
+    ? "border-warning-500/30 bg-warning-500/10 text-warning-300"
+    : "border-neutral-700 bg-neutral-800/60 text-neutral-300";
+  const text = done ? "Completed" : overdue ? "Overdue" : "Open";
+  return (
+    <span className={clsx("rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em]", tone)}>
+      {text}
+    </span>
+  );
+}
+
+function ActivityStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">{label}</div>
+      <div className="mt-0.5 text-sm font-semibold text-neutral-100">{value}</div>
+    </div>
+  );
+}
+
+function AssignmentActivitySection({
+  activity,
+  loading,
+  onRetry,
+}: {
+  activity: ObjectionAssignmentActivity | null;
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  const now = Date.now();
+  return (
+    <div className="border-t border-neutral-800 pt-4">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-neutral-500">Assignment activity</div>
+
+      {loading && !activity ? (
+        <p className="text-xs text-neutral-500">Loading…</p>
+      ) : activity && !activity.ok ? (
+        <p className="text-xs text-danger-300">
+          Assignment activity could not be loaded.{" "}
+          <button type="button" onClick={onRetry} className="underline underline-offset-2 hover:text-danger-200">
+            Try again.
+          </button>
+        </p>
+      ) : activity && activity.assigned === 0 ? (
+        <p className="text-xs text-neutral-600">No coaching has been assigned from this objection yet.</p>
+      ) : activity ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <ActivityStat label="Assigned" value={activity.assigned} />
+            <ActivityStat label="Open" value={activity.open} />
+            <ActivityStat label="Completed" value={activity.completed} />
+            <ActivityStat label="Latest assignment" value={formatDate(activity.latest_at)} />
+          </div>
+          <ul className="space-y-2">
+            {activity.rows.slice(0, 6).map((r) => {
+              const overdue =
+                r.status.toLowerCase() !== "completed" &&
+                Boolean(r.due_at) &&
+                new Date(String(r.due_at)).getTime() < now;
+              return (
+                <li key={r.id} className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-neutral-200">{r.rep_name}</span>
+                    <AssignmentStatusBadge status={r.status} overdue={overdue} />
+                  </div>
+                  <p className="mt-1 truncate text-xs text-neutral-400">{r.title}</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-600">
+                    Assigned {formatDate(r.created_at)}
+                    {r.due_at ? ` · due ${formatDate(r.due_at)}` : ""}
+                    {r.completed_at ? ` · completed ${formatDate(r.completed_at)}` : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          {activity.rows.length > 6 && (
+            <p className="text-[11px] text-neutral-600">Showing the 6 most recent of {activity.rows.length}.</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* --------------------------- Read-only view ----------------------------- */
 
 function ReadOnlyBlock({ label, value }: { label: string; value: string | null | undefined }) {
@@ -478,7 +575,15 @@ function ReadOnlyList({ label, values }: { label: string; values: string[] }) {
 // engine call review uses (assignCoachingFromObjection → POST /v1/assignments).
 // The objection is never changed; the prefill is deterministic and editable.
 
-function AssignCoachingModal({ item, onClose }: { item: ObjectionItem; onClose: () => void }) {
+function AssignCoachingModal({
+  item,
+  onClose,
+  onAssigned,
+}: {
+  item: ObjectionItem;
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
   const prefill = useMemo(() => buildObjectionAssignmentPrefill(item), [item]);
   const [reps, setReps] = useState<UploadRepOption[]>([]);
   const [repsLoading, setRepsLoading] = useState(true);
@@ -535,6 +640,8 @@ function AssignCoachingModal({ item, onClose }: { item: ObjectionItem; onClose: 
       return;
     }
     setResult({ tone: "ok", text: "Coaching assigned. It will appear in the rep's assignments." });
+    // Refresh the objection's assignment activity so the new row shows without a reload.
+    onAssigned();
   };
 
   const done = result?.tone === "ok" || result?.tone === "skipped";
@@ -655,12 +762,32 @@ function ObjectionWorkbench({
   const [confirm, setConfirm] = useState<null | "approve" | "archive">(null);
   const [assignOpen, setAssignOpen] = useState(false);
 
+  // Day 255 — coaching assignments created FROM this objection (loaded lazily,
+  // fails soft, never blocks the rest of the detail).
+  const [activity, setActivity] = useState<ObjectionAssignmentActivity | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const showActivity = isApproved || isArchived;
+
+  const loadActivity = useCallback(async () => {
+    if (!showActivity) return;
+    setActivityLoading(true);
+    const res = await listAssignmentsForObjection(item.id);
+    setActivity(res);
+    setActivityLoading(false);
+  }, [item.id, showActivity]);
+
   // Reset the working copy whenever a different item (or a fresh status) loads.
   useEffect(() => {
     setForm(formFromItem(item));
     setSavedForm(formFromItem(item));
     setNotice(null);
+    setActivity(null);
   }, [item]);
+
+  // Load assignment activity when an approved/archived item opens.
+  useEffect(() => {
+    loadActivity();
+  }, [loadActivity]);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(savedForm), [form, savedForm]);
   const readiness = useMemo(() => formReadiness(savedForm), [savedForm]);
@@ -789,6 +916,11 @@ function ObjectionWorkbench({
         </div>
       )}
 
+      {/* Assignment activity — coaching created from this objection (approved + archived, read-only) */}
+      {showActivity && (
+        <AssignmentActivitySection activity={activity} loading={activityLoading} onRetry={loadActivity} />
+      )}
+
       {notice && (
         <p className={notice.tone === "ok" ? "text-xs text-brand-300" : "text-xs text-danger-300"}>
           {notice.text}
@@ -823,7 +955,11 @@ function ObjectionWorkbench({
         />
       )}
       {assignOpen && isApproved && (
-        <AssignCoachingModal item={item} onClose={() => setAssignOpen(false)} />
+        <AssignCoachingModal
+          item={item}
+          onClose={() => setAssignOpen(false)}
+          onAssigned={loadActivity}
+        />
       )}
     </div>
   );
@@ -1105,3 +1241,4 @@ export default function ObjectionsTab() {
     </div>
   );
 }
+

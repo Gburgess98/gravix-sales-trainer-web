@@ -485,6 +485,102 @@ export async function assignCoachingFromObjection(
 }
 
 // -------------------------------
+// Day 255 — Assignment activity for an objection
+// -------------------------------
+// Read back the coaching assignments created from one objection, so the detail
+// view can close the loop. Reads the EXISTING manager list endpoint
+// (listCoachAssignments → GET /v1/assignments/manager) and filters client-side
+// by meta.objection_item_id — no new backend, no objection-scoped endpoint
+// invented. Rep names are resolved from the existing team roster
+// (listTeamUsers). MVP scope: reads the recent page (limit 200); a manager with
+// more than that many assignments would page, which is a later concern.
+
+export type ObjectionAssignmentRow = {
+  id: string;
+  rep_id: string;
+  rep_name: string;
+  status: string;
+  title: string;
+  created_at: string | null;
+  due_at: string | null;
+  completed_at: string | null;
+  source: string | null;
+  meta: any;
+};
+
+export type ObjectionAssignmentActivity = {
+  ok: boolean;
+  assigned: number;
+  open: number;
+  completed: number;
+  latest_at: string | null;
+  rows: ObjectionAssignmentRow[];
+  error?: string;
+};
+
+const EMPTY_ACTIVITY: ObjectionAssignmentActivity = {
+  ok: false,
+  assigned: 0,
+  open: 0,
+  completed: 0,
+  latest_at: null,
+  rows: [],
+};
+
+export async function listAssignmentsForObjection(
+  objectionId: string
+): Promise<ObjectionAssignmentActivity> {
+  if (!objectionId) return { ...EMPTY_ACTIVITY, error: "missing_objection_id" };
+  try {
+    const [assignRes, reps] = await Promise.all([
+      listCoachAssignments({ limit: 200 }),
+      listTeamUsers(),
+    ]);
+    if (!assignRes?.ok) return { ...EMPTY_ACTIVITY, error: "load_failed" };
+
+    const nameById = new Map(reps.map((r) => [String(r.id), r.name]));
+    const source = Array.isArray(assignRes.items)
+      ? assignRes.items
+      : Array.isArray(assignRes.assignments)
+      ? assignRes.assignments
+      : [];
+
+    const rows: ObjectionAssignmentRow[] = source
+      .filter((a: any) => String(a?.meta?.objection_item_id ?? "") === objectionId)
+      .map((a: any) => ({
+        id: String(a?.id ?? ""),
+        rep_id: String(a?.rep_id ?? ""),
+        rep_name: nameById.get(String(a?.rep_id ?? "")) || "Unknown rep",
+        status: String(a?.status ?? ""),
+        title: String(a?.title ?? ""),
+        created_at: a?.created_at ?? null,
+        due_at: a?.due_at ?? null,
+        completed_at: a?.completed_at ?? null,
+        source: a?.source ?? null,
+        meta: a?.meta ?? null,
+      }))
+      .sort(
+        (a: ObjectionAssignmentRow, b: ObjectionAssignmentRow) =>
+          new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      );
+
+    const completed = rows.filter((r) => r.status.toLowerCase() === "completed").length;
+    const latest_at = rows.length ? rows[0].created_at : null;
+
+    return {
+      ok: true,
+      assigned: rows.length,
+      open: rows.length - completed,
+      completed,
+      latest_at,
+      rows,
+    };
+  } catch {
+    return { ...EMPTY_ACTIVITY, error: "network_error" };
+  }
+}
+
+// -------------------------------
 // Pins
 // -------------------------------
 

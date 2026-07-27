@@ -7,11 +7,19 @@ through the EXISTING engine (`POST /v1/assignments`, type `custom`) via
 `assignCoachingFromObjection` in `src/lib/api.ts`. The assignment title +
 instructions are prefilled deterministically from the objection's approved
 fields (`buildObjectionAssignmentPrefill` in `src/lib/objectionLibraryApi.ts`)
-and carry `meta.objection_item_id` for traceability. No scenario engine, no
-auto-assignment change, no analytics/trend section yet — those remain the
-design below. Validator: `validate-objection-assignment-day-254`. The rest of
-this document (call-review moment chip, scenario picker, enriched
-auto-assignment, per-item trend/proof) stays design-only.
+and carry `meta.objection_item_id` for traceability. **Day 255 added the
+per-item Assignments section** (§3 "Manager proof surface", scoped to the item):
+the objection detail now shows an "Assignment activity" section
+(`listAssignmentsForObjection` in `src/lib/api.ts`) reading the EXISTING manager
+list endpoint (`/v1/assignments/manager`) via proxyFetch, filtered by
+`meta.objection_item_id` — summary (Assigned/Open/Completed/Latest) + recent
+rows (rep, status, title, dates), shown read-only on approved and archived
+items, refreshed live after an assign. No scenario engine, no auto-assignment
+change, no cross-library analytics/trend yet — those remain the design below.
+Validators: `validate-objection-assignment-day-254`,
+`validate-objection-assignment-activity-day-255`. The rest of this document
+(call-review moment chip, scenario picker, enriched auto-assignment, score/trend
+analytics) stays design-only.
 
 ## 1. The loop (product story)
 

@@ -870,3 +870,47 @@ Cleanup: the walkthrough used a clearly-labelled "[Day 254 QA test]" assignment,
 deleted afterwards by exact id (guarded on the QA marker + objection_library
 origin). Zero objection_library assignments remain; the objection itself was
 never modified.
+
+## Day 255 — Objection assignment activity section
+
+Closed the coaching loop on the objection detail. Approved and archived
+objections now show an "Assignment activity" section listing the coaching
+assignments created FROM that objection (Day 254). Read-only; the "Assign
+coaching" CTA stays in the approved actions above it.
+
+- Data: `listAssignmentsForObjection` (src/lib/api.ts) reads the EXISTING
+  manager list endpoint (`listCoachAssignments` → GET /v1/assignments/manager)
+  via proxyFetch and filters client-side by `meta.objection_item_id`; rep names
+  resolved from the existing team roster (`listTeamUsers`). No new backend.
+- Summary: Assigned / Open / Completed / Latest assignment, then up to 6 recent
+  rows (rep name, status badge open/completed/overdue, title, assigned/due/
+  completed dates).
+- Empty state: "No coaching has been assigned from this objection yet."
+- Soft-fail: "Assignment activity could not be loaded. Try again." — never
+  blocks the rest of the detail.
+- Refresh: loads when the detail opens; refreshes after a successful "Assign
+  coaching" (onAssigned → loadActivity) without a full reload.
+- Safety: read-only; archived items show activity but no assign action; the
+  objection is never modified; no scoring/lifecycle change.
+
+### Browser proof as Dana (PASSED)
+
+Walked the flow as Dana against the running web + api dev servers. All passed.
+
+- [x] Opened "Too expensive": "Assignment activity" section rendered between the
+      assign actions and Evidence, showing the empty state "No coaching has been
+      assigned from this objection yet." (initial `GET /v1/assignments/manager?
+      limit=200`).
+- [x] Assigned coaching to Nate Diaz with title "Practise handling: Too expensive
+      [Day 255 QA test]" → POST /v1/assignments 200 → "Coaching assigned.".
+- [x] Activity refreshed WITHOUT a reload (a second `GET .../manager` fired on
+      success): summary Assigned 1 · Open 1 · Completed 0 · Latest 27 Jul 2026,
+      with the row "Nate Diaz · OPEN · Practise handling: Too expensive [Day 255
+      QA test] · Assigned 27 Jul 2026".
+- [x] Objection stayed Approved / read-only after assigning (Assign coaching +
+      Archive still the only actions).
+- [x] Zero console errors; rep shown by human name (no UUID).
+
+Cleanup: the QA assignment was deleted by exact id (437ba3fc…, guarded on the
+"[Day 255 QA test]" marker + objection_library source). Zero objection_library
+assignments remain; the objection itself was never modified.

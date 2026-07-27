@@ -140,6 +140,7 @@
     "validate-intelligence-workspace-day-233": "bash scripts/validate-intelligence-workspace-day-233.sh",
     "validate-objection-library-day-250": "bash scripts/validate-objection-library-web-day-250.sh",
     "validate-objection-assignment-day-254": "bash scripts/validate-objection-assignment-flow-day-254.sh",
+    "validate-objection-assignment-activity-day-255": "bash scripts/validate-objection-assignment-activity-day-255.sh",
     "validate-premium-ux-day-235": "bash scripts/validate-premium-ux-day-235.sh",
     "validate-premium-ux-day-206": "bash scripts/validate-premium-ux-day-206.sh",
     "test:whisperer-flow": "playwright test tests/e2e/whisperer-flow.spec.ts",

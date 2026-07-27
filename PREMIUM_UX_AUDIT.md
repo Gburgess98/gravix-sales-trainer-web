@@ -3206,3 +3206,23 @@ engine call review uses.
   carries `meta.objection_item_id` for traceability.
 
 Validate: `npm run validate-objection-assignment-day-254`.
+
+## Day 255 — Objection assignment activity
+
+Closed the coaching loop on the objection detail. Approved and archived
+objections now show an "Assignment activity" section listing the coaching
+assignments created FROM that objection (Day 254). Read-only; the "Assign
+coaching" CTA stays in the approved actions above it.
+
+- Data via `listAssignmentsForObjection` (`src/lib/api.ts`): reads the EXISTING
+  manager list endpoint (`listCoachAssignments` → GET /v1/assignments/manager)
+  through proxyFetch, filters client-side by `meta.objection_item_id`, resolves
+  rep names from the existing team roster (`listTeamUsers`). No new backend.
+- Summary: Assigned / Open / Completed / Latest assignment, then up to 6 recent
+  rows (rep name, status badge open/completed/overdue, title, dates).
+- Honest empty state ("No coaching has been assigned from this objection yet.")
+  and a soft-fail retry that never blocks the rest of the detail.
+- Refreshes on open and after a successful assign (onAssigned → loadActivity),
+  no full reload. Archived items show activity but no assign action.
+
+Validate: `npm run validate-objection-assignment-activity-day-255`.
