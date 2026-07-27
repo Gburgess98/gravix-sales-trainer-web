@@ -781,3 +781,42 @@ survive the reseed and the Day 251 QA item stays archived (still 8 approved +
 Demo-state expectation for the next WEB proof as Dana: Approved = 8, Categories
 covered = 6/8, approved group shows the 8 seeded objections, and the Day 251 QA
 item remains in Archived history.
+
+## Day 253 — Seeded Objection Library visual proof (PASSED)
+
+Signed in as Dana (dana.white@ufcelite.demo) against the running web + api dev
+servers after the Day 252 pre-demo reseed; walked the live rendered UI at
+/intelligence?tab=objections. Every checklist item passed — no bugs, no code
+changes needed.
+
+Counts observed (status cards): Approved = 8 · Drafts = 0 · Archived = 1 ·
+Categories covered = 6/8 — exactly as expected.
+
+Approved Guidance lists all 8 seeded objections, each with a human label, a
+category and "3 buyer phrases", stamped "Updated 19 Jul 2026":
+- Too expensive (Price)
+- Need to think about it (Timing)
+- Send me more information (Timing)
+- Need to speak with my partner (Authority)
+- We already have training (Competitor)
+- Not the right time (Timing)
+- I don't trust AI coaching (Trust)
+- Not sure it fits our team (Fit)
+
+Verified in the rendered UI:
+- [x] Objections tab loads; Context and Scorecards tabs still load (Company
+      Intelligence + UFC Sales Scorecard v1 active).
+- [x] Opened "Too expensive": read-only locked ("Approved guidance is locked.
+      Editing is disabled to keep coaching consistent."), all fields static
+      text (buyer phrases / approved response / coaching note / weak patterns /
+      no-go language); only the Archive lifecycle action, no edit inputs.
+- [x] Evidence honest empty state ("Evidence will appear here when this
+      objection is linked to calls or moments.").
+- [x] Archived history collapsed by default; expanded shows "QA TEST — Day 251
+      (delete me)" badged Archived, read-only ("Archived history. This
+      objection is kept for reference and can no longer be edited.") — untouched.
+- [x] No raw UUID labels; no delete controls anywhere; no AI Builder / Autofill
+      / suggestion-mining copy (only "New objection"); zero console errors.
+
+Supersedes the "WEB visual proof pending" note above — the seeded Objection
+Library is now visually proven end-to-end.
