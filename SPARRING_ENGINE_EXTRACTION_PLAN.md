@@ -118,3 +118,47 @@ Model, temperature, token caps, fallback text and the fallback chain are copied
   src/sparring/providers.ts` and delete `src/lib/sparringBrain/`, or reset the
   feature commit. No migration, no data change, so rollback is code-only and
   instant.
+
+---
+
+## 6. Day 259 — Claude live parity proof
+
+Smoke/parity proof that the Brain interface drives a real buyer turn through
+each available provider on one realistic UFC sparring input (gym-owner buyer,
+price + trust concerns, difficulty `hard`, medium-low trust, rep line: *"We help
+managers see exactly why reps lose deals, not just give a generic AI score."*).
+Script: `scripts/validate-sparring-brain-claude-parity-day-259.ts`
+(`npm run validate:sparring-brain-claude-parity`). **Not a quality ranking, not a
+default flip.**
+
+**Providers run/skipped (this environment):**
+
+| Provider | Result | Model | Latency | Rubric |
+|---|---|---|---|---|
+| openai | **RAN** | `gpt-4o-mini` | ~1.0–2.1s | buyer_voice ✓ · persona ✓ · objection ✓ · concise ✓ · no_meta ✓ |
+| claude | **UNAVAILABLE** | — | — | key valid, but Anthropic account **credit balance too low** (HTTP 400) |
+| stub | **RAN** | `gravix-stub-buyer` | ~0ms | all ✓ (deterministic) |
+
+- **OpenAI** produced an in-voice sceptical buyer reply ("…how do you ensure the
+  insights are actually relevant for my team? … generic advice…") — softens then
+  pushes back, no instant agreement, no meta/assistant language, concise.
+- **Claude** could not run: the API **key is present and the wiring is correct**,
+  but the account has no credit. This is an external billing blocker, **not** a
+  Brain-interface defect. The proof verifies the router **degrades gracefully to
+  the deterministic stub** on this failure (no crash, non-empty buyer line) —
+  exactly the architecture §5.5 fallback contract.
+- **Stub** deterministic, instant, in-voice — the safe floor.
+
+**Latency range:** 0–~2100ms across the live providers (stub ~0ms, OpenAI
+~1–2s). Claude latency not measured (unavailable).
+
+**Verdict:**
+- **Claude is safe to keep behind the flag.** The provider is correctly wired and
+  the router fails safe when Claude cannot bill. It is **not proven on live
+  output** yet — that needs Anthropic credit. Do **not** flip the default until a
+  Claude turn actually runs and passes the same gates as OpenAI.
+- **Default remains OpenAI.** No behaviour change shipped on Day 259.
+
+**Blocker for a full Claude parity run:** top up / enable Anthropic API credit,
+then re-run `validate:sparring-brain-claude-parity` — Claude should move from
+UNAVAILABLE to RAN and clear the same hard gates.
