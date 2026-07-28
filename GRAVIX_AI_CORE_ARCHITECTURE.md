@@ -383,3 +383,9 @@ Explicit non-goals. Each is a way the product would decay into a commodity bot.
 - Live code anchors (API): `src/routes/sparring.ts`, `src/personas.ts`,
   `src/lib/scoring.ts`, `src/lib/intelligenceRuntime.ts`, `src/lib/embeddings.ts`,
   `src/routes/assignments.ts`, `src/routes/intelligenceObjections.ts`.
+- **Provider config & cost-safety (operational):** `AI_PROVIDER_CONFIG.md` (API
+  repo) — Claude app vs Anthropic **Console API** billing separation, the env
+  matrix (product / no-cost QA / future Claude trial), and what is implemented vs
+  future. OpenAI is the safe default today; Claude is behind
+  `SPARRING_BRAIN_PROVIDER=claude` until live parity + Console credit are proven.
+  Guarded by `npm run validate:ai-provider-config`.
