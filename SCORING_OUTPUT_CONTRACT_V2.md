@@ -343,3 +343,14 @@ objection categories price/timing/authority/trust.
 Nothing in Days 264–266 changes runtime scoring; the first behaviour change is
 **Day 267** (criteria-level runtime output behind the v2 prompt/cache version),
 measured against this dataset by the **Day 266** harness.
+
+**Day 266 (DONE):** the deterministic, no-cost harness now exists (API
+`SCORING_V2_HARNESS.md`, `test/harness/scoring-v2-harness.ts`,
+`npm run validate:scoring-v2-harness`). It gates a candidate v2 result against
+the golden set — structural conformance, status/score-band/evidence-overlap/
+objection-match agreement, and the v1 back-compat projection — with no LLM calls.
+Policies are explicit constants: score-band membership (not exact match),
+`same_segment_containment` evidence overlap, and `authoritative_v2` v1 stage-score
+projection (a one-line switch for Day 267). Non-vacuity proven via 7 planted
+violations. It proves the **shape and back-compat are enforceable**; it does
+**not** prove model scoring quality — that needs the Day-267 v2 scorer.
