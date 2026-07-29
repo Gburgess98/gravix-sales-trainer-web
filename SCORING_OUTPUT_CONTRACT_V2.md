@@ -354,3 +354,47 @@ Policies are explicit constants: score-band membership (not exact match),
 projection (a one-line switch for Day 267). Non-vacuity proven via 7 planted
 violations. It proves the **shape and back-compat are enforceable**; it does
 **not** prove model scoring quality — that needs the Day-267 v2 scorer.
+
+---
+
+## 11. Day 267 hand-off — Runtime (DONE, additive; no production flip)
+
+Day 267 built the criteria-level v2 **runtime** as a self-contained module
+(API `src/lib/scoringV2.ts`) proven by a no-cost validator
+(`npm run validate:scoring-output-v2`) against the Day-266 harness. Full detail:
+API `SCORING_V2_RUNTIME.md`. Decisions locked on Day 267:
+
+- **Runtime, not a production flip.** `scoreWithLLM` (v1) is byte-for-byte
+  untouched; the provider default is unchanged; no Claude scoring; no paid/live
+  LLM call; no DB/schema change. The proof runs mocked-provider JSON through the
+  **production** parser + projection into the Day-266 gates (5/5 calls, 20/20
+  criteria). The adoption wiring of `scoreWithLLM` is a later, reversible day
+  (with the Day-268 UI).
+- **Versions (v2 lane is new, v1 markers untouched):** prompt
+  `scoring-prompt-v2`, rubric `v2`, cache namespace token `cachever=v2`. v2 keys
+  can never read a v1 cache entry; stub-v2 stays isolated from openai-v2 (Day 262).
+- **Criterion id:** `<scorecard_version_id>:<stage>:<slug(label)>` (custom) /
+  `gravix_default:<stage>:<slug(label)>` (built-in); deterministic, no UUIDs.
+- **Weights:** criterion weights sum to **100 within a stage**; the four stage
+  weights sum to 100; even distribution with deterministic rounding when unauthored.
+- **Roll-ups:** stage = weighted mean of observed criteria; overall = weighted
+  mean over observed stages re-normalised; model-authored `overall_score`/
+  `points_lost` are discarded and recomputed by the runtime.
+- **Evidence:** byte-verbatim, span-resolved from the cited segment; timestamps
+  never fabricated (null when the transcript is untimed); invented evidence is
+  dropped and an observed criterion with none makes the response unusable.
+- **Projection policy (hybrid, §5 note resolved):** `custom_criteria_authoritative`
+  for custom scorecards (v1 stage score = v2 roll-up) and `default_v1_parity` for
+  the built-in rubric. The golden set is a custom scorecard, so the Day-266
+  harness constant stays `authoritative_v2` — **left unchanged, not changed
+  silently**.
+- **Degraded honesty:** `stub` → `degraded_reason="stub_provider"`, model
+  `stub:v1`; fallback → `heuristic_fallback | no_transcript |
+  invalid_model_output | insufficient_evidence`, model `heuristic:v1`.
+- **Default criteria set:** built-in rubric gains one criterion per stage
+  (`gravix-default-criteria-v1`) using the UFC/golden terminology — no new taxonomy.
+
+The Day-268 Call Review UI (§8) remains **not started**. Mocked-provider and stub
+validation are no-cost proofs of shape/determinism/back-compat only; real-model
+semantic quality is still unproven and the production provider default is
+unchanged.
