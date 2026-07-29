@@ -224,3 +224,9 @@ The v2 output shape from §5/§11 is now specified in
 confidence/objection-matches/trend-delta, and a deterministic v1 back-compat
 projection so the fixed-four-stage readers and pins keep working. Runtime is
 unchanged; the first behaviour change is Day 267.
+
+**Day 265:** the ground-truth **Golden Call Dataset** now exists (API
+`test/fixtures/scoring-v2/golden-calls.json`, `validate:scoring-v2-golden-dataset`)
+— 5 human-authored calls with verbatim-evidence criteria in the v2 shape,
+covering all four stages and all four statuses. This is what the Day-266 harness
+will measure the Day-267 runtime against. Still no runtime change.

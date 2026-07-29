@@ -322,10 +322,24 @@ JSON columns:
 
 ---
 
-## 10. Day 265 hand-off
+## 10. Day 265 hand-off — Golden Call Dataset (DONE)
 
-The contract is the input to **Day 265 — Golden Call Dataset**: a small set of
-calls with human-authored expected `criteria[]` (status + evidence spans) in this
-exact v2 shape, which the Day 266 harness scores against. Nothing in Days 264–266
-changes runtime scoring; the first behaviour change is Day 267 (criteria-level
-runtime output behind the v2 prompt/cache version).
+The contract's input to Day 266 now exists: **Day 265 built the Golden Call
+Dataset** at `API test/fixtures/scoring-v2/golden-calls.json` — 5 human-authored
+calls with expected `criteria[]` (status + verbatim evidence spans),
+`objection_matches[]`, expected bands, summaries and suggested drills, in this v2
+shape. It reuses the real UFC scorecard criteria (one per stage) and the approved
+Objection Library keys/categories. Guarded by
+`npm run validate:scoring-v2-golden-dataset` (every evidence quote is verified a
+**verbatim substring** of its transcript; partial/fail criteria must carry
+`why_points_lost`; no LLM calls).
+
+Calls: strong discovery (no objection → exercises `not_observed`); price objection
+handled well; timing+authority stall handled poorly (`fail`); good call with a
+weak close (`fail` close); trust/AI-scepticism (`partial`). Coverage across the
+set: all four stages, all four statuses (pass/partial/fail/not_observed), and
+objection categories price/timing/authority/trust.
+
+Nothing in Days 264–266 changes runtime scoring; the first behaviour change is
+**Day 267** (criteria-level runtime output behind the v2 prompt/cache version),
+measured against this dataset by the **Day 266** harness.
