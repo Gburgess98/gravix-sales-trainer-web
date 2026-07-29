@@ -213,3 +213,14 @@ WEB: intelligence-workspace-233 PASSED · tier-2b-smoke PASSED ·
 objection-library-250 PASSED. API: intelligence-runtime 53/53 ·
 scoring-provider-stub PASS · score-cache-provider-isolation PASS · schema-selects
 PASSED · typecheck 60 (baseline). No runtime/UI/provider/model changes.
+
+---
+
+## 14. Day 264 update
+
+The v2 output shape from §5/§11 is now specified in
+[`SCORING_OUTPUT_CONTRACT_V2.md`](SCORING_OUTPUT_CONTRACT_V2.md) — additive
+`criteria[]` (mirroring the scorecard authoring model), verdict/evidence/
+confidence/objection-matches/trend-delta, and a deterministic v1 back-compat
+projection so the fixed-four-stage readers and pins keep working. Runtime is
+unchanged; the first behaviour change is Day 267.
