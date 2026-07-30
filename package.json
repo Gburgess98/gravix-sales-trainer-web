@@ -149,11 +149,12 @@
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",
-    "test": "echo \"No unit tests yet — use test:e2e for E2E tests\"",
+    "test": "echo \"No unit tests yet \u2014 use test:e2e for E2E tests\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:smoke": "playwright test tests/e2e/smoke.spec.ts",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "validate:scoring-v2-call-review": "node scripts/validate-scoring-v2-call-review-day-268.mts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [

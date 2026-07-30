@@ -398,3 +398,72 @@ The Day-268 Call Review UI (§8) remains **not started**. Mocked-provider and st
 validation are no-cost proofs of shape/determinism/back-compat only; real-model
 semantic quality is still unproven and the production provider default is
 unchanged.
+
+---
+
+## 12. Day 268 hand-off — Call Review UI (DONE, additive; consumes optional v2)
+
+Day 268 built the criteria-level Call Review UI on `/calls/[id]`. It is **purely
+additive and back-compatible**: a call with only v1 scoring renders exactly as
+before. WEB-only — no API/DB/provider change, no live/paid LLM call.
+
+- **UI location.** `WEB src/app/calls/[id]/page.tsx` `#review` section. New pieces:
+  a confidence/degraded banner, an expandable **criteria** block inside each
+  stage card, an **Objections detected** section, and a **Scoring detail**
+  provenance panel. Components: `src/components/scoring-v2/ScoringV2Review.tsx`.
+- **Safe optional-v2 parser.** `src/lib/scoringV2Client.ts` → `getScoringV2(analysis_json)`
+  returns `ScoreV2 | null`. `analysis_json.v2` is treated as **optional and
+  untrusted**: it returns `null` for missing v2, wrong `contract_version`,
+  missing/duplicated/out-of-order stages, malformed criteria, invalid statuses,
+  or unusable score fields (observed with no numeric score, or `not_observed`
+  carrying a score). All display logic is a pure `buildScoringV2ViewModel` — no
+  score is recomputed in the browser.
+- **v1 fallback rule.** When `getScoringV2` is `null` the page renders the
+  existing v1 experience with **no** criteria panels, confidence banner or v2
+  warnings. Production scoring does not persist `analysis_json.v2` yet, so this is
+  the path for every real call today.
+- **Confidence / degraded copy.** Degraded scores show a calm banner —
+  *"Provisional score — this review used a limited scoring mode."* — with
+  plain-English detail; raw reason codes (`stub_provider`, `heuristic_fallback`,
+  `no_transcript`, `invalid_model_output`, `insufficient_evidence`) are never
+  surfaced. Non-degraded scores show a Low/Medium/High confidence chip (numeric
+  value as secondary detail). `not_observed` shows *"Not observed"*, never `0/100`,
+  and no evidence/point-loss.
+- **Evidence-jump behaviour.** Verbatim quotes (styled distinctly from AI coaching
+  text). A "Jump to m:ss" control seeks the existing player when `start_sec` is
+  present; when only `segment_index` is present it scrolls to
+  `#transcript-seg-<index>`; with neither, no jump control is shown. No second
+  audio player is built.
+- **Objection linking.** Detected text + matched label + handled status
+  (handled/partially/missed, text + tone). An **Objection Library** link
+  (`/intelligence?tab=objections`) appears **only** when a real `objection_item_id`
+  exists; `null` id → no link.
+- **Suggested-drill limitation.** Criterion drills show the recommendation text
+  only; there is **no Assign action** — mapping a criterion drill to a real
+  drill/assignment target is deferred (no invented assignment ids). Day 269+.
+- **Test fixtures.** `src/lib/fixtures/scoringV2Fixtures.ts` — six deterministic,
+  test-only scenarios (strong, mixed, objections, degraded, v1-only, malformed).
+  Not real calls, not seeded, outside every production data path.
+- **Validation.** `npm run validate:scoring-v2-call-review`
+  (`scripts/validate-scoring-v2-call-review-day-268.mts`, no runner/DB/network) —
+  parsing, view-model, and 14 planted-violation non-vacuity checks. E2E:
+  `tests/e2e/scoring-v2-call-review.spec.ts` (6 tests, Playwright).
+- **Browser proof.** Dev-only preview route `/dev/scoring-v2-preview` renders the
+  fixtures through the real components (no auth/API). Verified desktop + mobile:
+  criteria expand/collapse (keyboard + `aria-expanded`), evidence jump, degraded
+  banner, objection link gating, `not_observed` honesty, no console errors, and no
+  horizontal overflow inside the review section.
+
+**Status:** the UI is ready to consume persisted `analysis_json.v2`. **Production
+scoring does not yet persist v2** (Day 267 left `scoreWithLLM` untouched), so the
+criteria UI is currently exercised by fixtures only — fixture QA is **not**
+production-data proof, and real-model scoring quality is still unproven.
+
+**Day 269 recommendation.** Wire v2 into `scoreWithLLM` behind an **off-by-default**
+switch (e.g. `SCORING_CONTRACT=v2`, default `v1`): resolve the criteria spec, run
+the v2 prompt on the OpenAI path through `parseAndValidateScoreV2`, persist the
+`ScoreV2` under `analysis_json.v2` alongside the unchanged v1 top-level projection,
+and stamp the v2 cache/prompt/rubric versions. Keep the provider default and the
+v1 shape byte-identical when the switch is off; prove parity with the Day-266/267
+validators before enabling it anywhere. The UI needs no further change to light up
+once real `analysis_json.v2` is present.

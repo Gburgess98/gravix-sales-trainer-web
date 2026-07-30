@@ -15,6 +15,8 @@ import { useToast } from "@/components/Toast";
 import { proxyFetch, getAdminConfig } from "@/lib/api";
 import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
 import { getScoringProvenance } from "@/lib/scoringProvenance";
+import { getScoringV2, buildScoringV2ViewModel } from "@/lib/scoringV2Client";
+import { ScoreV2Banner, StageCriteria, ObjectionMatches, ScoreV2Provenance } from "@/components/scoring-v2/ScoringV2Review";
 import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
 
 import {
@@ -1382,6 +1384,21 @@ export default function CallPage() {
     [callMeta]
   );
 
+  // Day 268 — optional criteria-level Scoring v2. `analysis_json.v2` is untrusted:
+  // getScoringV2 returns null for anything malformed, so the page falls back to the
+  // v1 rendering below. Production scoring does not yet persist v2, so this is null
+  // for real calls today (Day 269 wires production).
+  const scoreV2 = useMemo(() => getScoringV2(callMeta?.analysis_json ?? null), [callMeta]);
+  const scoreV2VM = useMemo(() => (scoreV2 ? buildScoringV2ViewModel(scoreV2) : null), [scoreV2]);
+  // Evidence jump handlers reuse the existing player seek + transcript scroll.
+  const v2Jumps = {
+    onSeek: (sec: number) => seek(sec),
+    onJumpSegment: (index: number) => {
+      const el = typeof document !== "undefined" ? document.getElementById(`transcript-seg-${index}`) : null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+  };
+
   const scoredStages = useMemo(() => rubricStages.filter((r) => r.score !== null), [rubricStages]);
   const strongestStage = useMemo(
     () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) > (a.score as number) ? b : a)) : null),
@@ -1784,6 +1801,9 @@ export default function CallPage() {
             )}
           </div>
 
+          {/* Day 268 — Scoring v2 confidence / degraded-score banner (only for valid v2). */}
+          {scoreV2VM && <ScoreV2Banner banner={scoreV2VM.banner} />}
+
           {/* Stage audit blocks from the existing rubric stages */}
           {rubricStages.length > 0 ? (
             <div className="space-y-3">
@@ -1836,6 +1856,13 @@ export default function CallPage() {
                         <p className="text-sm text-neutral-400">{stageImplication(stage.score)}</p>
                       </div>
                     )}
+                    {/* Day 268 — expandable criteria for this stage (only when valid v2 exists). */}
+                    {scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"] && (
+                      <StageCriteria
+                        vm={scoreV2VM.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"]!}
+                        jumps={v2Jumps}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -1854,6 +1881,12 @@ export default function CallPage() {
               }
             />
           )}
+
+          {/* Day 268 — Scoring v2 objection matches + provenance detail (only for valid v2). */}
+          {scoreV2VM && scoreV2VM.objections.length > 0 && (
+            <ObjectionMatches objections={scoreV2VM.objections} jumps={v2Jumps} />
+          )}
+          {scoreV2VM && <ScoreV2Provenance rows={scoreV2VM.provenanceRows} />}
 
           {/* Where this call lost points — priorities mapped to next actions */}
           {scoredStages.length > 0 && (
@@ -2156,7 +2189,7 @@ export default function CallPage() {
                   const start = typeof seg?.start_sec === "number" ? seg.start_sec : null;
 
                   return (
-                    <div key={i} className="flex gap-3 text-sm">
+                    <div key={i} id={`transcript-seg-${i}`} className="flex gap-3 text-sm scroll-mt-24">
                       <div className="w-20 shrink-0 text-neutral-400 underline-offset-2 hover:text-neutral-200">
                         {start !== null ? fmt(start) : ""}
                       </div>
