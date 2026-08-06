@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+supabase/.temp
+# Stale pnpm-lock.yaml (May) is out of sync with package.json; exclude it so the
+# builder uses the fresh package-lock.json via npm (see vercel.json installCommand).
+pnpm-lock.yaml

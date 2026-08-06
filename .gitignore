@@ -60,3 +60,7 @@ backups/*.zip
 /playwright-report/
 /playwright/.cache/
 /tests/e2e/.auth/
+.env*
+
+# supabase CLI project link (must not be committed)
+supabase/.temp/
