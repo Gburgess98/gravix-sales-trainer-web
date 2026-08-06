@@ -1390,6 +1390,14 @@ export default function CallPage() {
   // for real calls today (Day 269 wires production).
   const scoreV2 = useMemo(() => getScoringV2(callMeta?.analysis_json ?? null), [callMeta]);
   const scoreV2VM = useMemo(() => (scoreV2 ? buildScoringV2ViewModel(scoreV2) : null), [scoreV2]);
+  const scoreV2FullyUnobserved = useMemo(() => {
+    if (!scoreV2VM) return false;
+    const stages = Object.values(scoreV2VM.stagesByKey);
+    return stages.length > 0 && stages.every((stage) =>
+      stage != null && stage.criteria.length > 0 && stage.criteria.every((criterion) => !criterion.observed)
+    );
+  }, [scoreV2VM]);
+  const displayOverall = scoreV2FullyUnobserved ? null : overall;
   // Evidence jump handlers reuse the existing player seek + transcript scroll.
   const v2Jumps = {
     onSeek: (sec: number) => seek(sec),
@@ -1399,7 +1407,14 @@ export default function CallPage() {
     },
   };
 
-  const scoredStages = useMemo(() => rubricStages.filter((r) => r.score !== null), [rubricStages]);
+  const scoredStages = useMemo(
+    () => rubricStages.filter((stage) => {
+      if (stage.score === null) return false;
+      const v2Stage = scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"];
+      return !v2Stage || v2Stage.criteria.some((criterion) => criterion.observed);
+    }),
+    [rubricStages, scoreV2VM]
+  );
   const strongestStage = useMemo(
     () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) > (a.score as number) ? b : a)) : null),
     [scoredStages]
@@ -1481,8 +1496,8 @@ export default function CallPage() {
               ) : (
                 <>
                   {callDisplayTitle}
-                  {overall != null ? (
-                    <ScorePill score={overall} />
+                  {displayOverall != null ? (
+                    <ScorePill score={displayOverall} />
                   ) : (
                     <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
                   )}
@@ -1593,16 +1608,16 @@ export default function CallPage() {
             <div className="flex items-center gap-4">
               <div
                 className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold tabular-nums ${
-                  overall == null
+                  displayOverall == null
                     ? "border-neutral-700 text-neutral-400"
-                    : overall >= 80
+                    : displayOverall >= 80
                       ? "border-emerald-500/50 text-emerald-300"
-                      : overall >= 60
+                      : displayOverall >= 60
                         ? "border-amber-500/50 text-amber-300"
                         : "border-red-500/50 text-red-300"
                 }`}
               >
-                {overall != null ? overall : "—"}
+                {displayOverall != null ? displayOverall : "—"}
               </div>
               <div className="space-y-1 text-sm">
                 <div className="flex items-center gap-2">
@@ -1685,7 +1700,7 @@ export default function CallPage() {
             <div className="border-t border-neutral-800 pt-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-xs uppercase tracking-wide text-neutral-500">
-                  {overall != null ? `Why this scored ${overall}` : "Score reasoning"}
+                  {displayOverall != null ? `Why this scored ${displayOverall}` : "Score reasoning"}
                 </div>
                 {scoredStages.length > 0 && (
                   <button
@@ -1788,7 +1803,7 @@ export default function CallPage() {
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review audit</div>
               <h2 className="text-lg font-medium text-neutral-100">
-                {overall != null ? `Why this call scored ${overall}/100` : "Call review audit"}
+                {displayOverall != null ? `Why this call scored ${displayOverall}/100` : "Call review audit"}
               </h2>
             </div>
             {rubricStages.length > 0 && (
@@ -1808,7 +1823,10 @@ export default function CallPage() {
           {rubricStages.length > 0 ? (
             <div className="space-y-3">
               {rubricStages.map((stage) => {
-                const verdict = stage.score !== null ? stageVerdict(stage.score) : null;
+                const v2Stage = scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"];
+                const stageObserved = !v2Stage || v2Stage.criteria.some((criterion) => criterion.observed);
+                const displayStageScore = stageObserved ? stage.score : null;
+                const verdict = displayStageScore !== null ? stageVerdict(displayStageScore) : null;
                 // Only real review tags become stage signals — weak_close is the
                 // one stage-mappable tag the current runtime emits.
                 const showWeakCloseSignal = stage.key === "close" && reviewBot.weakClose;
@@ -1823,7 +1841,7 @@ export default function CallPage() {
                           </span>
                         ) : (
                           <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400">
-                            Not scored
+                            {v2Stage && !stageObserved ? "Not observed" : "Not scored"}
                           </span>
                         )}
                         {showWeakCloseSignal && (
@@ -1833,14 +1851,14 @@ export default function CallPage() {
                         )}
                       </div>
                       <span className="text-sm font-semibold tabular-nums text-neutral-200">
-                        {stage.score !== null ? `${stage.score}/100` : "—"}
+                        {displayStageScore !== null ? `${displayStageScore}/100` : "—"}
                       </span>
                     </div>
-                    {stage.score !== null && verdict && (
+                    {displayStageScore !== null && verdict && (
                       <div className="mt-2 h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
                         <div
                           className={`h-full rounded-full ${verdict.bar}`}
-                          style={{ width: `${Math.max(2, Math.min(100, stage.score))}%` }}
+                          style={{ width: `${Math.max(2, Math.min(100, displayStageScore))}%` }}
                         />
                       </div>
                     )}
@@ -1850,10 +1868,10 @@ export default function CallPage() {
                         <p className="text-sm leading-6 text-neutral-300 whitespace-pre-wrap">{stage.notes}</p>
                       </div>
                     )}
-                    {stage.score !== null && (
+                    {displayStageScore !== null && (
                       <div className="mt-2.5">
                         <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Coaching implication</div>
-                        <p className="text-sm text-neutral-400">{stageImplication(stage.score)}</p>
+                        <p className="text-sm text-neutral-400">{stageImplication(displayStageScore)}</p>
                       </div>
                     )}
                     {/* Day 268 — expandable criteria for this stage (only when valid v2 exists). */}

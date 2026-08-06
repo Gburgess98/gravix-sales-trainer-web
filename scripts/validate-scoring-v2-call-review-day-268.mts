@@ -111,10 +111,14 @@ check("provenance rows include contract, provider, versions, degraded", (() => {
 
 // component source: no unsafe HTML, status chips always carry text
 const compSrc = readFileSync(join(__dirname, "..", "src", "components", "scoring-v2", "ScoringV2Review.tsx"), "utf8");
+const pageSrc = readFileSync(join(__dirname, "..", "src", "app", "calls", "[id]", "page.tsx"), "utf8");
 check("components never use dangerouslySetInnerHTML", !/dangerouslySetInnerHTML/.test(compSrc));
 check("status chip renders its label text", /function StatusChip[\s\S]*\{label\}/.test(compSrc));
 check("expand control is a button with aria-expanded", /aria-expanded=\{open\}/.test(compSrc) && /type="button"/.test(compSrc));
 check("every status has non-empty accessible text", (["pass", "partial", "fail", "not_observed"] as const).every((s) => V2_STATUS_LABEL[s].length > 0));
+check("fully unobserved v2 hides the projected overall score", /scoreV2FullyUnobserved\s*\?\s*null\s*:\s*overall/.test(pageSrc));
+check("unobserved v2 stages render without a numeric stage score", /displayStageScore\s*=\s*stageObserved\s*\?\s*stage\.score\s*:\s*null/.test(pageSrc));
+check("lost-points ranking excludes unobserved v2 stages", /v2Stage\.criteria\.some\(\(criterion\)\s*=>\s*criterion\.observed\)/.test(pageSrc));
 
 // ── Task 16: non-vacuity — planted violations must be caught ───────────────────
 console.log("\n── non-vacuity: planted violations ──");
