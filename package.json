@@ -154,7 +154,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:smoke": "playwright test tests/e2e/smoke.spec.ts",
     "test:e2e:debug": "playwright test --debug",
-    "validate:scoring-v2-call-review": "node scripts/validate-scoring-v2-call-review-day-268.mts"
+    "validate:scoring-v2-call-review": "node scripts/validate-scoring-v2-call-review-day-268.mts",
+    "validate:session-hygiene": "node scripts/validate-session-hygiene-day-275.mts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
