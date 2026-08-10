@@ -659,6 +659,16 @@ export default function CallPage() {
   useEffect(() => {
     if (!callId) return;
     setPostAction(null);
+    // Day 276 — reset per-call state on every callId change so the detail page
+    // always represents the call in the URL. Without this, navigating between
+    // /calls/[id] pages (the component is reused) left the PREVIOUS call's
+    // score/rubric on screen while the new call loaded or if its fetch failed,
+    // so the library score and the detail score could disagree (e.g. a stale
+    // score shown next to "no scored rubric").
+    setCallMeta(null);
+    setCallMissing(false);
+    setErr(null);
+    setAudioUrl(null);
     let alive = true;
 
     (async () => {
@@ -675,8 +685,20 @@ export default function CallPage() {
         setErr(null);
       } catch (e: any) {
         if (!alive) return;
-        const msg = String(e?.message || "");
-        if (msg.toLowerCase().includes("not_found") || msg.includes("404")) {
+        // Ensure no stale call remains visible on any failure.
+        setCallMeta(null);
+        const msg = String(e?.message || "").toLowerCase();
+        // Treat not-found AND unusable ids (invalid UUID / 4xx) as "missing" so
+        // the page shows the honest not-found state instead of a lingering
+        // partial render with another call's data.
+        if (
+          msg.includes("not_found") ||
+          msg.includes("404") ||
+          msg.includes("invalid id") ||
+          msg.includes("400") ||
+          msg.includes("403") ||
+          msg.includes("forbidden")
+        ) {
           setCallMissing(true);
           setErr("Call not found or no longer available.");
         } else {
