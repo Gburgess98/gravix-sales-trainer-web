@@ -6,6 +6,31 @@ import { WorkspaceTabs } from '@/components/shell/workspace-tabs';
 import { useToast } from '@/components/Toast';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntitySearch, type EntityHit } from '@/components/ui/entity-search';
+import {
+  escalateAccount,
+  createAccountCoachingAction,
+  listAccountEscalations,
+  type AccountEscalation,
+} from '@/lib/api';
+
+/**
+ * Day 281 — translate an account-action error into honest, actionable copy
+ * without leaking raw database/provider errors. Known API error codes get a
+ * human message; anything unrecognised (incl. 5xx that may carry a raw driver
+ * message) collapses to a safe generic line.
+ */
+function friendlyActionError(err: unknown, kind: 'escalation' | 'coaching action'): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '');
+  const code = raw.trim();
+  if (/account_not_found/i.test(code)) return "This account isn't available to you.";
+  if (/missing_company_context/i.test(code)) return 'Your profile isn’t linked to a company yet.';
+  if (/invalid_account_id/i.test(code)) return 'This account link looks invalid.';
+  if (/request_failed_401|unauthor/i.test(code)) return 'Your session expired — please sign in again.';
+  if (/request_failed_403|forbidden/i.test(code)) return 'You don’t have access to this account.';
+  if (/network_error|failed to fetch/i.test(code)) return 'Network problem — please try again.';
+  // Unknown/5xx: never surface the raw message.
+  return `Couldn’t create the ${kind}. Please try again.`;
+}
 
 type AccountTab = 'overview' | 'contacts' | 'calls' | 'rescue' | 'intelligence';
 
@@ -164,6 +189,23 @@ export default function AccountPage() {
   const [coachingActionsLoading, setCoachingActionsLoading] = useState(false);
   const [coachingActionLoading, setCoachingActionLoading] = useState(false);
   const [coachingActions, setCoachingActions] = useState<CoachingAction[]>([]);
+  // Day 281 — manager account actions (escalate / coaching action)
+  const [escalations, setEscalations] = useState<AccountEscalation[]>([]);
+  const [escalationsLoading, setEscalationsLoading] = useState(false);
+  const [actionModal, setActionModal] = useState<null | 'escalate' | 'coaching'>(null);
+  const [actionSaving, setActionSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [escalateForm, setEscalateForm] = useState({
+    severity: 'high',
+    escalation_reason: '',
+    intervention_required: true,
+  });
+  const [coachingForm, setCoachingForm] = useState({
+    action_type: 'coaching',
+    title: '',
+    urgency: 'medium',
+    description: '',
+  });
   const [tab, setTab] = useState<AccountTab>('overview');
   const [rescueFilter, setRescueFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
   const [addContactOpen, setAddContactOpen] = useState(false);
@@ -289,6 +331,18 @@ export default function AccountPage() {
           console.error('coaching_actions_load_failed', e);
         } finally {
           setCoachingActionsLoading(false);
+        }
+
+        // Day 281 — Account escalations (company-scoped list, filtered to this
+        // account). Proxy-only via lib/api helper; persists across reload.
+        try {
+          setEscalationsLoading(true);
+          const rows = await listAccountEscalations(id);
+          if (alive) setEscalations(rows);
+        } catch (e) {
+          console.error('escalations_load_failed', e);
+        } finally {
+          if (alive) setEscalationsLoading(false);
         }
 
         // Persistent AI Summary
@@ -664,6 +718,64 @@ export default function AccountPage() {
     }
   }
 
+  // ── Day 281: manager account actions ──
+
+  function openActionModal(mode: 'escalate' | 'coaching') {
+    setActionError(null);
+    setActionModal(mode);
+  }
+
+  function closeActionModal() {
+    if (actionSaving) return; // don't dismiss mid-save
+    setActionModal(null);
+    setActionError(null);
+  }
+
+  async function submitEscalation(e: React.FormEvent) {
+    e.preventDefault();
+    if (actionSaving) return;
+    setActionSaving(true);
+    setActionError(null);
+    try {
+      const escalation = await escalateAccount(id, {
+        severity: escalateForm.severity,
+        escalation_reason: escalateForm.escalation_reason.trim() || undefined,
+        intervention_required: escalateForm.intervention_required,
+      });
+      if (escalation) setEscalations((prev) => [escalation, ...prev]);
+      toast.success('Account escalated.');
+      setActionModal(null);
+      setEscalateForm({ severity: 'high', escalation_reason: '', intervention_required: true });
+    } catch (err) {
+      setActionError(friendlyActionError(err, 'escalation'));
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function submitCoachingAction(e: React.FormEvent) {
+    e.preventDefault();
+    if (actionSaving) return;
+    setActionSaving(true);
+    setActionError(null);
+    try {
+      const action = await createAccountCoachingAction(id, {
+        action_type: coachingForm.action_type.trim() || 'coaching',
+        title: coachingForm.title.trim() || 'Coaching action',
+        urgency: coachingForm.urgency,
+        description: coachingForm.description.trim() || undefined,
+      });
+      if (action) setCoachingActions((prev) => [action, ...prev]);
+      toast.success('Coaching action created.');
+      setActionModal(null);
+      setCoachingForm({ action_type: 'coaching', title: '', urgency: 'medium', description: '' });
+    } catch (err) {
+      setActionError(friendlyActionError(err, 'coaching action'));
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
   function completeCoachingAction(actionId: string) {
     setCoachingActions((prev) =>
       prev.map((action) =>
@@ -695,9 +807,27 @@ export default function AccountPage() {
             <p className="mt-0.5 text-xs text-neutral-500">{account.domain}</p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {loading && <span className="text-xs text-neutral-500">Loading…</span>}
           {error && <span className="text-xs text-red-400">{error}</span>}
+          {!loading && !error && account && (
+            <>
+              <button
+                type="button"
+                onClick={() => openActionModal('escalate')}
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 hover:bg-red-500/20 transition-colors"
+              >
+                Escalate
+              </button>
+              <button
+                type="button"
+                onClick={() => openActionModal('coaching')}
+                className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+              >
+                Coaching Action
+              </button>
+            </>
+          )}
           {health && (
             <span
               className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
@@ -1439,6 +1569,68 @@ export default function AccountPage() {
             </div>
           </div>
 
+          {/* Day 281 — Escalations (persisted; company-scoped) */}
+          <div className="rounded-xl border border-red-500/20 bg-red-500/5 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-red-500/10">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-red-300">
+                  Risk Workflow
+                </div>
+                <div className="mt-1 text-base font-semibold text-white">Account Escalations</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => openActionModal('escalate')}
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-200 hover:bg-red-500/20 transition-colors"
+              >
+                Escalate Account
+              </button>
+            </div>
+            <div className="divide-y divide-neutral-800/50">
+              {escalationsLoading ? (
+                <div className="px-5 py-4 text-sm text-neutral-400">Loading escalations…</div>
+              ) : escalations.length > 0 ? (
+                escalations.map((esc) => (
+                  <div
+                    key={esc.id}
+                    className={`px-5 py-4 ${urgencyBorderClass(esc.severity === 'critical' ? 'critical' : esc.severity === 'high' ? 'high' : undefined)}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-white">
+                        {esc.escalation_reason || 'Account escalation'}
+                      </span>
+                      <UrgencyPill urgency={esc.severity} />
+                      <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-300">
+                        {esc.status || 'open'}
+                      </span>
+                      {esc.intervention_required && (
+                        <span className="rounded-full border border-red-500/20 bg-red-500/5 px-2 py-0.5 text-[10px] text-red-300">
+                          Intervention required
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                      {esc.workflow_stage && (
+                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-neutral-300">
+                          {esc.workflow_stage}
+                        </span>
+                      )}
+                      {esc.created_at && (
+                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-neutral-300">
+                          {new Date(esc.created_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-4 text-sm text-neutral-400">
+                  No escalations raised for this account.
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Coaching Actions */}
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-emerald-500/10">
@@ -1449,6 +1641,13 @@ export default function AccountPage() {
                 <div className="mt-1 text-base font-semibold text-white">AI Coaching Actions</div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => openActionModal('coaching')}
+                  className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+                >
+                  New Action
+                </button>
                 <button
                   type="button"
                   disabled={coachingActionLoading}
@@ -1686,6 +1885,181 @@ export default function AccountPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Day 281: Manager Action Modal (escalate / coaching action) ── */}
+      {actionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closeActionModal}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
+              <div>
+                <h2 className="text-sm font-semibold text-white">
+                  {actionModal === 'escalate' ? 'Escalate Account' : 'Create Coaching Action'}
+                </h2>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {actionModal === 'escalate'
+                    ? `Flag ${accountName} for manager intervention.`
+                    : `Assign a coaching action on ${accountName}.`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeActionModal}
+                disabled={actionSaving}
+                className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-40 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {actionModal === 'escalate' ? (
+              <form onSubmit={submitEscalation} className="px-5 py-4 space-y-3">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Severity</label>
+                  <select
+                    value={escalateForm.severity}
+                    onChange={(e) => setEscalateForm((p) => ({ ...p, severity: e.target.value }))}
+                    disabled={actionSaving}
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 disabled:opacity-60"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">
+                    Reason <span className="text-neutral-600">(optional)</span>
+                  </label>
+                  <textarea
+                    value={escalateForm.escalation_reason}
+                    onChange={(e) => setEscalateForm((p) => ({ ...p, escalation_reason: e.target.value }))}
+                    disabled={actionSaving}
+                    rows={3}
+                    placeholder="Why does this account need intervention?"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none resize-none focus:border-indigo-500/50 placeholder:text-neutral-600 disabled:opacity-60"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-neutral-300">
+                  <input
+                    type="checkbox"
+                    checked={escalateForm.intervention_required}
+                    onChange={(e) => setEscalateForm((p) => ({ ...p, intervention_required: e.target.checked }))}
+                    disabled={actionSaving}
+                    className="h-3.5 w-3.5 rounded border-neutral-700 bg-black/40"
+                  />
+                  Intervention required
+                </label>
+                {actionError && (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                    {actionError}
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeActionModal}
+                    disabled={actionSaving}
+                    className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionSaving}
+                    className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {actionSaving ? 'Escalating…' : 'Escalate Account'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={submitCoachingAction} className="px-5 py-4 space-y-3">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={coachingForm.title}
+                    onChange={(e) => setCoachingForm((p) => ({ ...p, title: e.target.value }))}
+                    disabled={actionSaving}
+                    placeholder="Coaching action"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder:text-neutral-600 disabled:opacity-60"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Type</label>
+                    <select
+                      value={coachingForm.action_type}
+                      onChange={(e) => setCoachingForm((p) => ({ ...p, action_type: e.target.value }))}
+                      disabled={actionSaving}
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 disabled:opacity-60"
+                    >
+                      <option value="coaching">Coaching</option>
+                      <option value="replay_assignment">Replay</option>
+                      <option value="sparring_drill">Sparring</option>
+                      <option value="follow_up">Follow-up</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Urgency</label>
+                    <select
+                      value={coachingForm.urgency}
+                      onChange={(e) => setCoachingForm((p) => ({ ...p, urgency: e.target.value }))}
+                      disabled={actionSaving}
+                      className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 disabled:opacity-60"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">
+                    Description <span className="text-neutral-600">(optional)</span>
+                  </label>
+                  <textarea
+                    value={coachingForm.description}
+                    onChange={(e) => setCoachingForm((p) => ({ ...p, description: e.target.value }))}
+                    disabled={actionSaving}
+                    rows={3}
+                    placeholder="What should the rep work on?"
+                    className="w-full rounded-lg border border-neutral-800 bg-black/40 px-3 py-2 text-sm text-white outline-none resize-none focus:border-indigo-500/50 placeholder:text-neutral-600 disabled:opacity-60"
+                  />
+                </div>
+                {actionError && (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                    {actionError}
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeActionModal}
+                    disabled={actionSaving}
+                    className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionSaving}
+                    className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {actionSaving ? 'Creating…' : 'Create Action'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

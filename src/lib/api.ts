@@ -581,6 +581,126 @@ export async function listAssignmentsForObjection(
 }
 
 // -------------------------------
+// Day 281 — Account manager actions (escalation + coaching action)
+// -------------------------------
+// Expose the two account write paths repaired on Day 280 through the browser,
+// proxy-only. The client NEVER supplies company_id/org_id or an actor id — the
+// API resolves company scope from the requester and stamps ownership server-side
+// (see gravix-sales-trainer-api src/routes/accounts.ts). These helpers only pass
+// the manager-authored, contract-allowed fields.
+//
+// There is deliberately no per-account escalations GET endpoint on the API, so
+// `listAccountEscalations` reads the company-scoped list (GET /v1/accounts/
+// escalations) and filters to this account client-side — no invented route.
+
+export type AccountEscalation = {
+  id: string;
+  account_id: string;
+  severity?: string | null;
+  status?: string | null;
+  escalation_reason?: string | null;
+  intervention_required?: boolean | null;
+  assigned_manager_id?: string | null;
+  triggered_by?: string | null;
+  workflow_stage?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type AccountCoachingActionRow = {
+  id: string;
+  account_id?: string;
+  action_type?: string | null;
+  title?: string | null;
+  description?: string | null;
+  urgency?: string | null;
+  status?: string | null;
+  assigned_to?: string | null;
+  linked_escalation_id?: string | null;
+  linked_task_id?: string | null;
+  replay_call_id?: string | null;
+  sparring_scenario?: string | null;
+  manager_notes?: string | null;
+  due_at?: string | null;
+  completed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EscalateAccountInput = {
+  severity?: string;
+  escalation_reason?: string;
+  intervention_required?: boolean;
+  workflow_stage?: string;
+};
+
+export type CoachingActionInput = {
+  action_type?: string;
+  title: string;
+  description?: string;
+  urgency?: string;
+  manager_notes?: string;
+};
+
+/** Escalate an account. POST /v1/accounts/:id/escalate (proxy-only). */
+export async function escalateAccount(
+  accountId: string,
+  input: EscalateAccountInput
+): Promise<AccountEscalation> {
+  const j = await proxyPost<{ ok: true; escalation: AccountEscalation }>(
+    `/v1/accounts/${encodeURIComponent(accountId)}/escalate`,
+    input
+  );
+  return j.escalation;
+}
+
+/** Create a coaching action for an account. POST /v1/accounts/:id/coaching-action (proxy-only). */
+export async function createAccountCoachingAction(
+  accountId: string,
+  input: CoachingActionInput
+): Promise<AccountCoachingActionRow> {
+  const j = await proxyPost<{ ok: true; coaching_action: AccountCoachingActionRow }>(
+    `/v1/accounts/${encodeURIComponent(accountId)}/coaching-action`,
+    input
+  );
+  return j.coaching_action;
+}
+
+/** Read this account's coaching actions. GET /v1/accounts/:id/coaching-actions (proxy-only). */
+export async function listAccountCoachingActions(
+  accountId: string
+): Promise<AccountCoachingActionRow[]> {
+  const j = await proxyGet<{ ok: true; coaching_actions: AccountCoachingActionRow[] }>(
+    `/v1/accounts/${encodeURIComponent(accountId)}/coaching-actions`
+  );
+  return Array.isArray(j.coaching_actions) ? j.coaching_actions : [];
+}
+
+/**
+ * Read escalations for one account. The API has no per-account escalations
+ * endpoint, so we read the company-scoped list and filter to this account —
+ * tenant isolation is still enforced server-side (the list is company-scoped).
+ */
+export async function listAccountEscalations(
+  accountId: string
+): Promise<AccountEscalation[]> {
+  const j = await proxyGet<{ ok: true; escalations: AccountEscalation[] }>(
+    `/v1/accounts/escalations`
+  );
+  const rows = Array.isArray(j.escalations) ? j.escalations : [];
+  return rows
+    .filter((e) => String(e?.account_id ?? "") === String(accountId))
+    .sort(
+      (a, b) =>
+        new Date(b?.created_at ?? 0).getTime() -
+        new Date(a?.created_at ?? 0).getTime()
+    );
+}
+
+// -------------------------------
 // Pins
 // -------------------------------
 

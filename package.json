@@ -156,7 +156,8 @@
     "test:e2e:debug": "playwright test --debug",
     "validate:scoring-v2-call-review": "node scripts/validate-scoring-v2-call-review-day-268.mts",
     "validate:session-hygiene": "node scripts/validate-session-hygiene-day-275.mts",
-    "validate:call-detail-consistency": "node scripts/validate-call-detail-consistency-day-276.mts"
+    "validate:call-detail-consistency": "node scripts/validate-call-detail-consistency-day-276.mts",
+    "validate:account-actions": "node scripts/validate-account-actions-day-281.mts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
