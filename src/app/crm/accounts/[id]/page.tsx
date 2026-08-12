@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntitySearch, type EntityHit } from '@/components/ui/entity-search';
 import {
+  proxyFetch,
   escalateAccount,
   createAccountCoachingAction,
   listAccountEscalations,
@@ -267,10 +268,10 @@ export default function AccountPage() {
       setLoading(true);
       setError(null);
       try {
-        const r = await fetch(`/api/proxy/v1/accounts/${id}`, {
-          cache: 'no-store',
-          credentials: 'include',
-        });
+        // Day 281 — bootstrap through the authenticated proxy helper so the
+        // Supabase session's identity (Bearer + x-user-id) reaches the proxy;
+        // a raw fetch(credentials:'include') only sends cookies → missing_user.
+        const r = await proxyFetch(`/v1/accounts/${id}`, { cache: 'no-store' });
         const j = await r.json();
         if (!alive) return;
         if (!j?.ok) throw new Error(j?.error || 'fetch_failed');
@@ -284,9 +285,9 @@ export default function AccountPage() {
         // Intelligence Timeline
         try {
           setTimelineLoading(true);
-          const timelineRes = await fetch(
-            `/api/proxy/v1/accounts/${id}/intelligence-timeline`,
-            { cache: 'no-store', credentials: 'include' }
+          const timelineRes = await proxyFetch(
+            `/v1/accounts/${id}/intelligence-timeline`,
+            { cache: 'no-store' }
           );
           const timelineJson = await timelineRes.json();
           if (timelineJson?.ok) {
@@ -302,9 +303,9 @@ export default function AccountPage() {
         // AI Account Tasks
         try {
           setTasksLoading(true);
-          const taskRes = await fetch(
-            `/api/proxy/v1/accounts/${id}/tasks`,
-            { cache: 'no-store', credentials: 'include' }
+          const taskRes = await proxyFetch(
+            `/v1/accounts/${id}/tasks`,
+            { cache: 'no-store' }
           );
           const taskJson = await taskRes.json();
           if (taskJson?.ok) setTasks(Array.isArray(taskJson.tasks) ? taskJson.tasks : []);
@@ -317,9 +318,9 @@ export default function AccountPage() {
         // Coaching Actions
         try {
           setCoachingActionsLoading(true);
-          const coachingRes = await fetch(
-            `/api/proxy/v1/accounts/${id}/coaching-actions`,
-            { cache: 'no-store', credentials: 'include' }
+          const coachingRes = await proxyFetch(
+            `/v1/accounts/${id}/coaching-actions`,
+            { cache: 'no-store' }
           );
           const coachingJson = await coachingRes.json();
           if (coachingJson?.ok) {
@@ -348,9 +349,9 @@ export default function AccountPage() {
         // Persistent AI Summary
         try {
           setSummaryLoading(true);
-          const summaryRes = await fetch(
-            `/api/proxy/v1/accounts/${id}/summary`,
-            { cache: 'no-store', credentials: 'include' }
+          const summaryRes = await proxyFetch(
+            `/v1/accounts/${id}/summary`,
+            { cache: 'no-store' }
           );
           const summaryJson = await summaryRes.json();
           if (summaryJson?.ok && summaryJson?.summary) {

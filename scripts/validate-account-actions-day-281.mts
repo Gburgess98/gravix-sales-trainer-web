@@ -93,6 +93,29 @@ check("mapper has a generic fallback (unknown/5xx not surfaced raw)", /Couldn’
 check("submit catch routes through the mapper (raw err not shown)", count(page, /setActionError\(friendlyActionError\(err/g) >= 2, `${count(page, /setActionError\(friendlyActionError\(err/g)} sites`);
 check("modal renders actionError, not a raw catch string", /\{actionError &&/.test(page));
 
+// ── 5b. Authenticated bootstrap (Day 281 correction) ─────────────────────────
+// The account-detail mount must load through the authenticated proxy helper so
+// the Supabase session identity (Bearer + x-user-id) reaches the proxy. A raw
+// fetch('/api/proxy/...', {credentials:'include'}) sends only cookies → the proxy
+// returns `missing_user`, the account never loads, and the two action controls
+// never render. This section fails on deployed 52f2fcc (raw fetch bootstrap).
+console.log("\n── authenticated account-detail bootstrap ──");
+check("page imports the authenticated proxyFetch helper", /import\s*\{[\s\S]*?\bproxyFetch\b[\s\S]*?\}\s*from\s*'@\/lib\/api'/.test(page));
+// Isolate the mount loader (the useEffect keyed on [id]) so the negative checks
+// don't trip on the page's unrelated user-triggered action handlers.
+const loStart = page.indexOf("useEffect(() => {");
+const loEnd = page.indexOf("}, [id]);", loStart);
+const loader = loStart >= 0 && loEnd > loStart ? page.slice(loStart, loEnd) : "";
+check("mount loader located", loader.length > 0);
+check("account read uses proxyFetch (not raw fetch)", /proxyFetch\(`\/v1\/accounts\/\$\{id\}`/.test(loader));
+check("coaching-actions refresh read uses proxyFetch", /proxyFetch\(\s*`\/v1\/accounts\/\$\{id\}\/coaching-actions`/.test(loader));
+check("intelligence-timeline read uses proxyFetch", /proxyFetch\(\s*`\/v1\/accounts\/\$\{id\}\/intelligence-timeline`/.test(loader));
+check("tasks read uses proxyFetch", /proxyFetch\(\s*`\/v1\/accounts\/\$\{id\}\/tasks`/.test(loader));
+check("summary read uses proxyFetch", /proxyFetch\(\s*`\/v1\/accounts\/\$\{id\}\/summary`/.test(loader));
+// Non-vacuity: planting ANY raw /api/proxy fetch back into the loader flips these.
+check("mount loader has NO raw /api/proxy fetch (the missing_user regression)", !/fetch\(\s*[`'"]\/api\/proxy/.test(loader));
+check("no raw account GET bootstrap remains (fetch(`/api/proxy/v1/accounts/${id}`))", !/fetch\(`\/api\/proxy\/v1\/accounts\/\$\{id\}`/.test(loader));
+
 // ── 6. Persisted refresh behaviour ────────────────────────────────────────────
 console.log("\n── persisted results survive refresh ──");
 check("escalations loaded on mount via helper", /await listAccountEscalations\(id\)/.test(page));
