@@ -221,10 +221,9 @@ export default function AccountPage() {
     }
     setAddContactSaving(true);
     try {
-      const res = await fetch('/api/proxy/v1/crm/contacts', {
+      const res = await proxyFetch('/v1/crm/contacts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           first_name: addContactForm.first_name.trim() || undefined,
           last_name: addContactForm.last_name.trim() || undefined,
@@ -240,10 +239,9 @@ export default function AccountPage() {
       // Auto-link to this account if not already linked by backend
       if (newContact.id) {
         try {
-          await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(newContact.id)}/link-account`, {
+          await proxyFetch(`/v1/crm/contacts/${encodeURIComponent(newContact.id)}/link-account`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ account_id: id }),
           });
         } catch { /* non-fatal — contact was created, link may have happened server-side */ }
@@ -498,10 +496,9 @@ export default function AccountPage() {
     if (!ownerSelection) { toast.error('Select an owner first.'); return; }
     try {
       setOwnerUpdating(true);
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/owner`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/owner`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ owner_id: ownerSelection.id }),
       });
       const j = await r.json();
@@ -524,9 +521,8 @@ export default function AccountPage() {
   async function unassignOwner() {
     try {
       setOwnerUpdating(true);
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/owner`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/owner`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'unassign_owner_failed');
@@ -549,12 +545,11 @@ export default function AccountPage() {
     if (!contactLinkSelection) { toast.error('Select a contact first.'); return; }
     try {
       setContactLinkLoading(true);
-      const r = await fetch(
-        `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactLinkSelection.id)}/link-account`,
+      const r = await proxyFetch(
+        `/v1/crm/contacts/${encodeURIComponent(contactLinkSelection.id)}/link-account`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ account_id: id }),
         }
       );
@@ -577,12 +572,11 @@ export default function AccountPage() {
   async function unlinkContact(contactId: string) {
     try {
       setContactLinkLoading(true);
-      const r = await fetch(
-        `/api/proxy/v1/crm/contacts/${contactId}/unlink-account`,
+      const r = await proxyFetch(
+        `/v1/crm/contacts/${contactId}/unlink-account`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ account_id: id }),
         }
       );
@@ -607,10 +601,9 @@ export default function AccountPage() {
         churn_risk: health?.health_score ? Math.max(0, 100 - health.health_score) : 0,
         next_best_action: health?.next_best_action || '',
       };
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/summary`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/summary`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload),
       });
       const j = await r.json();
@@ -627,9 +620,8 @@ export default function AccountPage() {
   async function generateAiTasks() {
     try {
       setTaskActionLoading(true);
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/tasks/generate`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/tasks/generate`, {
         method: 'POST',
-        credentials: 'include',
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'task_generation_failed');
@@ -646,10 +638,9 @@ export default function AccountPage() {
   async function completeTask(taskId: string) {
     try {
       setTaskActionLoading(true);
-      const r = await fetch(`/api/proxy/v1/accounts/tasks/${taskId}`, {
+      const r = await proxyFetch(`/v1/accounts/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ status: 'completed' }),
       });
       const j = await r.json();
@@ -668,10 +659,9 @@ export default function AccountPage() {
     try {
       setCoachingActionLoading(true);
       const latestCall = recent?.[0];
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/coaching-action`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/coaching-action`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           action_type: 'replay_assignment',
           title: 'Replay coaching assignment',
@@ -695,10 +685,9 @@ export default function AccountPage() {
   async function createSparringAssignment() {
     try {
       setCoachingActionLoading(true);
-      const r = await fetch(`/api/proxy/v1/accounts/${id}/coaching-action`, {
+      const r = await proxyFetch(`/v1/accounts/${id}/coaching-action`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           action_type: 'sparring_drill',
           title: 'AI sparring drill assignment',

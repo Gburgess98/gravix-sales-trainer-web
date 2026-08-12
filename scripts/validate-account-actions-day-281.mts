@@ -123,5 +123,26 @@ check("created escalation prepended into state", /setEscalations\(\(prev\) => \[
 check("created coaching action prepended into state", /setCoachingActions\(\(prev\) => \[action, \.\.\.prev\]\)/.test(page));
 check("escalations rendered in a list (persisted view)", /escalations\.map\(\(esc\)/.test(page));
 
-console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — Day 281 account-actions validator.`);
+// ── 7. Day 282 — full authenticated-request sweep ─────────────────────────────
+// Day 281 fixed only the five mount reads. Every remaining interactive handler
+// (ownership assign/unassign, summary save, task generate/complete, preset
+// replay/sparring, add/link/unlink contact) also used a raw
+// fetch('/api/proxy/...', {credentials:'include'}) that omits the Bearer/x-user-id,
+// so it 'missing_user'-fails for auth-first identities. The whole account-detail
+// page must now be proxy-helper-only. Non-vacuous: planting ANY raw /api/proxy
+// fetch anywhere in the page flips the sweep gate (it fails on pre-Day-282 code).
+console.log("\n── authenticated interactive handlers (Day 282 sweep) ──");
+check("NO raw /api/proxy fetch anywhere in the account-detail page", !/fetch\(\s*[`'"]\/api\/proxy/.test(page));
+check("owner assign (PATCH) routed through proxyFetch", /proxyFetch\(`\/v1\/accounts\/\$\{id\}\/owner`,\s*\{\s*method: 'PATCH'/.test(page));
+check("owner unassign (DELETE) routed through proxyFetch", /proxyFetch\(`\/v1\/accounts\/\$\{id\}\/owner`,\s*\{\s*method: 'DELETE'/.test(page));
+check("account summary save routed through proxyFetch", /proxyFetch\(`\/v1\/accounts\/\$\{id\}\/summary`/.test(page));
+check("task generate routed through proxyFetch", /proxyFetch\(`\/v1\/accounts\/\$\{id\}\/tasks\/generate`/.test(page));
+check("task complete (PATCH) routed through proxyFetch", /proxyFetch\(`\/v1\/accounts\/tasks\/\$\{taskId\}`/.test(page));
+check("preset coaching (replay/sparring) routed through proxyFetch", (page.match(/proxyFetch\(`\/v1\/accounts\/\$\{id\}\/coaching-action`/g) || []).length >= 2);
+check("add contact routed through proxyFetch", /proxyFetch\('\/v1\/crm\/contacts'/.test(page));
+check("link/unlink contact routed through proxyFetch", /proxyFetch\(\s*`\/v1\/crm\/contacts\/[^`]*\/link-account`/.test(page) && /proxyFetch\(\s*`\/v1\/crm\/contacts\/\$\{contactId\}\/unlink-account`/.test(page));
+// Every proxy call in the page (bootstrap reads + interactive writes) goes via the helper.
+check("proxyFetch used across the whole page (>=16 sites)", (page.match(/proxyFetch\(/g) || []).length >= 16, `${(page.match(/proxyFetch\(/g) || []).length} sites`);
+
+console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — Day 281/282 account-actions validator.`);
 process.exit(fail);
