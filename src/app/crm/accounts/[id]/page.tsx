@@ -274,8 +274,11 @@ export default function AccountPage() {
         if (!alive) return;
         if (!j?.ok) throw new Error(j?.error || 'fetch_failed');
 
+        // Day 288 — the persisted owner renders directly from account.owner
+        // (KPI strip + ownership badge); the picker uses the separate
+        // ownerSelection state. There is no owner-input state to seed here, so
+        // the account payload is the single source of truth for the owner.
         setAccount(j.account || null);
-        if (j.account?.owner?.id) setOwnerInput(j.account.owner.id);
         setStats(j.account?.stats || null);
         setRecent(Array.isArray(j.linked_calls) ? j.linked_calls : []);
         setContacts(Array.isArray(j.linked_contacts) ? j.linked_contacts : []);

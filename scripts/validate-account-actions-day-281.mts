@@ -144,5 +144,42 @@ check("link/unlink contact routed through proxyFetch", /proxyFetch\(\s*`\/v1\/cr
 // Every proxy call in the page (bootstrap reads + interactive writes) goes via the helper.
 check("proxyFetch used across the whole page (>=16 sites)", (page.match(/proxyFetch\(/g) || []).length >= 16, `${(page.match(/proxyFetch\(/g) || []).length} sites`);
 
-console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — Day 281/282 account-actions validator.`);
+// ── 8. Day 288 — assigned-owner bootstrap has no undeclared setter ────────────
+// Regression: deployed aab3e78 called setOwnerInput(j.account.owner.id) in the
+// mount loader, but no `ownerInput` state/setter is declared anywhere. The line
+// only ran when an owner existed, so unassigned accounts (and proxy-only proof)
+// never hit it — an assigned-owner account throws `setOwnerInput is not defined`
+// on load/refresh and the whole workspace stops rendering. Guard it two ways.
+console.log("\n── assigned-owner bootstrap (Day 288 correction) ──");
+
+// (a) General, non-vacuous: every state setter CALLED in the mount loader must
+// be DECLARED via useState on the page. Planting any undeclared setOwnerInput
+// (or any typo'd setter) back into the loader flips this. Fails on aab3e78.
+const declaredSetters = new Set(
+  [...page.matchAll(/const\s*\[\s*\w+\s*,\s*(set[A-Z]\w*)\s*\]\s*=\s*useState/g)].map((m) => m[1])
+);
+const loaderSetterCalls = [...loader.matchAll(/\b(set[A-Z]\w*)\s*\(/g)].map((m) => m[1]);
+const undeclaredInLoader = [...new Set(loaderSetterCalls)].filter((s) => !declaredSetters.has(s));
+check(
+  "every state setter called in the mount loader is declared via useState",
+  undeclaredInLoader.length === 0,
+  undeclaredInLoader.length ? `undeclared: ${undeclaredInLoader.join(", ")}` : undefined
+);
+
+// (b) Owner-specific: the phantom setter is gone entirely, no `ownerInput` state
+// was invented to silence it, and the persisted owner still renders from the
+// account payload (single source of truth) — the Day 284 contract.
+check("no phantom setOwnerInput/ownerInput anywhere in the page", !/ownerInput/i.test(page));
+check("mount loader seeds account from the payload", /setAccount\(j\.account/.test(loader));
+check(
+  "persisted owner renders from account.owner (not a separate input state)",
+  /account\?\.owner\?\.full_name/.test(page) && /account\?\.owner\?\.email/.test(page)
+);
+check(
+  "owner picker still uses the dedicated ownerSelection state (Day 284 preserved)",
+  /const \[ownerSelection, setOwnerSelection\] = useState/.test(page) &&
+    /value=\{ownerSelection\}/.test(page)
+);
+
+console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — Day 281/282/288 account-actions validator.`);
 process.exit(fail);
