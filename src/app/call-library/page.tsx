@@ -1,9 +1,10 @@
 // src/app/call-library/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { proxyFetch } from "@/lib/api";
 import SparringStartButton from "@/components/SparringStartButton";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -213,7 +214,12 @@ export default function CallLibraryPage() {
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
   const [callScope, setCallScope] = useState<CallScope>("mine");
-  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled">("everyone");
+  // Day 291 — company-call policy is the API's authority. Until we've positively
+  // read it we treat it as "unknown" and never assume "everyone"; every consumer
+  // below only opens Company scope when visibility === "everyone", so an unknown
+  // or failed read can only keep the UI at "mine" — it can never broaden scope.
+  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled" | "unknown">("unknown");
+  const [visibilityError, setVisibilityError] = useState(false);
 
   useEffect(() => {
     // 🔥 If company becomes restricted, force back to "mine"
@@ -251,21 +257,36 @@ export default function CallLibraryPage() {
     return () => clearTimeout(handle);
   }, [search]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/proxy/v1/admin/org-settings", {
-          headers: { "x-user-id": localStorage.getItem("uid") || "" },
-        });
-        const d = await res.json();
-        if (d?.settings?.call_visibility) {
-          setVisibility(d.settings.call_visibility);
-        }
-      } catch (e) {
-        console.warn("failed to load visibility", e);
+  // Day 291 — read the org call-visibility policy through the canonical
+  // authenticated proxy helper (Supabase identity injected by proxyFetch), never
+  // a raw fetch with a legacy localStorage identity header. The endpoint is
+  // manager-only and company scope is enforced server-side in /v1/calls/paged, so
+  // the UI's only job is to avoid OFFERING Company calls when the policy isn't
+  // positively known. Any non-policy response (incl. a non-manager's 401/403 or a
+  // transport/5xx failure) resolves to "unknown" → Company stays suppressed; we
+  // only surface a retry hint for transport/server failures, not for an expected
+  // authorization denial.
+  const loadVisibility = useCallback(async () => {
+    setVisibilityError(false);
+    try {
+      const r = await proxyFetch("/v1/admin/org-settings", { cache: "no-store" });
+      const d = await r.json().catch(() => ({} as any));
+      const v = d?.settings?.call_visibility;
+      if (r.ok && (v === "everyone" || v === "managers" || v === "disabled")) {
+        setVisibility(v);
+      } else {
+        setVisibility("unknown");
+        if (!r.ok && r.status !== 401 && r.status !== 403) setVisibilityError(true);
       }
-    })();
+    } catch {
+      setVisibility("unknown");
+      setVisibilityError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadVisibility();
+  }, [loadVisibility]);
 
   // --- Sparring ---
   const [sparring, setSparring] = useState<SparringSession[]>([]);
@@ -734,6 +755,18 @@ export default function CallLibraryPage() {
           {visibility === "disabled" && (
             <div className="text-[11px] text-red-400 mt-1">
               Company call visibility is disabled.
+            </div>
+          )}
+          {visibilityError && (
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
+              <span>Couldn’t confirm company-call visibility — showing your calls only.</span>
+              <button
+                type="button"
+                onClick={() => void loadVisibility()}
+                className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
+              >
+                Retry
+              </button>
             </div>
           )}
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
