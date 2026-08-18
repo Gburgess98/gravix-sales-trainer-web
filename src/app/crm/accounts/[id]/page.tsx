@@ -33,6 +33,102 @@ function friendlyActionError(err: unknown, kind: 'escalation' | 'coaching action
   return `Couldn’t create the ${kind}. Please try again.`;
 }
 
+/**
+ * Day 289 — classify an account-detail LOAD failure into manager-safe copy.
+ * Tenant isolation makes the API return `account_not_found` for BOTH unknown and
+ * foreign-company IDs, so unknown and foreign render the identical state and we
+ * never reveal whether a foreign account exists. Other failures keep honest,
+ * retryable guidance — we do not collapse every error into a false 404. The raw
+ * API code is never surfaced.
+ */
+function classifyAccountLoadError(error: string | null): {
+  title: string;
+  detail: string;
+  showRetry: boolean;
+} {
+  const code = (error || '').trim();
+  if (/account_not_found|invalid_account_id|not_found|request_failed_404|\b404\b/i.test(code)) {
+    return {
+      title: 'Account not found',
+      detail: 'This account isn’t available. It may have been removed, or it doesn’t belong to your workspace.',
+      showRetry: false,
+    };
+  }
+  if (/request_failed_401|unauthor|\bsession\b/i.test(code)) {
+    return {
+      title: 'Session expired',
+      detail: 'Your session expired. Please sign in again to view this account.',
+      showRetry: false,
+    };
+  }
+  if (/request_failed_403|forbidden/i.test(code)) {
+    // Never confirm existence of an account the manager can't see.
+    return {
+      title: 'Account not found',
+      detail: 'This account isn’t available to your workspace.',
+      showRetry: false,
+    };
+  }
+  return {
+    title: 'Couldn’t load this account',
+    detail: 'Something went wrong while loading this account. Please try again.',
+    showRetry: true,
+  };
+}
+
+/**
+ * Day 289 — the account-detail "unavailable" surface. It renders ONLY a heading,
+ * a plain message and a route back to Accounts — deliberately no tabs, KPIs,
+ * ownership controls or actions, so a missing/foreign account can never expose an
+ * empty-but-interactive shell.
+ */
+function AccountUnavailable({
+  title,
+  detail,
+  showRetry,
+  onRetry,
+}: {
+  title: string;
+  detail: string;
+  showRetry?: boolean;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="p-6">
+      <Link
+        href="/crm/accounts"
+        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+      >
+        ← Accounts
+      </Link>
+      <div className="mx-auto mt-16 flex max-w-sm flex-col items-center justify-center text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-xl">
+          🔍
+        </div>
+        <h1 className="mt-4 text-lg font-semibold text-white">{title}</h1>
+        <p className="mt-1.5 text-sm text-neutral-400">{detail}</p>
+        <div className="mt-6 flex items-center gap-2">
+          <Link
+            href="/crm/accounts"
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors"
+          >
+            Back to Accounts
+          </Link>
+          {showRetry && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type AccountTab = 'overview' | 'contacts' | 'calls' | 'rescue' | 'intelligence';
 
 type LinkedContact = {
@@ -783,6 +879,37 @@ export default function AccountPage() {
   const activeTasks = tasks.filter((t) => t.status !== 'completed').length;
   const filteredTasks =
     rescueFilter === 'all' ? tasks : tasks.filter((t) => t.urgency === rescueFilter);
+
+  // Day 289 — account-detail state machine. The workspace shell below (tabs,
+  // KPIs, ownership, actions) may only render once the account payload has
+  // loaded. Until then we render a plain loading state; if the load failed and
+  // left no account (e.g. account_not_found for an unknown OR foreign-company
+  // ID), we render a manager-safe unavailable state instead of the raw error
+  // code beside an empty-but-interactive shell.
+  if (!account) {
+    if (loading) {
+      return (
+        <div className="p-6">
+          <Link
+            href="/crm/accounts"
+            className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            ← Accounts
+          </Link>
+          <div className="mt-16 text-center text-sm text-neutral-500">Loading account…</div>
+        </div>
+      );
+    }
+    const copy = classifyAccountLoadError(error);
+    return (
+      <AccountUnavailable
+        title={copy.title}
+        detail={copy.detail}
+        showRetry={copy.showRetry}
+        onRetry={() => window.location.reload()}
+      />
+    );
+  }
 
   return (
     <div className="p-6">
