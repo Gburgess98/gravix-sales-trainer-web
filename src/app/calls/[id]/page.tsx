@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import AuthGate from '@/components/AuthGate';
 import ScoreHistory from '@/components/ScoreHistory';
 import ScoreSparkline from "@/components/ScoreSparkline";
@@ -193,6 +194,46 @@ function renderTranscriptText(meta: any): string | null {
 
   const text = typeof raw === "string" ? raw.trim() : "";
   return text.length ? text : null;
+}
+
+/**
+ * Day 290 — the Call Review "unavailable" surface (mirrors Day 289's
+ * AccountUnavailable). When a call is unknown or belongs to another company the
+ * API returns not_found/403 and `callMeta` stays null; rather than render the
+ * whole empty-but-interactive review shell with a "not found" banner buried at
+ * the bottom, we render ONLY a heading, a plain message and a route back to the
+ * Call Library. No review sections, no Link CRM / Assign Drill controls. Foreign
+ * and unknown IDs render the identical state (no existence disclosure).
+ */
+function CallUnavailable() {
+  return (
+    <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8">
+      <Link
+        href="/call-library"
+        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+      >
+        ← Call Library
+      </Link>
+      <div className="mx-auto mt-16 flex max-w-sm flex-col items-center justify-center text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-xl">
+          🔍
+        </div>
+        <h1 className="mt-4 text-lg font-semibold text-white">Call not found</h1>
+        <p className="mt-1.5 text-sm text-neutral-400">
+          This call isn’t available. It may have been removed, never fully created, or the link is
+          stale.
+        </p>
+        <div className="mt-6">
+          <Link
+            href="/call-library"
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors"
+          >
+            Back to Call Library
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
 }
 
 export default function CallPage() {
@@ -1505,6 +1546,19 @@ export default function CallPage() {
   const analysisMoments = Array.isArray(callMeta?.analysis_json?.moments)
     ? callMeta.analysis_json.moments
     : [];
+
+  // Day 290 — a call the manager can't see (unknown OR foreign-company: the API
+  // returns not_found/403, callMeta stays null) renders a clean, gated
+  // unavailable state instead of the empty review shell + a buried banner. This
+  // mirrors Day 289's account gate: no review sections and no Link CRM / Assign
+  // Drill controls render for a missing call.
+  if (callMissing) {
+    return (
+      <AuthGate>
+        <CallUnavailable />
+      </AuthGate>
+    );
+  }
 
   return (
     <AuthGate>

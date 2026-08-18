@@ -158,7 +158,8 @@
     "validate:session-hygiene": "node scripts/validate-session-hygiene-day-275.mts",
     "validate:call-detail-consistency": "node scripts/validate-call-detail-consistency-day-276.mts",
     "validate:account-actions": "node scripts/validate-account-actions-day-281.mts",
-    "validate:account-not-found": "node scripts/validate-account-not-found-day-289.mts"
+    "validate:account-not-found": "node scripts/validate-account-not-found-day-289.mts",
+    "validate:call-review-not-found": "node scripts/validate-call-review-not-found-day-290.mts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
