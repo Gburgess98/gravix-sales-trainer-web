@@ -48,9 +48,14 @@ export default function AdminSettingsPage() {
   const [visSaving, setVisSaving] = useState(false);
   const [visErr, setVisErr] = useState<string | null>(null);
 
-  const forbidden =
-    (err || "").includes("forbidden_not_manager") ||
-    (err || "").includes("missing_x_user_id");
+  // Day 293 — manager capability is resolved from AUTHENTICATED, server-side
+  // evidence, never from localStorage or a client-supplied role/org. The
+  // manager-only GET /v1/admin/config (jfetch → Supabase identity injected) IS
+  // that evidence: a success means this caller is a manager; its expected
+  // `forbidden_not_manager` denial means a rep, which we translate into a clean
+  // read-only experience rather than surfacing the raw error. null = not yet
+  // resolved / unknown (fail-closed: read-only, no mutation path).
+  const [isManager, setIsManager] = useState<boolean | null>(null);
 
   const dirty = useMemo(() => {
     if (!raw) return false;
@@ -73,8 +78,20 @@ export default function AdminSettingsPage() {
           xp_multiplier: String(cfg.xp_multiplier),
           comeback_bonus: String(cfg.comeback_bonus),
         });
+        setIsManager(true);
       } catch (e: any) {
-        setErr(e?.message || "Failed to load admin config");
+        // Day 293 — translate the manager-only endpoint's verdict. An expected
+        // authorization denial means "not a manager" → clean read-only, NOT a
+        // raw error. Anything else is a genuine failure surfaced as friendly copy
+        // (never the raw provider/error string); capability stays unknown so the
+        // page fails closed to read-only.
+        const msg = String(e?.message || "");
+        if (msg.includes("forbidden_not_manager")) {
+          setIsManager(false);
+        } else {
+          setIsManager(null);
+          setErr("Couldn’t load admin settings. Please try again.");
+        }
       } finally {
         setLoading(false);
       }
@@ -144,7 +161,8 @@ export default function AdminSettingsPage() {
       });
       setOkMsg("Saved ✅ (live immediately)");
     } catch (e: any) {
-      setErr(e?.message || "Save failed");
+      // Day 293 — never surface the raw provider/authorization error.
+      setErr("Couldn’t save settings — please try again.");
     } finally {
       setSaving(false);
     }
@@ -201,7 +219,9 @@ export default function AdminSettingsPage() {
 
             {visLoading ? (
               <div className="text-sm">Loading visibility…</div>
-            ) : (
+            ) : isManager === true ? (
+              // Manager — confirmed writes (Day 292 contract): no optimistic
+              // selection, duplicate writes disabled, server-echoed success.
               <>
                 <div className="flex items-center gap-2">
                   {(["everyone", "managers", "disabled"] as CallVisibility[]).map((opt) => (
@@ -232,6 +252,28 @@ export default function AdminSettingsPage() {
                   <p className="text-xs text-red-600">{visErr}</p>
                 )}
               </>
+            ) : (
+              // Day 293 — rep / unknown: explicit READ-ONLY surface. Show the
+              // server-confirmed current value with neutral manager-only copy and
+              // no enabled mutation path. Reading stays allowed (rep-readable GET);
+              // only writing is manager-only.
+              <div className="space-y-1">
+                <div className="text-sm">
+                  Current setting:{" "}
+                  <span className="font-medium">
+                    {visibility === "unknown" ? "—" : visibility}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Only a manager can change company call visibility.
+                </p>
+                {visibility === "unknown" && !visErr && (
+                  <p className="text-xs text-muted-foreground">
+                    Current visibility couldn’t be confirmed.
+                  </p>
+                )}
+                {visErr && <p className="text-xs text-red-600">{visErr}</p>}
+              </div>
             )}
           </div>
           {err && (
@@ -245,7 +287,7 @@ export default function AdminSettingsPage() {
             </div>
           )}
 
-          {!forbidden ? (
+          {isManager === true ? (
             <div className="rounded border p-4 space-y-3">
               <div>
                 <label className="block text-sm font-medium">Streak threshold</label>
@@ -304,11 +346,12 @@ export default function AdminSettingsPage() {
             </div>
           ) : (
             <div className="rounded border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm">
-              You don’t have access to Admin Settings. Ask your manager to upgrade your role.
+              Streak, XP and comeback settings are managed by your manager. You have
+              read-only access to Admin Settings.
             </div>
           )}
 
-          {!forbidden && (
+          {isManager === true && (
             <div className="text-xs text-muted-foreground">
               Tip: set multiplier to <span className="font-mono">1</span> to instantly disable boosts without redeploying.
             </div>

@@ -161,7 +161,8 @@
     "validate:account-not-found": "node scripts/validate-account-not-found-day-289.mts",
     "validate:call-review-not-found": "node scripts/validate-call-review-not-found-day-290.mts",
     "validate:call-visibility-fetch": "node scripts/validate-call-visibility-fetch-day-291.mts",
-    "validate:company-policy-ui": "node scripts/validate-company-policy-ui-day-292.mts"
+    "validate:company-policy-ui": "node scripts/validate-company-policy-ui-day-292.mts",
+    "validate:rep-admin-readonly": "node scripts/validate-rep-admin-readonly-day-293.mts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,css,md}": [
