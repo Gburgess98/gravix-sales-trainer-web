@@ -2,7 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCallback } from "react";
-import { getAdminConfig, patchAdminConfig, AdminConfig } from "@/lib/api";
+import {
+  getAdminConfig,
+  patchAdminConfig,
+  proxyGet,
+  proxyPatch,
+  AdminConfig,
+} from "@/lib/api";
+
+type OrgSettingsResp = {
+  ok?: boolean;
+  settings?: { call_visibility?: string | null } | null;
+};
+
+type CallVisibility = "everyone" | "managers" | "disabled";
+
+function normaliseVisibility(v: unknown): CallVisibility | null {
+  return v === "everyone" || v === "managers" || v === "disabled" ? v : null;
+}
 
 type FormState = {
   streak_threshold: string;
@@ -23,8 +40,13 @@ export default function AdminSettingsPage() {
     comeback_bonus: "0",
   });
 
-  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled">("everyone");
+  // Day 292 — company-call visibility is server-owned; we only ever reflect a
+  // value the API has confirmed. "unknown" means we have not positively read it
+  // (never optimistically assume "everyone").
+  const [visibility, setVisibility] = useState<CallVisibility | "unknown">("unknown");
   const [visLoading, setVisLoading] = useState(true);
+  const [visSaving, setVisSaving] = useState(false);
+  const [visErr, setVisErr] = useState<string | null>(null);
 
   const forbidden =
     (err || "").includes("forbidden_not_manager") ||
@@ -59,24 +81,30 @@ export default function AdminSettingsPage() {
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setVisLoading(true);
-        const res = await fetch("/api/proxy/v1/admin/org-settings", {
-          headers: { "x-user-id": localStorage.getItem("uid") || "" },
-        });
-        const d = await res.json();
-        if (d?.settings?.call_visibility) {
-          setVisibility(d.settings.call_visibility);
-        }
-      } catch (e) {
-        console.warn("failed to load org settings", e);
-      } finally {
-        setVisLoading(false);
-      }
-    })();
+  // Day 292 — read org settings through the canonical authenticated proxy helper
+  // (Supabase identity injected by proxyFetch); no raw /api/proxy fetch, no legacy
+  // localStorage x-user-id header. The org is resolved server-side, never from the
+  // client. On any failure we keep "unknown" rather than lying with "everyone".
+  const loadVisibility = useCallback(async () => {
+    setVisErr(null);
+    setVisLoading(true);
+    try {
+      const d = await proxyGet<OrgSettingsResp>("/v1/admin/org-settings");
+      const v = normaliseVisibility(d?.settings?.call_visibility);
+      // Absent row is a genuine "everyone" default from the API; an unparseable
+      // value stays "unknown".
+      setVisibility(v ?? (d?.settings?.call_visibility == null ? "everyone" : "unknown"));
+    } catch (e: any) {
+      setVisibility("unknown");
+      setVisErr("Couldn’t load company-call visibility.");
+    } finally {
+      setVisLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadVisibility();
+  }, [loadVisibility]);
 
   async function onSave() {
     if (!raw) return;
@@ -122,21 +150,35 @@ export default function AdminSettingsPage() {
     }
   }
 
-  const updateVisibility = useCallback(async (val: typeof visibility) => {
-    setVisibility(val);
-    try {
-      await fetch("/api/proxy/v1/admin/org-settings", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": localStorage.getItem("uid") || "",
-        },
-        body: JSON.stringify({ call_visibility: val }),
-      });
-    } catch (e) {
-      console.warn("failed to update visibility", e);
-    }
-  }, []);
+  // Day 292 — write through the canonical authenticated proxy helper. PATCH stays
+  // manager-only at the API. We do NOT optimistically flip the UI: the selection
+  // only moves after a validated success, echoing the server-confirmed value. On
+  // denial / 5xx / transport failure we keep the previous value, surface a clean
+  // error, and reload the truth. A saving guard prevents rapid duplicate writes,
+  // and we never send a client org/company override.
+  const updateVisibility = useCallback(
+    async (val: CallVisibility) => {
+      if (visSaving) return;
+      if (val === visibility) return;
+      setVisErr(null);
+      setVisSaving(true);
+      const prev = visibility;
+      try {
+        const d = await proxyPatch<OrgSettingsResp>("/v1/admin/org-settings", {
+          call_visibility: val,
+        });
+        const saved = normaliseVisibility(d?.settings?.call_visibility);
+        setVisibility(saved ?? val);
+      } catch (e: any) {
+        setVisibility(prev);
+        setVisErr("Couldn’t update visibility — your change was not saved.");
+        void loadVisibility();
+      } finally {
+        setVisSaving(false);
+      }
+    },
+    [visibility, visSaving, loadVisibility]
+  );
 
   return (
     <div className="p-6 max-w-2xl">
@@ -160,21 +202,36 @@ export default function AdminSettingsPage() {
             {visLoading ? (
               <div className="text-sm">Loading visibility…</div>
             ) : (
-              <div className="flex gap-2">
-                {["everyone", "managers", "disabled"].map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => updateVisibility(opt as any)}
-                    className={`px-3 py-1 rounded text-sm ${
-                      visibility === opt
-                        ? "bg-black text-white"
-                        : "bg-gray-200"
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="flex items-center gap-2">
+                  {(["everyone", "managers", "disabled"] as CallVisibility[]).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      disabled={visSaving}
+                      onClick={() => updateVisibility(opt)}
+                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                        visibility === opt
+                          ? "bg-black text-white"
+                          : "bg-gray-200"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                  {visSaving && (
+                    <span className="text-xs text-muted-foreground">Saving…</span>
+                  )}
+                </div>
+                {visibility === "unknown" && !visErr && (
+                  <p className="text-xs text-muted-foreground">
+                    Current visibility couldn’t be confirmed.
+                  </p>
+                )}
+                {visErr && (
+                  <p className="text-xs text-red-600">{visErr}</p>
+                )}
+              </>
             )}
           </div>
           {err && (

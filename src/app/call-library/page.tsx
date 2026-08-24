@@ -214,19 +214,30 @@ export default function CallLibraryPage() {
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
   const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
   const [callScope, setCallScope] = useState<CallScope>("mine");
-  // Day 291 — company-call policy is the API's authority. Until we've positively
-  // read it we treat it as "unknown" and never assume "everyone"; every consumer
-  // below only opens Company scope when visibility === "everyone", so an unknown
-  // or failed read can only keep the UI at "mine" — it can never broaden scope.
-  const [visibility, setVisibility] = useState<"everyone" | "managers" | "disabled" | "unknown">("unknown");
-  const [visibilityError, setVisibilityError] = useState(false);
+  // Day 292 — company-call access is the API's authority, resolved PER CALLER.
+  // Day 291 gated the toggle on the org policy alone (`everyone`), which wrongly
+  // disabled an assigned manager under the `managers` policy even though the API
+  // serves them company calls. The org policy is not enough on its own: under
+  // `managers` the server grants access only to a caller who is an assigned
+  // manager, a decision the client must NOT re-derive from client-supplied
+  // role/org values. So we ask the server's own enforced company-scope path
+  // whether IT will serve this authenticated caller (see loadCompanyAccess).
+  //   "allowed"  → server will serve company calls to this caller → offer it
+  //   "managers" → policy is managers and this caller is not one → deny + hint
+  //   "disabled" → company visibility is off org-wide → deny + hint
+  //   "unknown"  → not positively confirmed (missing org / other / transport)
+  // Every consumer below only opens Company scope when access === "allowed", so
+  // an unknown or failed probe can only keep the UI at "mine" — never broaden it.
+  const [companyAccess, setCompanyAccess] =
+    useState<"allowed" | "managers" | "disabled" | "unknown">("unknown");
+  const [companyAccessError, setCompanyAccessError] = useState(false);
 
   useEffect(() => {
-    // 🔥 If company becomes restricted, force back to "mine"
-    if (visibility !== "everyone" && callScope === "company") {
+    // If company access is anything but positively allowed, force back to "mine".
+    if (companyAccess !== "allowed" && callScope === "company") {
       setCallScope("mine");
     }
-  }, [visibility, callScope]);
+  }, [companyAccess, callScope]);
 
   // Sparring personas config (loaded from API)
   const [sparPersonas, setSparPersonas] = useState<SparringPersonaOption[]>([]);
@@ -257,36 +268,48 @@ export default function CallLibraryPage() {
     return () => clearTimeout(handle);
   }, [search]);
 
-  // Day 291 — read the org call-visibility policy through the canonical
-  // authenticated proxy helper (Supabase identity injected by proxyFetch), never
-  // a raw fetch with a legacy localStorage identity header. The endpoint is
-  // manager-only and company scope is enforced server-side in /v1/calls/paged, so
-  // the UI's only job is to avoid OFFERING Company calls when the policy isn't
-  // positively known. Any non-policy response (incl. a non-manager's 401/403 or a
-  // transport/5xx failure) resolves to "unknown" → Company stays suppressed; we
-  // only surface a retry hint for transport/server failures, not for an expected
-  // authorization denial.
-  const loadVisibility = useCallback(async () => {
-    setVisibilityError(false);
+  // Day 292 — resolve company-call access from the server's OWN enforcement,
+  // per caller, through the canonical authenticated proxy helper (Supabase
+  // identity injected by proxyFetch; no raw fetch, no legacy localStorage
+  // identity header, no client-supplied role/org). We probe the same enforced
+  // company-scope path the list itself uses — `/v1/calls/paged?scope=company`
+  // with limit=1 — and read the server's verdict, which is authoritative and
+  // non-spoofable because it is exactly the check the real load is subject to:
+  //   200                              → this caller may see company calls
+  //   403 company_calls_disabled       → org-wide off
+  //   403 manager_only_access          → policy is managers, caller is not one
+  //   anything else (missing org / 4xx / 5xx / transport) → "unknown"
+  // "unknown" and every denial keep Company suppressed; we only surface a retry
+  // hint for transport/server (5xx) failures, not for an expected authz denial.
+  const loadCompanyAccess = useCallback(async () => {
+    setCompanyAccessError(false);
     try {
-      const r = await proxyFetch("/v1/admin/org-settings", { cache: "no-store" });
+      const r = await proxyFetch("/v1/calls/paged?scope=company&limit=1", {
+        cache: "no-store",
+      });
+      if (r.ok) {
+        setCompanyAccess("allowed");
+        return;
+      }
       const d = await r.json().catch(() => ({} as any));
-      const v = d?.settings?.call_visibility;
-      if (r.ok && (v === "everyone" || v === "managers" || v === "disabled")) {
-        setVisibility(v);
+      const reason = String(d?.error || "");
+      if (r.status === 403 && reason === "company_calls_disabled") {
+        setCompanyAccess("disabled");
+      } else if (r.status === 403 && reason === "manager_only_access") {
+        setCompanyAccess("managers");
       } else {
-        setVisibility("unknown");
-        if (!r.ok && r.status !== 401 && r.status !== 403) setVisibilityError(true);
+        setCompanyAccess("unknown");
+        if (r.status >= 500) setCompanyAccessError(true);
       }
     } catch {
-      setVisibility("unknown");
-      setVisibilityError(true);
+      setCompanyAccess("unknown");
+      setCompanyAccessError(true);
     }
   }, []);
 
   useEffect(() => {
-    void loadVisibility();
-  }, [loadVisibility]);
+    void loadCompanyAccess();
+  }, [loadCompanyAccess]);
 
   // --- Sparring ---
   const [sparring, setSparring] = useState<SparringSession[]>([]);
@@ -319,7 +342,7 @@ export default function CallLibraryPage() {
           q: debouncedSearch || undefined,
           scope:
             tab === "live"
-              ? visibility === "everyone"
+              ? companyAccess === "allowed"
                 ? callScope
                 : "mine"
               : "mine",
@@ -378,7 +401,7 @@ export default function CallLibraryPage() {
       alive = false;
       clearInterval(interval);
     };
-  }, [tab, debouncedSearch, callScope]);
+  }, [tab, debouncedSearch, callScope, companyAccess]);
 
   useEffect(() => {
     if (tab !== "live") return;
@@ -548,7 +571,7 @@ export default function CallLibraryPage() {
           q: debouncedSearch || undefined,
           scope:
             tab === "live"
-              ? visibility === "everyone"
+              ? companyAccess === "allowed"
                 ? callScope
                 : "mine"
               : "mine",
@@ -720,7 +743,7 @@ export default function CallLibraryPage() {
             <span className="self-center text-neutral-500">View</span>
             {[
               { id: "mine", label: "My calls" },
-              { id: "company", label: "Company calls", disabled: visibility !== "everyone" },
+              { id: "company", label: "Company calls", disabled: companyAccess !== "allowed" },
             ].map((opt) => {
               const isDisabled = (opt as any).disabled;
               const active = callScope === opt.id;
@@ -747,22 +770,22 @@ export default function CallLibraryPage() {
               );
             })}
           </div>
-          {visibility === "managers" && (
+          {companyAccess === "managers" && (
             <div className="text-[11px] text-amber-400 mt-1">
               Company calls are restricted to managers.
             </div>
           )}
-          {visibility === "disabled" && (
+          {companyAccess === "disabled" && (
             <div className="text-[11px] text-red-400 mt-1">
               Company call visibility is disabled.
             </div>
           )}
-          {visibilityError && (
+          {companyAccessError && (
             <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
-              <span>Couldn’t confirm company-call visibility — showing your calls only.</span>
+              <span>Couldn’t confirm company-call access — showing your calls only.</span>
               <button
                 type="button"
-                onClick={() => void loadVisibility()}
+                onClick={() => void loadCompanyAccess()}
                 className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
               >
                 Retry
