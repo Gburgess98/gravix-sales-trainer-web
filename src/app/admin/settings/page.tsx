@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import {
   getAdminConfig,
   patchAdminConfig,
+  proxyFetch,
   proxyGet,
   proxyPatch,
   AdminConfig,
@@ -14,6 +15,12 @@ type OrgSettingsResp = {
   ok?: boolean;
   settings?: { call_visibility?: string | null } | null;
 };
+
+// Day 293 correction — canonical manager tiers, matching the API's
+// `requireManager` MANAGER_TIERS set exactly. Capability is decided by the
+// server-resolved `reps.tier` from the authenticated identity endpoint, never
+// by whether an unrelated config query happens to succeed.
+const MANAGER_TIERS = new Set(["Manager", "Owner", "PartnerAdmin", "SuperAdmin"]);
 
 type CallVisibility = "everyone" | "managers" | "disabled";
 
@@ -28,10 +35,18 @@ type FormState = {
 };
 
 export default function AdminSettingsPage() {
+  // `loading` now tracks CAPABILITY resolution (the authenticated identity read),
+  // decoupled from the streak/XP config load which has its own section state.
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  // Day 293 correction — the streak/XP admin-config load is a separate, section
+  // scoped concern. Its failure surfaces a friendly section error but must never
+  // affect manager capability or policy authority.
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configErr, setConfigErr] = useState<string | null>(null);
 
   const [raw, setRaw] = useState<AdminConfig | null>(null);
   const [form, setForm] = useState<FormState>({
@@ -48,13 +63,15 @@ export default function AdminSettingsPage() {
   const [visSaving, setVisSaving] = useState(false);
   const [visErr, setVisErr] = useState<string | null>(null);
 
-  // Day 293 — manager capability is resolved from AUTHENTICATED, server-side
-  // evidence, never from localStorage or a client-supplied role/org. The
-  // manager-only GET /v1/admin/config (jfetch → Supabase identity injected) IS
-  // that evidence: a success means this caller is a manager; its expected
-  // `forbidden_not_manager` denial means a rep, which we translate into a clean
-  // read-only experience rather than surfacing the raw error. null = not yet
-  // resolved / unknown (fail-closed: read-only, no mutation path).
+  // Day 293 correction — manager capability is resolved from the AUTHENTICATED,
+  // server-resolved identity endpoint `/v1/reps/me` (its `reps.tier`), matched
+  // against the canonical MANAGER_TIERS. It is NOT inferred from whether the
+  // unrelated manager-only admin-config query succeeds (that coupling mistook a
+  // config-data failure for an authorization failure and locked real managers out
+  // of the policy control). No localStorage, no client-supplied role/org.
+  //   true  → tier is a manager tier
+  //   false → identity resolved to a non-manager tier (rep) → clean read-only
+  //   null  → identity not positively resolved → fail-closed read-only
   const [isManager, setIsManager] = useState<boolean | null>(null);
 
   const dirty = useMemo(() => {
@@ -66,37 +83,63 @@ export default function AdminSettingsPage() {
     );
   }, [form, raw]);
 
+  // Resolve manager capability from the authenticated identity (server-resolved
+  // reps.tier). This is independent of the streak/XP config load below, so a
+  // config-data failure can never misclassify a real manager.
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        setLoading(true);
-        setErr(null);
+        const r = await proxyFetch("/v1/reps/me", { cache: "no-store" });
+        const d = await r.json().catch(() => ({} as any));
+        const tier = d?.rep?.tier ?? d?.tier ?? null;
+        if (!alive) return;
+        if (r.ok && d?.ok && typeof tier === "string") {
+          setIsManager(MANAGER_TIERS.has(tier));
+        } else {
+          // Identity not positively resolved → fail-closed to read-only.
+          setIsManager(null);
+        }
+      } catch {
+        if (alive) setIsManager(null);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Load streak/XP config ONLY after manager capability is positive. A failure
+  // here is a friendly section error — it does not touch capability or policy
+  // authority.
+  useEffect(() => {
+    if (isManager !== true) return;
+    let alive = true;
+    (async () => {
+      try {
+        setConfigLoading(true);
+        setConfigErr(null);
         const cfg = await getAdminConfig();
+        if (!alive) return;
         setRaw(cfg);
         setForm({
           streak_threshold: String(cfg.streak_threshold),
           xp_multiplier: String(cfg.xp_multiplier),
           comeback_bonus: String(cfg.comeback_bonus),
         });
-        setIsManager(true);
-      } catch (e: any) {
-        // Day 293 — translate the manager-only endpoint's verdict. An expected
-        // authorization denial means "not a manager" → clean read-only, NOT a
-        // raw error. Anything else is a genuine failure surfaced as friendly copy
-        // (never the raw provider/error string); capability stays unknown so the
-        // page fails closed to read-only.
-        const msg = String(e?.message || "");
-        if (msg.includes("forbidden_not_manager")) {
-          setIsManager(false);
-        } else {
-          setIsManager(null);
-          setErr("Couldn’t load admin settings. Please try again.");
-        }
+      } catch {
+        // Never surface the raw provider/error string; keep policy authority.
+        if (alive) setConfigErr("Couldn’t load scoring settings. Please try again.");
       } finally {
-        setLoading(false);
+        if (alive) setConfigLoading(false);
       }
     })();
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [isManager]);
 
   // Day 292 — read org settings through the canonical authenticated proxy helper
   // (Supabase identity injected by proxyFetch); no raw /api/proxy fetch, no legacy
@@ -288,6 +331,18 @@ export default function AdminSettingsPage() {
           )}
 
           {isManager === true ? (
+            configLoading ? (
+              <div className="rounded border p-4 text-sm">Loading scoring settings…</div>
+            ) : configErr ? (
+              // Config-data failure is section-scoped: friendly copy, and the
+              // policy control above keeps its authority.
+              <div className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm space-y-1">
+                <p>{configErr}</p>
+                <p className="text-xs text-muted-foreground">
+                  Company call visibility above is unaffected.
+                </p>
+              </div>
+            ) : (
             <div className="rounded border p-4 space-y-3">
               <div>
                 <label className="block text-sm font-medium">Streak threshold</label>
@@ -344,6 +399,7 @@ export default function AdminSettingsPage() {
                 )}
               </div>
             </div>
+            )
           ) : (
             <div className="rounded border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm">
               Streak, XP and comeback settings are managed by your manager. You have
