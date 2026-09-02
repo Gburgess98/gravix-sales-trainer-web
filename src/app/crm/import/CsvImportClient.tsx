@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 type Row = {
   email: string;
@@ -146,7 +147,7 @@ export default function CsvImportClient() {
     setBusy(true);
     setServerResp(null);
     try {
-      const resp = await fetch("/api/proxy/v1/crm/contacts/import", {
+      const resp = await proxyFetch("/v1/crm/contacts/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ dry_run: isDryRun, rows: parsed.rows }),

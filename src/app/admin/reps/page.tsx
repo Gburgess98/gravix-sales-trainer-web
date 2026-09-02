@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 export default function AdminRepsPage() {
   const [email, setEmail] = useState("");
@@ -20,14 +21,9 @@ export default function AdminRepsPage() {
     );
   });
 
-  const uid =
-    typeof window !== "undefined"
-      ? localStorage.getItem("uid") || ""
-      : "";
-
   useEffect(() => {
-    fetch("/api/proxy/v1/admin/users", {
-      headers: { "x-user-id": uid, "x-active-office-id": officeId },
+    proxyFetch("/v1/admin/users", {
+      headers: { "x-active-office-id": officeId },
     })
       .then((r) => r.json())
       .then((d) => {
@@ -37,8 +33,8 @@ export default function AdminRepsPage() {
         if (savedOffice) {
           setOfficeId(savedOffice);
         }
-        fetch("/api/proxy/v1/admin/usage", {
-          headers: { "x-user-id": uid, "x-active-office-id": officeId },
+        proxyFetch("/v1/admin/usage", {
+          headers: { "x-active-office-id": officeId },
         })
           .then((r) => r.json())
           .then((d) => {
@@ -64,11 +60,10 @@ export default function AdminRepsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/proxy/v1/admin/users", {
+    const res = await proxyFetch("/v1/admin/users", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": uid,
         "x-active-office-id": officeId,
       },
       body: JSON.stringify({
@@ -91,14 +86,14 @@ export default function AdminRepsPage() {
       setManagerId("");
       setVisibilityScope("team");
 
-      const r = await fetch("/api/proxy/v1/admin/users", {
-        headers: { "x-user-id": uid, "x-active-office-id": officeId },
+      const r = await proxyFetch("/v1/admin/users", {
+        headers: { "x-active-office-id": officeId },
       });
       const d = await r.json();
       setUsers(d.users || []);
 
-      const u = await fetch("/api/proxy/v1/admin/usage", {
-        headers: { "x-user-id": uid, "x-active-office-id": officeId },
+      const u = await proxyFetch("/v1/admin/usage", {
+        headers: { "x-active-office-id": officeId },
       });
       const uData = await u.json();
       if (uData?.usage) setUsage(uData.usage);

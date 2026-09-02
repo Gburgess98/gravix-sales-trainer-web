@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { completeCrmAction } from '@/lib/api';
+import { completeCrmAction, proxyFetch } from '@/lib/api';
 
 export type AssignmentAction = {
   id: string;
@@ -74,7 +74,7 @@ export default function AssignmentsSummary(props: {
 
     async function load() {
       try {
-        const res = await fetch('/api/proxy/v1/assignments/summary');
+        const res = await proxyFetch('/v1/assignments/summary');
         const json: AssignmentsSummaryResp = await res.json();
         if (cancelled || !json || json.ok === false) return;
 

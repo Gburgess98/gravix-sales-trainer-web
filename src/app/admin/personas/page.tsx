@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 const BUYER_STYLES = [
   "Aggressive buyer",
@@ -64,7 +65,7 @@ export default function AdminPersonasPage() {
         setLoading(true);
         setSaveError(null);
 
-        const res = await fetch("/api/proxy/v1/admin/persona-config", {
+        const res = await proxyFetch("/v1/admin/persona-config", {
           cache: "no-store",
         });
 
@@ -193,7 +194,7 @@ export default function AdminPersonasPage() {
         },
       };
 
-      const res = await fetch("/api/proxy/v1/admin/persona-config", {
+      const res = await proxyFetch("/v1/admin/persona-config", {
         method: "PATCH",
         headers: {
           "content-type": "application/json",

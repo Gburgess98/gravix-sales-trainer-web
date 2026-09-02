@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 type Row = { first_name?: string; last_name?: string; email?: string; company?: string };
 
@@ -43,7 +44,7 @@ export default function ContactsImportClient() {
     setMsg(null);
     setActioning(true);
     try {
-      const res = await fetch("/api/proxy/v1/crm/contacts/import", {
+      const res = await proxyFetch("/v1/crm/contacts/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ rows: valid }),
