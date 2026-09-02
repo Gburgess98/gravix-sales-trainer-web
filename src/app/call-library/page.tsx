@@ -529,7 +529,7 @@ export default function CallLibraryPage() {
           return;
         }
 
-        const items = Array.isArray(res.personas) ? res.personas : [];
+        const items: SparringPersonaOption[] = Array.isArray(res.personas) ? res.personas : [];
         setSparPersonas(items);
 
         // If current persona isn't in list, default to first

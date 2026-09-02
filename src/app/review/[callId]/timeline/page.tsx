@@ -9,6 +9,7 @@
 
 import { redirect } from "next/navigation";
 
-export default function Page({ params }: { params: { callId: string } }) {
-  redirect(`/calls/${params.callId}`);
+export default async function Page({ params }: { params: Promise<{ callId: string }> }) {
+  const { callId } = await params;
+  redirect(`/calls/${callId}`);
 }

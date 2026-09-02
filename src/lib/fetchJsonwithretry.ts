@@ -92,7 +92,7 @@ export async function fetchJsonWithRetry<T = any>(
   const baseMs = init.baseMs ?? 250;
   const maxMs = init.maxMs ?? 4000;
 
-  let lastErr: unknown;
+  let lastErr: NormalisedError | undefined;
 
   for (let i = 0; i < attempts; i++) {
     try {

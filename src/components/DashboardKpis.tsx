@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchJsonWithRetry } from '@/lib/fetchJsonWithRetry';
+import { fetchJsonWithRetry } from '@/lib/fetchJsonwithretry';
 
 type Kpis = {
   callsAnalyzed: number;

@@ -301,7 +301,7 @@ async function handle(req: NextRequest, context: any) {
     }
 
     // Guardrail: only allow forwarding to /v1/*
-    if (!isAllowedProxyPath(pathParts)) {
+    if (!isAllowedProxyPath(pathParts ?? undefined)) {
       // If sanitize failed, treat it as a bad request (someone is probing)
       if (!pathParts) {
         return NextResponse.json(
@@ -328,7 +328,7 @@ async function handle(req: NextRequest, context: any) {
     // Route handler: use request cookies
     const cookieList = (req.cookies.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
 
-    const target = buildTargetUrl(base, pathParts, req);
+    const target = buildTargetUrl(base, pathParts ?? undefined, req);
 
     // Optional debug: /api/proxy/v1/*?debug=1 (DEV ONLY)
     if (req.nextUrl.searchParams.get("debug") === "1") {
@@ -544,7 +544,9 @@ async function handle(req: NextRequest, context: any) {
       req.method === "GET" || req.method === "HEAD" ? undefined : (req as any).body ?? req.body;
 
     // Build fetch init with a plain headers object to avoid weird header serialization
-    const init: RequestInit = {
+    // `duplex` is required by undici/Node when streaming a request body, but is
+    // not yet in the DOM `RequestInit` lib type — widen locally.
+    const init: RequestInit & { duplex?: "half" } = {
       method: req.method,
       headers: {
         ...Object.fromEntries(headers.entries()),
@@ -561,7 +563,7 @@ async function handle(req: NextRequest, context: any) {
       next: { revalidate: 0 },
       redirect: "manual",
       // Node.js streaming hint; prevents full buffering of multipart/form-data
-      duplex: "half" as any,
+      duplex: "half",
     };
 
     const r = await fetch(target, init);
@@ -619,7 +621,9 @@ async function handle(req: NextRequest, context: any) {
 
     // Read upstream body as raw bytes
     const rawBuf = await r.arrayBuffer();
-    let bodyBytes = Buffer.from(rawBuf);
+    // Annotate as the wide `Buffer` (ArrayBufferLike) so the gzip/brotli/deflate
+    // reassignments below type-check under the generic Buffer types.
+    let bodyBytes: Buffer = Buffer.from(rawBuf);
 
     // Respect Content-Encoding if provided
     const enc = (r.headers.get('content-encoding') || '').toLowerCase();

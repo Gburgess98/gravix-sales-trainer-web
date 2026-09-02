@@ -23,7 +23,7 @@ type CompanyDetail = {
 }
 
 export default function CompanyEditorPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>() ?? { id: "" }
 
   const [company, setCompany] = useState<CompanyDetail | null>(null)
   const [userCount, setUserCount] = useState(0)

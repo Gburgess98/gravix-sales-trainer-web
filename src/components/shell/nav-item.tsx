@@ -12,7 +12,7 @@ interface NavItemProps {
 }
 
 export function NavItem({ item, collapsed }: NavItemProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
 
   const isActive =
     item.href === '/dashboard'

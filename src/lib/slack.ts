@@ -1,5 +1,5 @@
 // api/src/lib/slack.ts
-import fetch from "node-fetch";
+// Uses the Node/global `fetch` (Node 18+ / Next server runtime); no node-fetch dependency.
 
 /**
  * ENV:

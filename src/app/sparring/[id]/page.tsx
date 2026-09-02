@@ -91,6 +91,10 @@ type WhisperItem = {
 };
 
 type WhispererHit = {
+  type: string;
+  suggestion: WhisperItem;
+  text: string;
+  t: number | null;
 };
 
 type FailedMoment = {
@@ -1332,38 +1336,6 @@ export default function SparringSessionPage() {
   }
 
   async function onReplaySession() {
-  async function onReplayFailure(turn: number) {
-    if (!session?.id) return;
-
-    try {
-      setReplayLoading(turn);
-      setReplayError(null);
-
-      const res = await fetchJsonWithRetry(
-        `/api/proxy/v1/sparring/sessions/${encodeURIComponent(session.id)}/replay`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            failed_turn: turn,
-          }),
-        }
-      );
-
-      if (!res || res.ok === false || !res.replay_session?.id) {
-        throw new Error(res?.error || "Failed to create replay session.");
-      }
-
-      toast("Replay session created — retry the failed objection.");
-
-      router.push(`/sparring/${encodeURIComponent(res.replay_session.id)}`);
-    } catch (e: any) {
-      console.error("Replay failure failed", e);
-      setReplayError(e?.message || "Failed to replay this moment.");
-    } finally {
-      setReplayLoading(null);
-    }
-  }
     if (!session) return;
 
     try {
@@ -1394,6 +1366,39 @@ export default function SparringSessionPage() {
     } catch (e: any) {
       console.error("Replay session failed", e);
       setError(e?.message || "Failed to restart this drill.");
+    }
+  }
+
+  async function onReplayFailure(turn: number) {
+    if (!session?.id) return;
+
+    try {
+      setReplayLoading(turn);
+      setReplayError(null);
+
+      const res = await fetchJsonWithRetry(
+        `/api/proxy/v1/sparring/sessions/${encodeURIComponent(session.id)}/replay`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            failed_turn: turn,
+          }),
+        }
+      );
+
+      if (!res || res.ok === false || !res.replay_session?.id) {
+        throw new Error(res?.error || "Failed to create replay session.");
+      }
+
+      toast("Replay session created — retry the failed objection.");
+
+      router.push(`/sparring/${encodeURIComponent(res.replay_session.id)}`);
+    } catch (e: any) {
+      console.error("Replay failure failed", e);
+      setReplayError(e?.message || "Failed to replay this moment.");
+    } finally {
+      setReplayLoading(null);
     }
   }
 
@@ -1572,7 +1577,7 @@ export default function SparringSessionPage() {
 
       {!loading && error && (
         <div className="mt-4">
-          <ErrorBox message={error} />
+          <ErrorBox msg={error} />
         </div>
       )}
 
@@ -2528,7 +2533,7 @@ export default function SparringSessionPage() {
 
             {chatError && (
               <div className="mb-2">
-                <ErrorBox message={chatError} />
+                <ErrorBox msg={chatError} />
               </div>
             )}
 

@@ -24,7 +24,7 @@ export default function LoginPage() {
 
   // Logout cleanup — unchanged from original
   useEffect(() => {
-    if (searchParams.get("logout") === "1") {
+    if (searchParams?.get("logout") === "1") {
       (async () => {
         try { await supabase.auth.signOut(); } catch {}
         try {

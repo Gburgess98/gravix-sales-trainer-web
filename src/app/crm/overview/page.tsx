@@ -600,7 +600,7 @@ export default function CrmOverviewPage() {
     return () => { alive = false; };
   }, []);
   const search = useSearchParams();
-  const repFilter = search.get('rep');
+  const repFilter = search?.get('rep');
   const topRepsAll = Array.isArray((trends as any)?.top_reps) ? (trends as any).top_reps : [];
   const topReps = repFilter ? topRepsAll.filter((r: any) => String(r.user_id) === String(repFilter)) : topRepsAll;
   return (

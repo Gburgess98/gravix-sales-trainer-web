@@ -257,10 +257,10 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export default function PipelinePage() {
   const sp = useSearchParams();
-  const initialQ = safeStr(sp.get("q") ?? "").trim();
+  const initialQ = safeStr(sp?.get("q") ?? "").trim();
   const initialScope =
-    safeStr(sp.get("scope") ?? "").trim().toLowerCase() === "team" ? "team" : "mine";
-  const initialRepId = safeStr(sp.get("repId") ?? "").trim();
+    safeStr(sp?.get("scope") ?? "").trim().toLowerCase() === "team" ? "team" : "mine";
+  const initialRepId = safeStr(sp?.get("repId") ?? "").trim();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

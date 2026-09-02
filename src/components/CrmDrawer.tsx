@@ -19,7 +19,13 @@ export default function CrmDrawer({
   callId?: string;
 }) {
   const [q, setQ] = useState("");
-  const { data, loading, err } = useDebouncedSearch<ContactHit[]>(q, searchContacts, 250);
+  // searchContacts's 2nd arg is `limit`, not the hook's AbortSignal — adapt it
+  // (stable identity so the debounced effect only re-runs on query changes).
+  const runContactSearch = useCallback(
+    (query: string) => searchContacts(query),
+    []
+  );
+  const { data, loading, err } = useDebouncedSearch<ContactHit[]>(q, runContactSearch, 250);
 
   // keyboard nav
   const [idx, setIdx] = useState(0);

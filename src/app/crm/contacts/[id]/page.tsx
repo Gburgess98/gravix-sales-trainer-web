@@ -493,11 +493,9 @@ export default async function ContactPage({
 
           {/* NOTE: CRM Actions are the single source of truth on the Contact page.
               Do not derive or duplicate from Assignments elsewhere. */}
-          <ContactAssignmentsClient
-            contactId={contactId}
-            openActions={actions?.open ?? []}
-            completedActions={actions?.completed ?? []}
-          />
+          {/* ContactAssignmentsClient self-fetches by contactId; it does not
+              accept pre-fetched action lists. */}
+          <ContactAssignmentsClient contactId={contactId} />
         </div>
       </section>
 

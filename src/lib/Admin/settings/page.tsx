@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getAdminConfig, patchAdminConfig, type AdminConfig } from "@/lib/api/adminConfig";
+import { getAdminConfig, patchAdminConfig, type AdminConfig } from "@/lib/Admin/adminConfig";
 
 export default function AdminSettingsPage() {
   const [cfg, setCfg] = useState<AdminConfig | null>(null);

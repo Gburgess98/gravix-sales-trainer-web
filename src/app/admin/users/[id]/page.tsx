@@ -40,7 +40,7 @@ const TIMEZONES = [
 ]
 
 export default function UserEditorPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>() ?? { id: "" }
   const router = useRouter()
 
   const [user, setUser] = useState<UserDetail | null>(null)

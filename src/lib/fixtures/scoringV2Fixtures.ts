@@ -119,9 +119,8 @@ function v1Projection(overall: number, stages: Record<string, { score: number; n
 // ── 1. Strong, non-degraded ───────────────────────────────────────────────────
 const strong = {
   ...transcriptBlock(),
-  overall: 84,
-  summary: "Confident, well-structured call with a clear next step.",
-  stages: { intro: { score: 82, notes: "Clear agenda." }, discovery: { score: 88, notes: "Strong discovery." }, objection: { score: 80, notes: "Handled well." }, close: { score: 84, notes: "Clean next step." } },
+  // overall / summary / stages are supplied by the v1Projection spread at the
+  // end of this object (it is spread last, so it is authoritative).
   v2: {
     contract_version: "v2",
     overall_score: 84,
@@ -165,9 +164,8 @@ const degraded = {
 // ── 3. Mixed pass/partial/fail/not-observed ───────────────────────────────────
 const mixed = {
   ...transcriptBlock(),
-  overall: 52,
-  summary: "Good rapport but the close slipped.",
-  stages: { intro: { score: 78, notes: "Solid open." }, discovery: { score: 60, notes: "Some depth missing." }, objection: { score: 40, notes: "Objection not isolated." }, close: { score: 52, notes: "No dated next step." } },
+  // overall / summary / stages are supplied by the v1Projection spread at the
+  // end of this object (it is spread last, so it is authoritative).
   v2: {
     contract_version: "v2",
     overall_score: 52,
@@ -191,9 +189,8 @@ const mixed = {
 // ── 4. With objection matches (one linked, one unlinked) ──────────────────────
 const withObjections = {
   ...transcriptBlock(),
-  overall: 58,
-  summary: "Two objections surfaced; one handled, one missed.",
-  stages: { intro: { score: 80, notes: "" }, discovery: { score: 62, notes: "" }, objection: { score: 55, notes: "" }, close: { score: 50, notes: "" } },
+  // overall / summary / stages are supplied by the v1Projection spread at the
+  // end of this object (it is spread last, so it is authoritative).
   v2: {
     contract_version: "v2",
     overall_score: 58,

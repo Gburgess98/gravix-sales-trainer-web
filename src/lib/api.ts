@@ -235,6 +235,22 @@ export type CallsPageResp<T = any> = {
 
 export type PinRow = any;
 
+// Shape returned by GET /v1/dashboard/kpis (consumed on /crm/overview).
+// All fields optional: the proxy response may omit any of them, and the client
+// renders "—" / empty series when absent.
+export type DashboardKpisResp = {
+  ok?: boolean;
+  total_calls?: number;
+  avg_score_overall?: number | null;
+  conversion_rate_90d?: number | null;
+  callsAnalyzed?: number[];
+  avgScore?: number[];
+  winRate?: number[];
+  top_accounts?: any[];
+  top_reps?: any[];
+  since?: string;
+};
+
 export type ScoreHistoryItem = {
   score: number; // unified field used by sparkline
   created_at: string; // ISO
@@ -884,9 +900,9 @@ export async function listSparringSessions(opts?: { limit?: number }) {
   const qs = params.toString();
   const url = `/api/proxy/v1/sparring/sessions${qs ? `?${qs}` : ""}`;
 
-  const res = await apiFetchJson(url);
+  const res = (await apiFetchJson(url)) as { sessions?: SparringSession[] };
   // API shape: { ok: true, sessions: [...] }
-  return (res.sessions ?? []) as SparringSession[];
+  return res.sessions ?? [];
 }
 
 // -------------------------------

@@ -237,7 +237,8 @@ function CallUnavailable() {
 }
 
 export default function CallPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
   const callId = (id ?? '').toString();
 
   const toast = useToast();
@@ -245,7 +246,7 @@ export default function CallPage() {
   // url controls for crm panel
   const searchParams = useSearchParams();
   const assignmentId =
-    searchParams.get("assignmentId") || searchParams.get("assignment") || undefined;
+    searchParams?.get("assignmentId") || searchParams?.get("assignment") || undefined;
   const router = useRouter();
   const pathname = usePathname();
 
@@ -990,8 +991,8 @@ export default function CallPage() {
 
   // open drawers automatically based on URL params
   useEffect(() => {
-    const p = searchParams.get("panel");
-    const isAssign = searchParams.get("assign") === "1";
+    const p = searchParams?.get("panel");
+    const isAssign = searchParams?.get("assign") === "1";
     setCrmOpen(p === "crm" || (crmRequested && !crmAutoOpened));
     setCoachOpen(p === "coach");
     setAssignOpen(p === "coach" && isAssign);
@@ -2126,7 +2127,7 @@ export default function CallPage() {
                     className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
                     onClick={() => {
                       const params = new URLSearchParams();
-                      params.set("focus", momentumNext.focus);
+                      params.set("focus", momentumNext.focus ?? "");
                       params.set("source", "call-review");
                       // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
                       // is the launch shortcut that creates a session and redirects into it.

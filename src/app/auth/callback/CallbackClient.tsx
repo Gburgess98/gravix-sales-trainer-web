@@ -12,8 +12,8 @@ export default function CallbackClient() {
   useEffect(() => {
     (async () => {
       try {
-        const code = params.get("code");
-        const errDesc = params.get("error_description") || params.get("error");
+        const code = params?.get("code");
+        const errDesc = params?.get("error_description") || params?.get("error");
         if (errDesc) {
           setMsg(`Sign-in error: ${errDesc}`);
           return;

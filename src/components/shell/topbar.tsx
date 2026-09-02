@@ -34,7 +34,7 @@ function getBreadcrumb(pathname: string): string {
 }
 
 export function Topbar({ onMobileMenuOpen }: TopbarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const { session } = useSession()
   const breadcrumb = getBreadcrumb(pathname)
 

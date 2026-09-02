@@ -199,8 +199,7 @@ export default function RunHistoryTable({
               (x as any)?.is_preview ??
                 (x as any)?.preview ??
                 (x as any)?.meta?.preview ??
-                (x?.source === "preview") ??
-                false
+                (x?.source === "preview")
             ),
             executed_from_preview_run_id: (x as any)?.executed_from_preview_run_id ?? null,
             executed_by_user_id: (x as any)?.executed_by_user_id ?? null,
@@ -323,8 +322,7 @@ export default function RunHistoryTable({
             (item as any)?.is_preview ??
               (item as any)?.preview ??
               (item as any)?.meta?.preview ??
-              item.source === "preview" ??
-              false
+              item.source === "preview"
           ),
           executed_from_preview_run_id: (item as any)?.executed_from_preview_run_id ?? null,
           executed_by_user_id: (item as any)?.executed_by_user_id ?? null,

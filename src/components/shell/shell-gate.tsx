@@ -11,7 +11,7 @@ interface ShellGateProps {
 }
 
 export function ShellGate({ children }: ShellGateProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
 
   if (isShellPath(pathname)) {
     // Day 228 — logged-out visitors are sent to /login instead of seeing the

@@ -496,7 +496,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
   }, [needsHelpToday]);
 
   const searchParams = useSearchParams();
-  const sp = new URLSearchParams(searchParams.toString());
+  const sp = new URLSearchParams(searchParams?.toString() ?? "");
 
   const repIdFromUrl = readParam(sp, "rep_id", "");
   const repIdCamelFromUrl = readParam(sp, "repId", "");
@@ -918,7 +918,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
     q?: string;
     limit?: string;
   }) {
-    const nextSp = new URLSearchParams(searchParams.toString());
+    const nextSp = new URLSearchParams(searchParams?.toString() ?? "");
     if ("rep_id" in next) writeParam(nextSp, "rep_id", next.rep_id ?? "");
     if ("filter" in next) writeParam(nextSp, "filter", next.filter ?? "open");
     if ("q" in next) writeParam(nextSp, "q", next.q ?? "");
