@@ -224,7 +224,7 @@ export function EntitySearch({
       )}
       {!loading && results.length === 0 && query.trim() && (
         <div className="px-3 py-2.5 text-xs text-neutral-500">
-          No {type === 'rep' ? 'reps' : type === 'account' ? 'accounts' : 'contacts'} found for "{query}"
+          No {type === 'rep' ? 'reps' : type === 'account' ? 'accounts' : 'contacts'} found for &quot;{query}&quot;
         </div>
       )}
       {!loading && results.map((hit, i) => (

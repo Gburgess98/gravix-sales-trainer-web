@@ -545,8 +545,9 @@ async function handle(req: NextRequest, context: any) {
 
     // Build fetch init with a plain headers object to avoid weird header serialization
     // `duplex` is required by undici/Node when streaming a request body, but is
-    // not yet in the DOM `RequestInit` lib type — widen locally.
-    const init: RequestInit & { duplex?: "half" } = {
+    // not yet in the DOM `RequestInit` lib type — widen locally. `next` is the
+    // Next.js fetch extension (revalidate hint), likewise absent from the DOM type.
+    const init: RequestInit & { duplex?: "half"; next?: { revalidate?: number } } = {
       method: req.method,
       headers: {
         ...Object.fromEntries(headers.entries()),
@@ -559,7 +560,6 @@ async function handle(req: NextRequest, context: any) {
       },
       body,
       cache: 'no-store',
-      // @ts-ignore - Next.js request hints
       next: { revalidate: 0 },
       redirect: "manual",
       // Node.js streaming hint; prevents full buffering of multipart/form-data

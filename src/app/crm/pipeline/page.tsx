@@ -1298,7 +1298,7 @@ return (
                       inputMode="decimal"
                       value={String(oppDetail?.amount ?? d.amount ?? "")}
                       onChange={e => {
-                        let v = e.target.value;
+                        const v = e.target.value;
                         // Only allow numbers
                         setOppDetail((prev) => ({
                           ...(prev ?? d),

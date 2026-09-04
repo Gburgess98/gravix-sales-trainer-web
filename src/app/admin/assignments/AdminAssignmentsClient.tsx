@@ -1093,7 +1093,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
     const pageLimit = wantAll ? 200 : Math.max(1, Math.min(200, perRepLimit));
 
     let cursor: string | null = null;
-    let out: Assignment[] = [];
+    const out: Assignment[] = [];
 
     // Defensive hard cap so a single rep can't DOS the UI.
     const HARD_MAX = wantAll ? 2000 : pageLimit;

@@ -360,7 +360,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/assignments" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
               <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Complete an Assignment</div>
-              <div className="mt-0.5 text-xs text-neutral-500">Work through your coach's recommended drills.</div>
+              <div className="mt-0.5 text-xs text-neutral-500">Work through your coach&apos;s recommended drills.</div>
             </Link>
           </div>
         </div>
@@ -452,7 +452,7 @@ export default function DashboardPage() {
         {/* Motivation message if present */}
         {briefing.motivationMessage && (
           <div className="border-t border-indigo-500/10 px-4 py-2">
-            <p className="text-[11px] text-indigo-300/70 italic">"{briefing.motivationMessage}"</p>
+            <p className="text-[11px] text-indigo-300/70 italic">&quot;{briefing.motivationMessage}&quot;</p>
           </div>
         )}
       </SectionCard>
@@ -555,7 +555,7 @@ export default function DashboardPage() {
             )}
             {feed?.momentum_insight && (
               <p className="text-[11px] text-neutral-500 italic border-t border-neutral-800 pt-3">
-                "{feed.momentum_insight}"
+                &quot;{feed.momentum_insight}&quot;
               </p>
             )}
           </div>

@@ -1519,7 +1519,7 @@ export default function CoachingPage() {
 
   // Day 131: prefill the existing Custom Trigger form from a candidate. This
   // does NOT activate anything — the manager must review and click Save.
-  const useCandidate = useCallback((c: TriggerCandidate) => {
+  const applyCandidate = useCallback((c: TriggerCandidate) => {
     setTriggerDraft({
       name: c.suggestedName,
       type: c.type,
@@ -2690,7 +2690,7 @@ export default function CoachingPage() {
                                   <div className="flex items-center gap-2 pt-0.5">
                                     <button
                                       type="button"
-                                      onClick={() => useCandidate(c)}
+                                      onClick={() => applyCandidate(c)}
                                       className="rounded-md bg-indigo-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-400 transition-colors"
                                     >
                                       Use this candidate
@@ -2800,7 +2800,7 @@ export default function CoachingPage() {
                                       <div className="flex items-center gap-2 pt-0.5">
                                         <button
                                           type="button"
-                                          onClick={() => useCandidate(c)}
+                                          onClick={() => applyCandidate(c)}
                                           className="rounded-md bg-indigo-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-400 transition-colors"
                                         >
                                           Use this candidate

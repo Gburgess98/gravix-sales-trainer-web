@@ -23,6 +23,16 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      // Foundation phase (Go Live Day 5): the WEB app carries ~620 pre-existing
+      // `any` usages. Enforcing at error level would force an unsafe broad
+      // refactor, so this is tracked as visible warning debt — matching the
+      // explicit API lint policy (Go Live Day 4). It is NOT disabled; burn it
+      // down in risk-ranked batches and promote back to error once bounded.
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
 ];
 
 export default eslintConfig;
