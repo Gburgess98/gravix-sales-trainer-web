@@ -149,6 +149,7 @@
     "check:proxy": "bash scripts/check-no-raw-proxy-fetch.sh",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",
+    "check:release": "npm run lint && tsc --noEmit --incremental false && npm run check:proxy && npm run build",
     "test": "echo \"No unit tests yet — use test:e2e for E2E tests\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

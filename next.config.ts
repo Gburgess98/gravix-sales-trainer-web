@@ -3,14 +3,6 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
-  // 🔧 TEMP: ship fixes despite lint/TS warnings. We'll re-enable after we clean types.
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
   async headers() {
     return [
       // Home page — force fresh HTML (avoid stale cached root)
