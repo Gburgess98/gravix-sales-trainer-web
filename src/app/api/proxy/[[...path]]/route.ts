@@ -1,6 +1,7 @@
 // src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
+import { stripSpoofableIdentityHeaders, trustedHeaderUserId, devFallbackAllowed } from "@/lib/proxyIdentity";
 
 // Ensure Node runtime so we can stream the request body
 
@@ -359,13 +360,9 @@ async function handle(req: NextRequest, context: any) {
     // verified bearer token or the Supabase cookie session only. In dev the
     // legacy header path stays available for curl/smoke tests and the demo.
     const isProdProxy = process.env.NODE_ENV === "production";
-    if (isProdProxy) {
-      headers.delete("x-user-id");
-      headers.delete("x-gravix-user-id");
-      headers.delete("x-forwarded-user-id");
-      headers.delete("x-real-user-id");
-      headers.delete("x-org-id");
-    }
+    // Day 175 / Day 316 — strip browser-supplied identity headers in production
+    // (see @/lib/proxyIdentity). No-op in dev.
+    stripSpoofableIdentityHeaders(headers, isProdProxy);
 
     // ---- Resolve user id (priority)
     // 1) Explicit x-user-id header (curl/dev — ignored in production)
@@ -373,7 +370,7 @@ async function handle(req: NextRequest, context: any) {
     //    local decode in dev to keep offline smoke tests working)
     // 3) Supabase cookie session (real browser)
     // 4) Dev fallback (explicit opt-in only, never in production)
-    const headerUserId = isProdProxy ? "" : (headers.get("x-user-id") || "").trim();
+    const headerUserId = trustedHeaderUserId(headers, isProdProxy);
     const authHeader = (headers.get("authorization") || headers.get("Authorization") || "").trim();
     const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
     const bearerUserId = bearerToken
@@ -393,7 +390,7 @@ async function handle(req: NextRequest, context: any) {
 
     const devUid = isUuid(devUidRaw) ? devUidRaw : "";
 
-    const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
+    const allowDevFallback = devFallbackAllowed(devUid, isProdProxy);
 
     const resolvedUserId =
       headerUserId ||
