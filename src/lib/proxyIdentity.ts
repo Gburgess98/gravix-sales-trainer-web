@@ -42,3 +42,44 @@ export function trustedHeaderUserId(headers: Headers, isProd: boolean): string {
 export function devFallbackAllowed(devUid: string, isProd: boolean): boolean {
   return !isProd && !!devUid;
 }
+
+export type ProxyAuthSource = "header" | "bearer" | "cookie" | "dev" | "none";
+
+export interface ProxyUserIdInputs {
+  /** NODE_ENV === "production" */
+  isProd: boolean;
+  /** header-derived user id — must already be run through trustedHeaderUserId (empty in prod) */
+  headerUserId: string;
+  /** user id from the VERIFIED Bearer token (server-verified in prod), else "" */
+  bearerUserId: string;
+  /** user id from the VERIFIED Supabase cookie session, else "" */
+  cookieUserId: string;
+  /** sanitized dev fallback uid (already uuid-validated), else "" */
+  devUid: string;
+}
+
+/**
+ * The single source of truth for the proxy's identity-resolution ORDER decision:
+ * header > bearer > cookie > dev (dev only permitted outside production). Pure —
+ * the async Bearer/cookie verification happens in the route and is passed in as
+ * already-resolved ids so this decision can be exercised network-free. When the
+ * result is `none`, the route rejects with 401 missing_user.
+ */
+export function resolveProxyUserId(i: ProxyUserIdInputs): { userId: string; source: ProxyAuthSource } {
+  const allowDevFallback = devFallbackAllowed(i.devUid, i.isProd);
+  const userId =
+    i.headerUserId ||
+    i.bearerUserId ||
+    i.cookieUserId ||
+    (allowDevFallback ? i.devUid : "");
+  const source: ProxyAuthSource = i.headerUserId
+    ? "header"
+    : i.bearerUserId
+      ? "bearer"
+      : i.cookieUserId
+        ? "cookie"
+        : allowDevFallback && i.devUid
+          ? "dev"
+          : "none";
+  return { userId, source };
+}

@@ -1,7 +1,7 @@
 // src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
-import { stripSpoofableIdentityHeaders, trustedHeaderUserId, devFallbackAllowed } from "@/lib/proxyIdentity";
+import { stripSpoofableIdentityHeaders, trustedHeaderUserId, resolveProxyUserId } from "@/lib/proxyIdentity";
 
 // Ensure Node runtime so we can stream the request body
 
@@ -390,26 +390,18 @@ async function handle(req: NextRequest, context: any) {
 
     const devUid = isUuid(devUidRaw) ? devUidRaw : "";
 
-    const allowDevFallback = devFallbackAllowed(devUid, isProdProxy);
+    // Day 316/317 — single source of truth for the resolution order decision
+    // (header > bearer > cookie > dev, dev only outside production). See
+    // @/lib/proxyIdentity and scripts/validate-identity-boundary-day-316.mts.
+    const { userId: resolvedUserId, source: authSource } = resolveProxyUserId({
+      isProd: isProdProxy,
+      headerUserId,
+      bearerUserId,
+      cookieUserId,
+      devUid,
+    });
 
-    const resolvedUserId =
-      headerUserId ||
-      bearerUserId ||
-      cookieUserId ||
-      (allowDevFallback ? devUid : "");
-
-    const usedDevUid =
-      !headerUserId && !bearerUserId && !cookieUserId && allowDevFallback && !!devUid;
-
-    const authSource = headerUserId
-      ? "header"
-      : bearerUserId
-        ? "bearer"
-        : cookieUserId
-          ? "cookie"
-          : usedDevUid
-            ? "dev"
-            : "none";
+    const usedDevUid = authSource === "dev";
 
     // Debug headers
     headers.set("x-proxy-auth-source", authSource);
