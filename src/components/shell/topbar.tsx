@@ -1,24 +1,24 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Menu, LogOut } from 'lucide-react'
-import { clsx } from 'clsx'
 import { supabase } from '@/lib/supabase-browser'
 import { useSession } from '@/lib/useSession'
 import { navigation } from '@/config/navigation'
+import { collectNavHrefs, isNavItemActive, type NavSearch } from '@/config/nav-model'
+
+const NAV_HREFS = collectNavHrefs(navigation)
 
 interface TopbarProps {
   onMobileMenuOpen: () => void
 }
 
-function getBreadcrumb(pathname: string): string {
-  // Walk nav sections to find a matching label
+function getBreadcrumb(pathname: string, search: NavSearch): string {
+  // Walk nav sections to find a matching label. Query-aware (Day 45) so the title
+  // agrees with the sidebar: /call-library → Calls, /call-library?tab=sparring → Sparring.
   for (const section of navigation) {
     for (const item of section.items) {
-      if (
-        item.href === pathname ||
-        (item.href !== '/' && pathname.startsWith(item.href + '/'))
-      ) {
+      if (isNavItemActive(item.href, pathname, search, NAV_HREFS)) {
         return item.label
       }
     }
@@ -36,7 +36,8 @@ function getBreadcrumb(pathname: string): string {
 export function Topbar({ onMobileMenuOpen }: TopbarProps) {
   const pathname = usePathname() ?? ''
   const { session } = useSession()
-  const breadcrumb = getBreadcrumb(pathname)
+  const searchParams = useSearchParams()
+  const breadcrumb = getBreadcrumb(pathname, searchParams)
 
   const logout = async () => {
     try {
@@ -55,20 +56,20 @@ export function Topbar({ onMobileMenuOpen }: TopbarProps) {
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center border-b border-neutral-800/60 bg-neutral-950/70 backdrop-blur-xl px-4 gap-4">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-800/60 bg-neutral-950/70 backdrop-blur-xl px-4 lg:px-8">
       {/* Mobile hamburger */}
       <button
         type="button"
         onClick={onMobileMenuOpen}
-        className="lg:hidden text-neutral-400 hover:text-white"
+        className="lg:hidden -ml-1 flex h-10 w-10 items-center justify-center rounded-md text-neutral-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70"
         aria-label="Open menu"
       >
-        <Menu size={20} />
+        <Menu size={20} aria-hidden />
       </button>
 
       {/* Breadcrumb */}
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium text-neutral-200 truncate">
+        <span className="text-sm font-medium text-neutral-100 truncate">
           {breadcrumb}
         </span>
       </div>
@@ -87,11 +88,12 @@ export function Topbar({ onMobileMenuOpen }: TopbarProps) {
           <button
             type="button"
             onClick={logout}
-            className="text-neutral-500 hover:text-neutral-300 transition-colors"
-            title="Logout"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70"
+            title="Log out"
+            aria-label="Log out"
             data-testid="nav-logout"
           >
-            <LogOut size={16} />
+            <LogOut size={16} aria-hidden />
           </button>
         )}
       </div>

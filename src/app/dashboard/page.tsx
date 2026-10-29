@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { PageContainer } from '@/components/layout/page-container'
 import { SectionCard } from '@/components/ui/section-card'
+import { Disclosure } from '@/components/ui/disclosure'
+import { PageHeader } from '@/components/layout/page-header'
 import { buttonClasses } from '@/components/ui/button'
 
 // ── Chart imports (dynamic — avoid SSR hydration issues) ─────────────────────
@@ -315,31 +317,49 @@ export default function DashboardPage() {
   // then all coaching sections render in placeholder state so users and
   // demo clients can see the full platform layout.
 
+  // Day 45 — everything below is derived from the same real data as before; nothing
+  // here is invented. "Needs attention" only lists signals the API already returned.
+  const attention: { tone: 'danger' | 'warning'; text: string; href?: string }[] = []
+  if ((summary?.overdue_count ?? 0) > 0) {
+    attention.push({
+      tone: 'danger',
+      text: `${summary!.overdue_count} overdue assignment${summary!.overdue_count === 1 ? '' : 's'}`,
+      href: '/assignments',
+    })
+  }
+  if (briefing.urgency === 'high') attention.push({ tone: 'warning', text: 'Coaching urgency is high' })
+  if (briefing.weakestArea && briefing.weakestScore !== null && briefing.weakestScore < 60) {
+    attention.push({ tone: 'warning', text: `${briefing.weakestArea} needs attention (score ${Math.round(briefing.weakestScore)})` })
+  }
+  for (const w of feed?.regression_warnings ?? []) attention.push({ tone: 'warning', text: w })
+
+  const replayId = feed?.recommended_replay?.call_id ?? null
+  const greeting = me?.name ? `Good day, ${me.name.split(' ')[0]}` : 'My Dashboard'
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+
   return (
     <PageContainer>
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Dashboard</p>
-          <h1 className="mt-0.5 text-xl font-semibold text-white">
-            {me?.name ? `Good day, ${me.name.split(' ')[0]}` : 'My Dashboard'}
-          </h1>
-          <p className="mt-0.5 text-sm text-neutral-400">AI coaching briefing · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {xpInfo.rank && (
-            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold text-neutral-300">
-              {xpInfo.rank}
-            </span>
-          )}
-          {me?.tier && (
-            <span className={`rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold ${TIER_COLORS[tierKey] ?? 'text-neutral-300'}`}>
-              {me.tier}
-            </span>
-          )}
-        </div>
-      </div>
+      {/* ── Header: where am I ── */}
+      <PageHeader
+        eyebrow="Dashboard"
+        title={greeting}
+        subtitle={`AI coaching briefing · ${today}`}
+        actions={
+          <>
+            {xpInfo.rank && (
+              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold text-neutral-300">
+                {xpInfo.rank}
+              </span>
+            )}
+            {me?.tier && (
+              <span className={`rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold ${TIER_COLORS[tierKey] ?? 'text-neutral-300'}`}>
+                {me.tier}
+              </span>
+            )}
+          </>
+        }
+      />
 
       {/* ── Getting Started (onboarding) — visible only when no data yet ── */}
       {!hasAnyData && (
@@ -366,99 +386,81 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Section 1: AI Daily Briefing — structured command-centre panel ── */}
-      <SectionCard
-        variant="ai"
-        eyebrow="AI Daily Briefing"
-        subtitle={!hasAnyData ? 'Awaiting first scored call' : undefined}
-        actions={
-          <>
-            {briefing.urgency === 'high' && (
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">High Urgency</span>
-            )}
-            {briefing.voiceTrend === 'improving' && (
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">↑ Improving</span>
-            )}
-            {briefing.voiceTrend === 'declining' && (
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">↓ Watch</span>
-            )}
-          </>
-        }
-      >
-        {/* Structured signal grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-0 divide-y divide-x divide-indigo-500/10">
-          {/* Voice Score */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Voice Score</div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-lg font-semibold text-white">{briefing.voiceScore ?? '—'}</span>
-              {briefing.voiceDelta !== null && briefing.voiceDelta !== 0 && (
-                <span className={`text-xs font-medium ${briefing.voiceDelta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {briefing.voiceDelta > 0 ? '+' : ''}{briefing.voiceDelta}
-                </span>
-              )}
+      {/* ── 1. What should I do next? One primary action. ── */}
+      {hasAnyData && (
+        <SectionCard variant="ai" eyebrow="Next Best Action" padded>
+          {mission ? (
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <h2 className="text-lg font-semibold text-white">{mission.label}</h2>
+                <p className="max-w-2xl text-sm text-neutral-400">{mission.detail}</p>
+                <p className="text-xs text-neutral-500">
+                  Impact: <span className="font-medium text-neutral-300">{mission.impact}</span>
+                  <span className="mx-2 text-neutral-700">·</span>
+                  Time: <span className="font-medium text-neutral-300">{mission.time}</span>
+                </p>
+              </div>
+              <Link href={mission.href} className={buttonClasses('primary', 'md', 'shrink-0 self-start md:self-auto')}>
+                Start now →
+              </Link>
             </div>
-          </div>
+          ) : (
+            <EmptyState
+              message="You're clear"
+              sub="Upload a call or run a sparring session to generate coaching recommendations."
+              action={{ label: 'Upload a call', onClick: () => { window.location.href = '/upload' } }}
+            />
+          )}
+        </SectionCard>
+      )}
 
-          {/* Weakest Area */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Weakest Area</div>
-            <div className="text-sm font-semibold text-amber-300">{briefing.weakestArea ?? '—'}</div>
-            {briefing.weakestScore !== null && (
-              <div className="text-[10px] text-neutral-600 mt-0.5">score {Math.round(briefing.weakestScore)}</div>
-            )}
-          </div>
+      {/* ── 2. What needs attention? Only shown when the API returned a signal. ── */}
+      {attention.length > 0 && (
+        <SectionCard title="Needs attention" padded>
+          <ul className="space-y-2">
+            {attention.map((a, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm">
+                <span
+                  aria-hidden
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.tone === 'danger' ? 'bg-danger-500' : 'bg-warning-500'}`}
+                />
+                {a.href ? (
+                  <Link href={a.href} className="text-neutral-200 underline-offset-2 hover:underline">{a.text}</Link>
+                ) : (
+                  <span className="text-neutral-300">{a.text}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
 
-          {/* Strongest Area */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Strongest Area</div>
-            {briefing.strongestArea
-              ? <div className="text-sm font-semibold text-emerald-300">{briefing.strongestArea}</div>
-              : <div className="text-sm text-neutral-600">No coaching data yet</div>
-            }
-          </div>
-
-          {/* Open Assignments */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Open Assignments</div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-lg font-semibold text-white">{briefing.openAssignments}</span>
-              {briefing.overdueAssignments > 0 && (
-                <span className="text-xs text-red-400">{briefing.overdueAssignments} overdue</span>
-              )}
-              {briefing.openAssignments === 0 && !hasAnyData && (
-                <span className="text-xs text-neutral-600">start below</span>
-              )}
-            </div>
-          </div>
-
-          {/* Recommended Action */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Recommended Action</div>
-            <div className="text-sm font-semibold text-indigo-300 truncate">
-              {briefing.recommendedAction ?? 'Upload your first call'}
-            </div>
-          </div>
-
-          {/* Expected Impact */}
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-1">Expected Impact</div>
-            <div className="text-sm font-semibold text-neutral-200">
-              {briefing.expectedImpact ?? 'Unlock coaching profile'}
-            </div>
-          </div>
+      {/* ── 3. Where do I continue? ── */}
+      <section aria-label="Continue" className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-[0.1em] text-neutral-500">Continue</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            replayId
+              ? { href: `/calls/${encodeURIComponent(replayId)}`, title: 'Review flagged call', sub: 'Recommended by your coach' }
+              : { href: '/call-library', title: 'Browse calls', sub: 'Scored conversations' },
+            { href: '/assignments', title: 'Assignments', sub: `${openAssignments} open` },
+            { href: '/call-library?tab=sparring', title: 'Sparring', sub: 'Practise with an AI buyer' },
+            { href: '/upload', title: 'Upload a call', sub: 'Get it scored' },
+          ].map((c) => (
+            <Link
+              key={c.title}
+              href={c.href}
+              className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-colors hover:border-neutral-600 hover:bg-neutral-900/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70"
+            >
+              <div className="text-sm font-semibold text-white">{c.title}</div>
+              <div className="mt-0.5 text-xs text-neutral-500">{c.sub}</div>
+            </Link>
+          ))}
         </div>
+      </section>
 
-        {/* Motivation message if present */}
-        {briefing.motivationMessage && (
-          <div className="border-t border-indigo-500/10 px-4 py-2">
-            <p className="text-[11px] text-indigo-300/70 italic">&quot;{briefing.motivationMessage}&quot;</p>
-          </div>
-        )}
-      </SectionCard>
-
-      {/* ── Section 2: Performance KPI strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ── Performance KPI strip ── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard
           label="Open Assignments"
           value={openAssignments}
@@ -485,46 +487,8 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Section 3 + 4: Next Best Action + Skill Momentum (2-col) ── */}
+      {/* ── Skill momentum + performance ── */}
       <div className="grid gap-4 xl:grid-cols-2">
-
-        {/* Next Best Action — what should I do next? */}
-        <SectionCard title="Next Best Action" subtitle="Your highest-impact action right now.">
-          <div className="px-5 py-4">
-            {mission ? (
-              <div className="space-y-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Recommended Action</div>
-                  <div className="text-sm font-semibold text-indigo-300">{mission.label}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500 mb-0.5">Why</div>
-                  <div className="text-xs text-neutral-400 leading-relaxed">{mission.detail}</div>
-                </div>
-                <div className="flex flex-wrap items-center gap-4 text-xs">
-                  <div>
-                    <span className="text-neutral-500">Impact: </span>
-                    <span className="text-neutral-300 font-medium">{mission.impact}</span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-500">Time: </span>
-                    <span className="text-neutral-300 font-medium">{mission.time}</span>
-                  </div>
-                </div>
-                <Link href={mission.href} className={buttonClasses('secondary', 'md')}>
-                  Start now →
-                </Link>
-              </div>
-            ) : (
-              <EmptyState
-                message="You're clear"
-                sub="Upload a call or run a sparring session to generate coaching recommendations."
-                action={{ label: 'Upload a call', onClick: () => { window.location.href = '/upload' } }}
-              />
-            )}
-          </div>
-        </SectionCard>
-
         {/* Skill Momentum Board */}
         <SectionCard title="Skill Momentum" subtitle="Coaching signals from recent calls.">
           <div className="px-5 py-4 space-y-4">
@@ -560,8 +524,7 @@ export default function DashboardPage() {
             )}
           </div>
         </SectionCard>
-      </div>
-
+      {/* chart sits beside skill momentum on wide screens */}
       {/* ── Section 3 (Progress): Performance Progress chart ── */}
       <SectionCard
         title="Performance Progress"
@@ -610,6 +573,31 @@ export default function DashboardPage() {
         </div>
       </SectionCard>
 
+      </div>
+
+      {/* ── Secondary detail: progressive disclosure (collapsed by default) ── */}
+      <Disclosure
+        title="Coaching detail"
+        hint="AI briefing, recent feedback and development progress"
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-neutral-500">Weakest area</div>
+            <div className="text-sm font-semibold text-amber-300">{briefing.weakestArea ?? '—'}</div>
+            {briefing.weakestScore !== null && (
+              <div className="mt-0.5 text-[11px] text-neutral-600">score {Math.round(briefing.weakestScore)}</div>
+            )}
+          </div>
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-neutral-500">Strongest area</div>
+            {briefing.strongestArea
+              ? <div className="text-sm font-semibold text-emerald-300">{briefing.strongestArea}</div>
+              : <div className="text-sm text-neutral-600">No coaching data yet</div>}
+          </div>
+        </div>
+        {briefing.motivationMessage && (
+          <p className="text-xs italic text-indigo-300/70">&quot;{briefing.motivationMessage}&quot;</p>
+        )}
       {/* ── Section 5: Recent AI Feedback ── */}
       <div className="space-y-2">
         <div className="text-xs font-medium text-neutral-400 uppercase tracking-[0.1em]">Recent AI Feedback</div>
@@ -678,13 +666,7 @@ export default function DashboardPage() {
         )}
       </SectionCard>
 
-      {/* ── Quick links ── */}
-      <div className="flex flex-wrap items-center gap-2 pb-2">
-        <Link href="/assignments" className={buttonClasses('ghost', 'sm')}>Assignments</Link>
-        <Link href="/call-library" className={buttonClasses('ghost', 'sm')}>Call Library</Link>
-        <Link href="/call-library?tab=sparring" className={buttonClasses('ghost', 'sm')}>Sparring</Link>
-        <Link href="/upload" className={buttonClasses('ghost', 'sm')}>Upload Call</Link>
-      </div>
+      </Disclosure>
 
     </PageContainer>
   )

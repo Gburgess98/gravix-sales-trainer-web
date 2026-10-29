@@ -25,6 +25,12 @@ export interface NavItem {
   href: string
   icon: LucideIcon
   roles?: NavRole[]
+  /**
+   * Day 45 — lower-frequency destination: listed under the labelled "More" group
+   * instead of its section. Visibility is still decided by `roles` alone, so
+   * marking an item secondary never changes who can see it.
+   */
+  secondary?: boolean
 }
 
 export interface NavSection {
@@ -71,12 +77,12 @@ export const navigation: NavSection[] = [
       { label: 'Calls', href: '/call-library', icon: Phone },
       { label: 'Accounts', href: '/crm/accounts', icon: Building2 },
       // Contacts: manager-only until a rep-facing contacts page exists
-      { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'] },
+      { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'], secondary: true },
       // Day 214 — "Team" now means people/team management (/team, read-only MVP).
       // The coaching-workload workspace at /crm/manager keeps its own entry as
       // "Manager Centre" so neither destination is lost or duplicated.
       { label: 'Team', href: '/team', icon: Users2, roles: ['manager'] },
-      { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'] },
+      { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'], secondary: true },
     ],
   },
   {
@@ -86,7 +92,7 @@ export const navigation: NavSection[] = [
       // Day 178 — deep-link the sparring tab so Sparring and Calls are distinct
       // destinations (Calls lands on Live Calls, Sparring lands on AI Sparring).
       { label: 'Sparring', href: '/call-library?tab=sparring', icon: Swords },
-      { label: 'Command Centre', href: '/coaching', icon: Brain },
+      { label: 'Command Centre', href: '/coaching', icon: Brain, secondary: true },
     ],
   },
   {
@@ -99,23 +105,23 @@ export const navigation: NavSection[] = [
       // the team is doing), /intelligence is "teach" (what Gravix knows about
       // how you sell). Sparkles because Brain is Command Centre and BarChart2
       // is Analytics — no duplicate labels or icons.
-      { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'] },
-      { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'] },
+      { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'], secondary: true },
+      { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'], secondary: true },
     ],
   },
   {
     title: 'Account',
     items: [
-      { label: 'My Profile', href: '/settings/profile', icon: UserCircle },
+      { label: 'My Profile', href: '/settings/profile', icon: UserCircle, secondary: true },
     ],
   },
   {
     title: 'Control Plane',
     roles: ['partneradmin'],
     items: [
-      { label: 'Partners',  href: '/admin/partners',  icon: Handshake,   roles: ['superadmin'] },
-      { label: 'Companies', href: '/admin/companies', icon: Building2,    roles: ['partneradmin'] },
-      { label: 'Users',     href: '/admin/users',     icon: ShieldCheck,  roles: ['partneradmin'] },
+      { label: 'Partners',  href: '/admin/partners',  icon: Handshake,   roles: ['superadmin'], secondary: true },
+      { label: 'Companies', href: '/admin/companies', icon: Building2,    roles: ['partneradmin'], secondary: true },
+      { label: 'Users',     href: '/admin/users',     icon: ShieldCheck,  roles: ['partneradmin'], secondary: true },
     ],
   },
 ]

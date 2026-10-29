@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
 import { getAdminConfig, proxyFetch } from '@/lib/api'
@@ -12,7 +12,6 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isManager, setIsManager] = useState(false)
   const [userTier, setUserTier] = useState<string | undefined>(undefined)
@@ -37,20 +36,7 @@ export function AppShell({ children }: AppShellProps) {
     window.location.href = '/admin/users'
   }
 
-  // Restore sidebar collapsed state from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('gravix_sidebar_collapsed')
-      if (saved === '1') setCollapsed(true)
-    } catch {}
-  }, [])
-
-  const handleCollapse = useCallback((v: boolean) => {
-    setCollapsed(v)
-    try {
-      localStorage.setItem('gravix_sidebar_collapsed', v ? '1' : '0')
-    } catch {}
-  }, [])
+  const closeMobile = useCallback(() => setMobileOpen(false), [])
 
   // Lightweight manager check — does not gate rendering, only filters nav
   useEffect(() => {
@@ -71,19 +57,22 @@ export function AppShell({ children }: AppShellProps) {
   }, [])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#060609] bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.08),transparent_60%)] text-neutral-100">
-      <Sidebar
-        collapsed={collapsed}
-        onCollapse={handleCollapse}
-        isManager={isManager}
-        userTier={userTier}
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-      />
+    <div className="flex h-[calc(100dvh-var(--staging-banner-h,0px))] overflow-hidden bg-[#060609] bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.08),transparent_60%)] text-neutral-100">
+      {/* useSearchParams (query-aware active nav) needs a Suspense boundary for static pages. */}
+      <Suspense fallback={null}>
+        <Sidebar
+          isManager={isManager}
+          userTier={userTier}
+          mobileOpen={mobileOpen}
+          onMobileClose={closeMobile}
+        />
+      </Suspense>
 
       {/* Main column */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <Topbar onMobileMenuOpen={() => setMobileOpen(true)} />
+        <Suspense fallback={null}>
+          <Topbar onMobileMenuOpen={() => setMobileOpen(true)} />
+        </Suspense>
 
         {/* Impersonation banner — shown globally when a SuperAdmin is acting as another user */}
         {impersonation && (

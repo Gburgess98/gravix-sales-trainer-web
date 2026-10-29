@@ -1,8 +1,9 @@
 // src/app/call-library/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { proxyFetch } from "@/lib/api";
 import SparringStartButton from "@/components/SparringStartButton";
@@ -190,16 +191,31 @@ function difficultyLabel(value?: string | null) {
   return "Normal";
 }
 
+// Day 45 — the tab is driven by the URL so the sidebar (Calls vs Sparring) and the page
+// can never disagree: /call-library → live, ?tab=sparring → sparring, ?tab=upload → upload.
+// Clicking a tab writes the URL back (history.replaceState keeps useSearchParams in sync).
+// useSearchParams needs a Suspense boundary for the static build, hence the wrapper.
 export default function CallLibraryPage() {
-  const [tab, setTab] = useState<Tab>("live");
+  return (
+    <Suspense fallback={null}>
+      <CallLibraryPageInner />
+    </Suspense>
+  );
+}
 
-  // Day 178 — allow deep-linking a tab (e.g. /call-library?tab=sparring from the
-  // sidebar) so Sparring and Calls are distinct destinations. Read on mount only;
-  // window.location avoids the useSearchParams suspense requirement.
+function CallLibraryPageInner() {
+  const [tab, setTab] = useState<Tab>("live");
+  const urlTab = useSearchParams()?.get("tab") ?? null;
+
   useEffect(() => {
+    setTab(urlTab === "sparring" || urlTab === "upload" ? urlTab : "live");
+  }, [urlTab]);
+
+  const handleTabChange = useCallback((next: Tab) => {
+    setTab(next);
     try {
-      const t = new URLSearchParams(window.location.search).get("tab");
-      if (t === "live" || t === "sparring" || t === "upload") setTab(t);
+      const url = next === "live" ? window.location.pathname : `${window.location.pathname}?tab=${next}`;
+      window.history.replaceState(null, "", url);
     } catch {}
   }, []);
 
@@ -708,20 +724,39 @@ export default function CallLibraryPage() {
     }
   });
 
+  const activeFilterCount =
+    (selectedReps.length > 0 ? 1 : 0) +
+    (selectedTags.length > 0 ? 1 : 0) +
+    (minScore !== "" || maxScore !== "" ? 1 : 0) +
+    (scoreFilter !== "all" ? 1 : 0);
+
   return (
     <PageContainer>
-      {/* Header + search */}
+      {/* Header — Day 45: Calls and AI Sparring read as distinct destinations even
+          though they share a route; one primary action (Upload call), search secondary. */}
       <PageHeader
-        title="Call Library"
-        subtitle="Live recordings, AI sparring sessions, and uploaded conversations."
+        title={tab === "sparring" ? "AI Sparring" : "Calls"}
+        subtitle={
+          tab === "sparring"
+            ? "Practise objection handling against AI buyers and review your sessions."
+            : "Find scored calls, review coaching, or upload a new recording."
+        }
         actions={
-          <input
-            type="search"
-            placeholder="Search past conversations and training sessions…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-56 md:w-80 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/40"
-          />
+          <>
+            <input
+              type="search"
+              aria-label={tab === "sparring" ? "Search sparring sessions" : "Search calls"}
+              placeholder={tab === "sparring" ? "Search sessions…" : "Search calls…"}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full sm:w-64 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            {tab !== "sparring" && (
+              <Link href="/upload" className={buttonClasses("primary", "md", "whitespace-nowrap")}>
+                Upload call
+              </Link>
+            )}
+          </>
         }
       />
 
@@ -733,68 +768,15 @@ export default function CallLibraryPage() {
           { id: "upload", label: "Call Uploads" },
         ]}
         active={tab}
-        onChange={setTab}
+        onChange={handleTabChange}
       />
 
-      {/* Status / score + rep filters for live calls */}
+      {/* Filters — Day 45: scope + status stay visible; the rest sits behind one
+          "Filters" disclosure (all existing controls and state preserved). */}
       {tab === "live" && (
-        <div className="mb-4 flex flex-col gap-3 text-xs">
-          <div className="flex flex-wrap gap-2">
-            <span className="self-center text-neutral-500">View</span>
-            {[
-              { id: "mine", label: "My calls" },
-              { id: "company", label: "Company calls", disabled: companyAccess !== "allowed" },
-            ].map((opt) => {
-              const isDisabled = (opt as any).disabled;
-              const active = callScope === opt.id;
-
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => {
-                    if (isDisabled) return;
-                    setCallScope(opt.id as CallScope);
-                  }}
-                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${
-                    active
-                      ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
-                      : isDisabled
-                      ? "border-neutral-700 bg-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                      : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {companyAccess === "managers" && (
-            <div className="text-[11px] text-amber-400 mt-1">
-              Company calls are restricted to managers.
-            </div>
-          )}
-          {companyAccess === "disabled" && (
-            <div className="text-[11px] text-red-400 mt-1">
-              Company call visibility is disabled.
-            </div>
-          )}
-          {companyAccessError && (
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
-              <span>Couldn’t confirm company-call access — showing your calls only.</span>
-              <button
-                type="button"
-                onClick={() => void loadCompanyAccess()}
-                className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            {/* Left: status chips */}
-            <div className="flex flex-wrap gap-3">
+        <div className="space-y-3 text-xs">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Call status">
               {[
                 { id: "all", label: "All calls" },
                 { id: "scored", label: "Scored" },
@@ -804,6 +786,7 @@ export default function CallLibraryPage() {
                 <button
                   key={opt.id}
                   type="button"
+                  aria-pressed={statusFilter === opt.id}
                   onClick={() => setStatusFilter(opt.id as StatusFilter)}
                   className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${statusFilter === opt.id
                     ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
@@ -815,8 +798,77 @@ export default function CallLibraryPage() {
               ))}
             </div>
 
-            {/* Right: reps + score range + tags */}
-            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Call scope">
+              <span className="text-neutral-500">View</span>
+              {[
+                { id: "mine", label: "My calls" },
+                { id: "company", label: "Company calls", disabled: companyAccess !== "allowed" },
+              ].map((opt) => {
+                const isDisabled = (opt as any).disabled;
+                const active = callScope === opt.id;
+
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={isDisabled}
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (isDisabled) return;
+                      setCallScope(opt.id as CallScope);
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${
+                      active
+                        ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
+                        : isDisabled
+                        ? "border-neutral-700 bg-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                        : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {companyAccess === "managers" && (
+            <div className="text-[11px] text-amber-400">
+              Company calls are restricted to managers.
+            </div>
+          )}
+          {companyAccess === "disabled" && (
+            <div className="text-[11px] text-red-400">
+              Company call visibility is disabled.
+            </div>
+          )}
+          {companyAccessError && (
+            <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+              <span>Couldn’t confirm company-call access — showing your calls only.</span>
+              <button
+                type="button"
+                onClick={() => void loadCompanyAccess()}
+                className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          <details className="group rounded-lg border border-neutral-800 bg-neutral-950">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2.5 text-neutral-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <span className="font-medium">Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-200 tabular-nums">
+                    {activeFilterCount} active
+                  </span>
+                )}
+                <span className="text-neutral-500">Reps, score, tags</span>
+              </span>
+              <span aria-hidden className="text-neutral-500 transition-transform group-open:rotate-180">▾</span>
+            </summary>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-neutral-800 px-4 py-3">
               {/* Rep multi-select */}
               <div className="relative">
                 <details className="group">
@@ -908,6 +960,32 @@ export default function CallLibraryPage() {
                 </details>
               </div>
 
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-neutral-500">Score band</span>
+                {[
+                  { id: "all", label: "All" },
+                  { id: "low", label: "Below 60" },
+                  { id: "medium", label: "60–79" },
+                  { id: "high", label: "80+" },
+                ].map((opt) => {
+                  const active = scoreFilter === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setScoreFilter(opt.id as ScoreFilter)}
+                      className={`inline-flex items-center rounded-full border px-2.5 py-1 transition ${active
+                        ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
+                        : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -917,13 +995,14 @@ export default function CallLibraryPage() {
                   setSelectedTags([]);
                   setMinScore("");
                   setMaxScore("");
+                  setScoreFilter("all");
                 }}
                 className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-300 hover:bg-neutral-800"
               >
                 Reset
               </button>
             </div>
-          </div>
+          </details>
         </div>
       )}
 
@@ -957,31 +1036,6 @@ export default function CallLibraryPage() {
               {sortedCalls.length === 1 ? "" : "s"} for “{debouncedSearch}”
             </div>
           )}
-
-          <div className="px-4 pt-2 pb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
-            <span className="text-neutral-500 mr-1">Score band:</span>
-            {[
-              { id: "all", label: "All" },
-              { id: "low", label: "Below 60" },
-              { id: "medium", label: "60–79" },
-              { id: "high", label: "80+" },
-            ].map((opt) => {
-              const active = scoreFilter === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setScoreFilter(opt.id as ScoreFilter)}
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 transition ${active
-                    ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
-                    : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                    }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
 
           {loading && (
             <div className="px-4 py-6 text-sm text-neutral-500">

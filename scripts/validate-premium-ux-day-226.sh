@@ -228,7 +228,7 @@ done
 check "no arcade colour reintroduced" $ok
 
 # --- Nav / surrounding routes preserved ------------------------------------
-grep -q "{ label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: \['manager'\] }" "$NAV"
+grep -Eq "\{ label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: \['manager'\](, secondary: true)? \}" "$NAV"
 check "Intelligence nav entry preserved" $?
 
 grep -q "'/intelligence'," "$NAV"

@@ -84,10 +84,13 @@ check "no other emerald usage on call-library (<=1, got $LIB_EMERALD)" $?
 check "no fuchsia/pink on call-library" $?
 
 # --- Behaviour preserved (spot checks) ---
-grep -q 'if (t === "live" || t === "sparring" || t === "upload") setTab(t);' "$LIB" 2>/dev/null
-check "?tab= deep-link read intact" $?
-grep -q 'onChange={setTab}' "$LIB" 2>/dev/null
-check "tab switching wired to setTab" $?
+# Day 45 refresh: the ?tab= deep link is now read from the URL on every navigation (not
+# only on mount) so the sidebar and the page cannot disagree, and tab clicks write the
+# URL back; the tab state is still set through setTab.
+grep -q 'setTab(urlTab === "sparring" || urlTab === "upload" ? urlTab : "live");' "$LIB" 2>/dev/null
+check "?tab= deep-link read intact (URL-driven, Day 45)" $?
+grep -q 'onChange={handleTabChange}' "$LIB" 2>/dev/null && grep -q 'setTab(next);' "$LIB" 2>/dev/null
+check "tab switching wired to setTab via handleTabChange (Day 45)" $?
 grep -q 'disabled={!cursor || loadingMore}' "$LIB" 2>/dev/null
 check "load-more disabled expression intact" $?
 grep -q 'onClick={loadMore}' "$LIB" 2>/dev/null

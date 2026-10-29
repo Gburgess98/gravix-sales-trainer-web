@@ -85,10 +85,13 @@ check "SectionCard imported" $?
 check "at least 5 SectionCard panels" $?
 grep -q "import { buttonClasses } from '@/components/ui/button'" "$DASH" 2>/dev/null
 check "buttonClasses imported" $?
-grep -q "buttonClasses('secondary', 'md')" "$DASH" 2>/dev/null
-check "Start now CTA uses shared secondary recipe" $?
-grep -q "buttonClasses('ghost', 'sm')" "$DASH" 2>/dev/null
-check "quick links use shared ghost recipe" $?
+# Day 45 refresh: the Start-now CTA is now THE single primary action on Home (shared
+# primary recipe) and the duplicate ghost quick-links row was replaced by the
+# "Continue" tiles (the sidebar already lists those destinations).
+grep -q "buttonClasses('primary', 'md'" "$DASH" 2>/dev/null
+check "Start now CTA uses shared primary recipe (Day 45)" $?
+! grep -q "Quick links" "$DASH" 2>/dev/null
+check "duplicate quick-links row removed (Day 45)" $?
 
 # --- Behaviour preserved (spot checks) ---
 grep -q "proxyFetch('/v1/reps/me'" "$DASH" 2>/dev/null

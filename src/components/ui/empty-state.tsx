@@ -15,9 +15,9 @@ interface EmptyStateProps {
 
 export function EmptyState({ message, sub, action, className }: EmptyStateProps) {
   return (
-    <div className={`px-4 py-6 text-center ${className ?? ''}`}>
-      <p className="text-sm text-neutral-400">{message}</p>
-      {sub && <p className="mt-1 text-xs text-neutral-600">{sub}</p>}
+    <div className={`px-4 py-8 text-center ${className ?? ''}`}>
+      <p className="text-sm font-medium text-neutral-200">{message}</p>
+      {sub && <p className="mx-auto mt-1 max-w-md text-xs text-neutral-500">{sub}</p>}
       {action && (
         <div className="mt-3">
           {action.href ? (
