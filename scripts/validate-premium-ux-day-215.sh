@@ -35,8 +35,9 @@ check "hero has a 'Why this scored' reasoning band" $?
 grep -q 'Scored with the Gravix default rubric' "$CALL"
 check "honest scoring transparency line (Gravix default rubric)" $?
 
-grep -q 'Next actions' "$CALL"
-check "manager next-action strip present" $?
+# Day 46 refresh: the manager "Next actions" strip moved into the header action group (single primary + secondaries).
+grep -q 'planReviewActions' "$CALL" && grep -q 'aria-label="Call actions"' "$CALL" && grep -q 'onClick={markCallReviewed}' "$CALL"
+check "manager next-actions live in the header action group" $?
 
 grep -q 'Strongest · ' "$CALL" && grep -q 'Weakest · ' "$CALL"
 check "reasoning chips derive strongest/weakest stage" $?

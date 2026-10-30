@@ -91,8 +91,9 @@ grep -q 'rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white' 
 check "coaching Upload CTA still literal (day-196 pin)" $?
 grep -q 'hover:bg-indigo-500/20' "$COACHING" 2>/dev/null
 check "coaching assign-action family still literal (day-196 pin)" $?
-grep -q 'bg-indigo-600 px-4 py-2 text-sm font-semibold text-white' "$CALLS" 2>/dev/null
-check "Practice-now CTA still literal (day-197 pin)" $?
+# Day 46 refresh: see Day 197 — the solid-indigo recipe was retired so the call page has exactly one primary.
+grep -q 'className={buttonClasses("secondary", "md")}' "$CALLS" 2>/dev/null && ! grep -q 'bg-indigo-600 px-4 py-2' "$CALLS" 2>/dev/null
+check "Practice-now CTA is the secondary recipe (Day 46)" $?
 
 # --- Dead helpers removed with zero stale refs ---
 [[ ! -f "$SRC/app/calls/[id]/PinButton.tsx" ]]

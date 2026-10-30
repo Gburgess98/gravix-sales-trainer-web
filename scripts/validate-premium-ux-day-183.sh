@@ -27,7 +27,8 @@ grep -q "Day 183" "$AUDIT" 2>/dev/null
 check "PREMIUM_UX_AUDIT.md includes Day 183" $?
 
 # --- Header typography aligned to the shell ---
-grep -q 'text-xl font-semibold break-words flex items-center gap-3' "$CALL" 2>/dev/null
+# Day 46 refresh: the header adopts the shared page-title scale (text-2xl) and wraps the score pill on narrow screens.
+grep -q 'text-2xl font-semibold tracking-tight break-words flex flex-wrap items-center' "$CALL" 2>/dev/null
 check "/calls/[id] header uses text-xl + break-words" $?
 
 ! grep -q 'text-2xl font-semibold break-all' "$CALL" 2>/dev/null

@@ -73,8 +73,10 @@ check "Create-contact action is indigo" $?
 check "moment outcome selection no longer emerald" $?
 ! grep -q 'bg-zinc-700/30' "$PAGE" 2>/dev/null
 check "zinc chips normalised to neutral" $?
-grep -q 'bg-indigo-600 px-4 py-2 text-sm font-semibold text-white' "$PAGE" 2>/dev/null
-check "Practice-now CTA is canonical indigo" $?
+# Day 46 refresh: the solid-indigo Practise button was a second primary on the call page. The header now holds the
+# single primary (call-review-model); "Practise this next" is the canonical secondary recipe.
+grep -q 'className={buttonClasses("secondary", "md")}' "$PAGE" 2>/dev/null && ! grep -q 'bg-indigo-600 px-4 py-2' "$PAGE" 2>/dev/null
+check "Practice-now CTA is canonical secondary (Day 46)" $?
 
 # --- Status colours stay status-only ---
 grep -q 'border-emerald-500/50 text-emerald-300' "$PAGE" 2>/dev/null

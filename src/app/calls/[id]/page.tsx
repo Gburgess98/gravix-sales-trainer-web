@@ -19,6 +19,8 @@ import { getScoringProvenance } from "@/lib/scoringProvenance";
 import { getScoringV2, buildScoringV2ViewModel } from "@/lib/scoringV2Client";
 import { ScoreV2Banner, StageCriteria, ObjectionMatches, ScoreV2Provenance } from "@/components/scoring-v2/ScoringV2Review";
 import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
+import { Disclosure } from "@/components/ui/disclosure";
+import { planReviewActions, type ReviewActionId } from "@/lib/call-review-model";
 
 import {
   listPins,
@@ -1360,21 +1362,49 @@ export default function CallPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openCrm, openCoach]);
 
-  // Track active section as user scrolls
+  // Escape closes whichever drawer is open, through the same handlers as Close/backdrop.
+  useEffect(() => {
+    if (!crmOpen && !coachOpen) return;
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (coachOpen) closeCoach();
+      else closeCrm();
+    }
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crmOpen, coachOpen]);
+
+  // Track active section as user scrolls. The sections mount after the inner AuthGate
+  // resolves, so retry briefly until they exist (a one-shot lookup at mount found none).
   useEffect(() => {
     const ids = ['summary', 'review', 'transcript', 'player', 'crm', 'coach'];
-    const observers = ids.map((id) => {
-      const el = document.getElementById(id);
-      if (!el) return null;
-      const obs = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) setActiveSection(id); },
-        { rootMargin: '-20% 0px -70% 0px', threshold: 0 }
-      );
-      obs.observe(el);
-      return obs;
-    });
-    return () => observers.forEach((o) => o?.disconnect());
-  }, []);
+    let observers: (IntersectionObserver | null)[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let tries = 0;
+    const attach = () => {
+      const els = ids.map((id) => document.getElementById(id));
+      if (els.some((el) => !el) && tries++ < 20) {
+        timer = setTimeout(attach, 250);
+        return;
+      }
+      observers = ids.map((id, i) => {
+        const el = els[i];
+        if (!el) return null;
+        const obs = new IntersectionObserver(
+          ([entry]) => { if (entry.isIntersecting) setActiveSection(id); },
+          { rootMargin: '-20% 0px -70% 0px', threshold: 0 }
+        );
+        obs.observe(el);
+        return obs;
+      });
+    };
+    attach();
+    return () => {
+      if (timer) clearTimeout(timer);
+      observers.forEach((o) => o?.disconnect());
+    };
+  }, [callMissing]);
 
   const overall: number | null =
     typeof callMeta?.score_overall === 'number'
@@ -1542,6 +1572,55 @@ export default function CallPage() {
       ? String(callMeta.filename)
       : null;
 
+  // Day 46 — one primary action per state and role; everything else stays secondary.
+  // `managerCheckDone && isManager` is the page's existing manager gate, unchanged.
+  const reviewActionPlan = planReviewActions({
+    status: callMeta?.status,
+    isManager: managerCheckDone && isManager,
+    reviewed: managerReviewed,
+    coachingAssigned,
+    practiseStage: weakestStage?.label ?? null,
+  });
+  const renderReviewAction = (id: ReviewActionId) => {
+    const variant = reviewActionPlan.primary === id ? "primary" : "ghost";
+    switch (id) {
+      case "mark-reviewed":
+        return (
+          <Button key={id} variant={variant} size="md" onClick={markCallReviewed} disabled={markingReviewed}>
+            {markingReviewed ? "Marking…" : "Mark Reviewed"}
+          </Button>
+        );
+      case "assign-coaching":
+        return (
+          <Button key={id} variant={variant} size="md" onClick={assignCoachingFromCall} disabled={assigningCoaching}>
+            {assigningCoaching ? "Assigning…" : "Assign Coaching"}
+          </Button>
+        );
+      case "assign-drill":
+        return (
+          <Button key={id} variant={variant} size="md" onClick={() => openCoach(true)}>
+            Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-60">({assignmentCount})</span>}
+          </Button>
+        );
+      case "practise":
+        return (
+          <a
+            key={id}
+            href={`/sparring/default?focus=${encodeURIComponent((weakestStage?.label ?? "").toLowerCase())}&source=call-review`}
+            className={buttonClasses(variant, "md")}
+          >
+            Practise {weakestStage?.label}
+          </a>
+        );
+      case "link-crm":
+        return (
+          <Button key={id} variant={variant} size="md" onClick={openCrm}>
+            Link CRM
+          </Button>
+        );
+    }
+  };
+
   const transcriptText = renderTranscriptText(callMeta);
   const transcriptSegments = callMeta?.analysis_json?.transcript?.segments ?? null;
   const analysisMoments = Array.isArray(callMeta?.analysis_json?.moments)
@@ -1564,58 +1643,87 @@ export default function CallPage() {
   return (
     <AuthGate>
       <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6">
-        <div className="flex items-start gap-3 flex-wrap">
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 mb-1">Call review</div>
-            <h1 className="text-xl font-semibold break-words flex items-center gap-3">
-              {loadingCall ? (
-                <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
-              ) : (
-                <>
-                  {callDisplayTitle}
-                  {displayOverall != null ? (
-                    <ScorePill score={displayOverall} />
-                  ) : (
-                    <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
+        <header className="space-y-3">
+          <Link
+            href="/call-library"
+            className="inline-flex text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+          >
+            ← Call Library
+          </Link>
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+            <div className="min-w-0 flex-1 basis-[28rem]">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 mb-1">Call review</div>
+              <h1 className="text-2xl font-semibold tracking-tight break-words flex flex-wrap items-center gap-x-3 gap-y-1">
+                {loadingCall ? (
+                  <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
+                ) : (
+                  <>
+                    {callDisplayTitle}
+                    {displayOverall != null ? (
+                      <ScorePill score={displayOverall} />
+                    ) : (
+                      <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
+                    )}
+                  </>
+                )}
+              </h1>
+              {(trend && trend.length > 1) || (managerCheckDone && isManager && callMeta?.status === "scored" && (managerReviewed || coachingAssigned)) ? (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  {trend && trend.length > 1 && (
+                    <div className="flex items-center gap-1 text-xs text-neutral-500">
+                      <span>Trend</span>
+                      <div className="text-emerald-400"><ScoreSparkline scores={trend} /></div>
+                    </div>
                   )}
-                </>
+                  {managerCheckDone && isManager && callMeta?.status === "scored" && (managerReviewed || coachingAssigned) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                  {managerReviewed && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                      Reviewed ✓
+                      {reviewedAt && (
+                        <span className="text-emerald-400/70 font-normal">
+                          {new Date(reviewedAt).toLocaleDateString("en-GB")}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {coachingAssigned && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                      Coaching assigned ✓
+                    </span>
+                  )}
+                  </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <div role="group" aria-label="Call actions" className="flex flex-wrap items-center gap-2">
+              {reviewActionPlan.primary && renderReviewAction(reviewActionPlan.primary)}
+              {reviewActionPlan.secondary.map((id) => renderReviewAction(id))}
+              <CopyLinkButton href={`/calls/${callId}?panel=crm`} size="md" />
+              {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
+                <a
+                  href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClasses()}
+                  title="Preview Slack payload"
+                >
+                  Preview Slack
+                </a>
               )}
-            </h1>
+            </div>
           </div>
+        </header>
 
-          <div className="ml-auto flex items-center gap-2">
-            {trend && trend.length > 1 && (
-              <div className="flex items-center gap-1 text-xs text-neutral-500">
-                <span>Trend</span>
-                <div className="text-emerald-400"><ScoreSparkline scores={trend} /></div>
-              </div>
-            )}
-            <CopyLinkButton href={`/calls/${callId}?panel=crm`} size="md" />
-            <Button onClick={openCrm}>
-              Link CRM
-            </Button>
-            {managerCheckDone && isManager && (
-              <Button onClick={() => openCoach(true)}>
-                Assign Drill {assignmentCount > 0 && <span className="ml-1 opacity-60">({assignmentCount})</span>}
-              </Button>
-            )}
-            {process.env.NEXT_PUBLIC_SHOW_ADMIN === "true" && (
-              <a
-                href={`/api/proxy/v1/admin/preview-slack?callId=${encodeURIComponent(callId)}&overall=${overall ?? 80}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={buttonClasses()}
-                title="Preview Slack payload"
-              >
-                Preview Slack
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Section nav — sticky */}
-        <div className="sticky top-0 z-10 -mx-6 px-6 lg:-mx-8 lg:px-8 bg-[#060609]/90 backdrop-blur-md border-b border-neutral-800/80">
-          <div className="flex items-center gap-1 overflow-x-auto py-2">
+        {/* Section nav — sticky. Summary → Review → Transcript → Player read as the review;
+            CRM and Coach are linked-record panels, set apart and visually quieter. */}
+        <nav
+          aria-label="Call review sections"
+          className="sticky top-0 z-10 -mx-6 px-6 lg:-mx-8 lg:px-8 bg-[#060609]/90 backdrop-blur-md border-b border-neutral-800/80"
+        >
+          <div className="flex items-center gap-1 overflow-x-auto py-1.5">
             {[
               { id: "summary", label: "Summary" },
               { id: "review", label: "Review" },
@@ -1626,8 +1734,12 @@ export default function CallPage() {
             ].map((item) => (
               <button
                 key={item.id}
+                type="button"
+                aria-current={activeSection === item.id ? "location" : undefined}
                 onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" })}
-                className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`min-h-9 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 ${
+                  item.id === "crm" ? "ml-2 border-l border-neutral-800 rounded-l-none pl-4 " : ""
+                }${
                   activeSection === item.id
                     ? "bg-indigo-500/20 text-indigo-200"
                     : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
@@ -1636,18 +1748,18 @@ export default function CallPage() {
                 {item.label}
               </button>
             ))}
-            <div className="ml-auto flex items-center gap-1 text-[11px] text-neutral-600 whitespace-nowrap shrink-0 pl-2">
+            <div className="ml-auto hidden items-center gap-1 pl-2 text-[11px] text-neutral-600 whitespace-nowrap shrink-0 md:flex">
               <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">c</kbd>
               <span className="mr-2">CRM</span>
               <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">a</kbd>
               <span>Coach</span>
             </div>
           </div>
-        </div>
+        </nav>
 
         {/* Processing status banner */}
         {callMeta && callMeta.status !== 'scored' && (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-3 text-sm flex items-center gap-2">
+          <div role="status" aria-live="polite" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-3 text-sm flex items-center gap-2">
             {callMeta.status !== "failed" && (
               <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-400 animate-pulse" />
             )}
@@ -1827,50 +1939,12 @@ export default function CallPage() {
             </div>
           )}
 
-          {/* Manager next actions */}
+          {/* Manager review note — the actions themselves live in the header */}
           {managerCheckDone && isManager && callMeta?.status === "scored" && (
-            <div className="border-t border-neutral-800 pt-3">
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Next actions</div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {managerReviewed ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                    Reviewed ✓
-                    {reviewedAt && (
-                      <span className="text-emerald-400/70 font-normal">
-                        {new Date(reviewedAt).toLocaleDateString("en-GB")}
-                      </span>
-                    )}
-                  </span>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    onClick={markCallReviewed}
-                    disabled={markingReviewed}
-                  >
-                    {markingReviewed ? "Marking…" : "Mark Reviewed"}
-                  </Button>
-                )}
-                {coachingAssigned ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                    Coaching assigned ✓
-                  </span>
-                ) : (
-                  <Button
-                    onClick={assignCoachingFromCall}
-                    disabled={assigningCoaching}
-                    className="bg-neutral-900 font-semibold text-neutral-200"
-                  >
-                    {assigningCoaching ? "Assigning…" : "Assign Coaching"}
-                  </Button>
-                )}
-                <Button onClick={() => openCoach(true)}>Assign Drill</Button>
-                <Button onClick={openCrm}>Review CRM link</Button>
-              </div>
-              <p className="mt-2 text-[11px] text-neutral-500">
-                Assign Coaching auto-targets the weakest stage from this review
-                {weakestStage ? ` (currently ${weakestStage.label})` : ""}.
-              </p>
-            </div>
+            <p className="border-t border-neutral-800 pt-3 text-[11px] text-neutral-500">
+              Assign Coaching auto-targets the weakest stage from this review
+              {weakestStage ? ` (currently ${weakestStage.label})` : ""}.
+            </p>
           )}
         </section>
 
@@ -1883,14 +1957,6 @@ export default function CallPage() {
                 {displayOverall != null ? `Why this call scored ${displayOverall}/100` : "Call review audit"}
               </h2>
             </div>
-            {rubricStages.length > 0 && (
-              <span
-                className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300"
-                title={provenance.detailTitle ?? undefined}
-              >
-                {provenance.hasCustomScorecard ? provenance.scorecardLabel : "Gravix default rubric"}
-              </span>
-            )}
           </div>
 
           {/* Day 268 — Scoring v2 confidence / degraded-score banner (only for valid v2). */}
@@ -1898,7 +1964,7 @@ export default function CallPage() {
 
           {/* Stage audit blocks from the existing rubric stages */}
           {rubricStages.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {rubricStages.map((stage) => {
                 const v2Stage = scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"];
                 const stageObserved = !v2Stage || v2Stage.criteria.some((criterion) => criterion.observed);
@@ -1908,7 +1974,7 @@ export default function CallPage() {
                 // one stage-mappable tag the current runtime emits.
                 const showWeakCloseSignal = stage.key === "close" && reviewBot.weakClose;
                 return (
-                  <div key={stage.key} className="rounded-xl border border-neutral-800 bg-black/30 px-4 py-3.5">
+                  <div key={stage.key} className="border-t border-neutral-800/70 pt-4 first:border-t-0 first:pt-0">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
@@ -1985,7 +2051,7 @@ export default function CallPage() {
 
           {/* Where this call lost points — priorities mapped to next actions */}
           {scoredStages.length > 0 && (
-            <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
+            <div className="border-t border-neutral-800/70 pt-5">
               <div className="text-xs uppercase tracking-wide text-neutral-500">Where this call lost points</div>
               <p className="mt-1 text-xs text-neutral-500">
                 Stages scoring below 70, weakest first — each mapped to a next action.
@@ -2026,22 +2092,13 @@ export default function CallPage() {
             </div>
           )}
 
-          {/* Voice Personality Score — supporting signal */}
-          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Supporting signal</div>
-                <h3 className="text-sm font-medium text-neutral-100">Voice Personality Score</h3>
-              </div>
-              {reviewBot.voiceScore != null ? (
-                <ScorePill score={reviewBot.voiceScore} className="text-xs px-2 py-1" />
-              ) : (
-                <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">No voice score yet</span>
-              )}
-            </div>
-
+          {/* Voice Personality Score — supporting signal, collapsed until wanted */}
+          <Disclosure
+            title="Voice Personality Score"
+            hint={reviewBot.voiceScore != null ? `Supporting signal · ${reviewBot.voiceScore}/100` : "Supporting signal · no voice score yet"}
+          >
             {reviewBot.hasData ? (
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <ReviewTagChip
@@ -2092,11 +2149,11 @@ export default function CallPage() {
                 </div>
               </div>
             ) : (
-              <div className="mt-4 text-sm text-neutral-400">
+              <div className="text-sm text-neutral-400">
                 No voice and delivery breakdown has been generated for this call yet.
               </div>
             )}
-          </div>
+          </Disclosure>
 
           {/* Coaching priority — what to practise next */}
           {postAction ? (
@@ -2124,7 +2181,7 @@ export default function CallPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {momentumNext && momentumNext.focus && (
                   <button
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                    className={buttonClasses("secondary", "md")}
                     onClick={() => {
                       const params = new URLSearchParams();
                       params.set("focus", momentumNext.focus ?? "");
@@ -2138,10 +2195,7 @@ export default function CallPage() {
                   </button>
                 )}
 
-                <a
-                  href="/call-library"
-                  className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-900"
-                >
+                <a href="/call-library" className={buttonClasses("ghost", "md")}>
                   Review another call
                 </a>
               </div>
@@ -2152,8 +2206,7 @@ export default function CallPage() {
               Day 223 reads the real provenance from rubric._meta; calls with no
               provenance (everything scored before the runtime stamped it) keep
               the original default-rubric wording. */}
-          <div className="rounded-xl border border-neutral-800 bg-black/30 p-4 space-y-2">
-            <div className="text-xs uppercase tracking-wide text-neutral-500">Scoring transparency</div>
+          <Disclosure title="Scoring transparency" hint="Rubric, scorecard and model used for this score">
             {provenance.hasCustomScorecard ? (
               <p className="text-sm leading-6 text-neutral-300">
                 This call was scored with{" "}
@@ -2208,7 +2261,7 @@ export default function CallPage() {
                 Custom scorecards will appear here once activated.
               </p>
             )}
-          </div>
+          </Disclosure>
         </section>
 
         <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
@@ -2229,12 +2282,12 @@ export default function CallPage() {
           </div>
 
           {analysisMoments.length > 0 && (
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+            <div className="mt-5 border-t border-neutral-800/70 pt-5">
               <div className="mb-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Moments</div>
-                <div className="mt-1 text-base font-medium text-neutral-100">Key moments</div>
+                <h3 className="mt-1 text-base font-medium text-neutral-100">Key moments</h3>
               </div>
-              <div className="mt-3 space-y-2">
+              <div className="space-y-2">
                 {analysisMoments.map((moment: any, i: number) => {
                   const ts = typeof moment?.timestamp === "number" ? moment.timestamp : null;
                   const type = String(moment?.type || "moment");
@@ -2272,10 +2325,10 @@ export default function CallPage() {
             </div>
           )}
           {transcriptSegments && Array.isArray(transcriptSegments) && transcriptSegments.length > 0 ? (
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+            <div className="mt-5 border-t border-neutral-800/70 pt-5">
               <div className="mb-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
-                <div className="mt-1 text-base font-medium text-neutral-100">Full transcript</div>
+                <h3 className="mt-1 text-base font-medium text-neutral-100">Full transcript</h3>
               </div>
               <div className="max-h-[420px] overflow-auto space-y-3">
                 {transcriptSegments.map((seg: any, i: number) => {
@@ -2306,10 +2359,10 @@ export default function CallPage() {
               </div>
             </div>
           ) : transcriptText ? (
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-black/30 p-4">
+            <div className="mt-5 border-t border-neutral-800/70 pt-5">
               <div className="mb-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
-                <div className="mt-1 text-base font-medium text-neutral-100">Full transcript</div>
+                <h3 className="mt-1 text-base font-medium text-neutral-100">Full transcript</h3>
               </div>
               <div className="max-h-[420px] overflow-auto">
                 <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
@@ -2583,7 +2636,7 @@ export default function CallPage() {
                 </div>
                 <div className="mt-2">
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     onClick={async () => {
                       if (!quickDrill || !assignee) return;
                       setAssignBusy(true);
@@ -2716,7 +2769,7 @@ export default function CallPage() {
 
       {/* === CRM DRAWER === */}
       <div
-        className={`fixed inset-0 z-50 transition ${crmOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        className={`fixed inset-0 z-50 transition ${crmOpen ? "visible pointer-events-auto" : "invisible pointer-events-none"}`}
         aria-hidden={!crmOpen}
       >
         {/* Backdrop */}
@@ -2726,11 +2779,14 @@ export default function CallPage() {
         />
         {/* Panel */}
         <div
-          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="CRM link"
+          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform motion-reduce:transition-none ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">CRM Link</h2>
-            <button onClick={closeCrm} className="ml-auto opacity-70 hover:opacity-100 underline text-sm">
+            <button onClick={closeCrm} className="ml-auto min-h-9 px-2 opacity-70 hover:opacity-100 underline text-sm">
               Close
             </button>
           </div>
@@ -2985,7 +3041,7 @@ export default function CallPage() {
 
       {/* === COACH DRAWER === */}
       <div
-        className={`fixed inset-0 z-50 transition ${coachOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        className={`fixed inset-0 z-50 transition ${coachOpen ? "visible pointer-events-auto" : "invisible pointer-events-none"}`}
         aria-hidden={!coachOpen}
       >
 
@@ -2996,11 +3052,14 @@ export default function CallPage() {
         />
         {/* Panel */}
         <div
-          className={`absolute right-0 top-0 h-full w-full max-w-md bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Coach"
+          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform motion-reduce:transition-none ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">Coach</h2>
-            <button onClick={closeCoach} className="ml-auto opacity-70 hover:opacity-100 underline text-sm">
+            <button onClick={closeCoach} className="ml-auto min-h-9 px-2 opacity-70 hover:opacity-100 underline text-sm">
               Close
             </button>
           </div>
