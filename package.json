@@ -150,9 +150,10 @@
     "validate:identity-boundary": "node scripts/validate-identity-boundary-day-316.mts",
     "validate:shell-navigation": "node scripts/validate-shell-navigation-day-45.mts",
     "validate:call-review-simplification": "node scripts/validate-call-review-simplification-day-46.mts",
+    "validate:web-dependency-safety": "node scripts/validate-web-dependency-safety-day-48.mts",
     "check": "npm run typecheck && npm run lint && npm run check:proxy",
     "check:ci": "npm run typecheck && npm run lint && npm run check:proxy",
-    "check:release": "npm run lint && tsc --noEmit --incremental false && npm run check:proxy && npm run validate:identity-boundary && npm run validate:shell-navigation && npm run validate:call-review-simplification && npm run build",
+    "check:release": "npm run lint && tsc --noEmit --incremental false && npm run check:proxy && npm run validate:identity-boundary && npm run validate:shell-navigation && npm run validate:call-review-simplification && npm run validate:web-dependency-safety && npm run build",
     "check:release:all": "bash scripts/check-release-all.sh",
     "test": "echo \"No unit tests yet — use test:e2e for E2E tests\"",
     "test:e2e": "playwright test",
@@ -184,12 +185,12 @@
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.544.0",
-    "next": "15.5.21",
+    "next": "15.5.28",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.63.0",
     "recharts": "^3.8.0",
-    "zod": "^4.1.11"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -205,5 +206,10 @@
     "prettier": "^3.3.3",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.32"
+    }
   }
 }
