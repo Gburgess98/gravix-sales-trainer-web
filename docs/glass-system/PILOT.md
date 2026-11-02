@@ -67,3 +67,9 @@ Unchanged: every request (the Day 46 request fixture still matches), manager gat
 ## 5. Deliberate pin changes
 
 Legacy validators pinned the old markup. Updated on purpose (each still has non-vacuous mutation proofs): Day 45 shell-navigation (Home no longer has a disclosure/attention block; one more allowed read), Day 46 call-review guard (new wrapper/header/aside, 5-item nav), Days 195 and 203 (shell background / brand token now navy + blue).
+
+## 6. Open pilot work (recorded, not started)
+
+Call Review: the **Player, Pins, Whisperer moments, Coach assignments and CRM** cards still use the legacy `SectionCard` styling (neutral-950, uppercase eyebrow, old borders), so there is a visible seam below the transcript. Complete these before moving to Manager Overview and Team if they visibly break the system on hosted staging.
+
+Other known gaps: Home no longer shows weakest/strongest area, motivation quote or AI feedback (cut, not moved); the Practice and Call Uploads tabs on `/call-library` keep their old styling.
