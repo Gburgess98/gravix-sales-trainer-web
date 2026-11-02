@@ -160,7 +160,9 @@ function sourceChecks(f: Files, tag = ""): Check[] {
   for (const fn of ["setStatusFilter", "setCallScope", "setSelectedReps", "setSelectedTags", "setMinScore", "setMaxScore", "setScoreFilter"])
     a(`E-library-keeps-filter-handler:${fn}`, (lib.match(new RegExp(fn + "\\(|onChange=\\{" + fn + "\\}", "g")) || []).length >= 2, "needs its control handler AND the Reset handler");
   a("E-library-keeps-company-access-probe", /\/v1\/calls\/paged\?scope=company&limit=1/.test(lib) && /manager_only_access/.test(lib));
-  a("E-library-one-primary-action", (lib.match(/buttonClasses\("primary"/g) || []).length === 1);
+  // Glass redesign: one PageHead for every tab, so the header holds exactly one primary action (legacy buttonClasses primary is gone).
+  const libHead = lib.slice(lib.indexOf("<PageHead"), lib.indexOf("</PageHead>") > 0 ? lib.indexOf("</PageHead>") : lib.indexOf("/>", lib.indexOf("<PageHead")));
+  a("E-library-one-primary-action", (lib.match(/buttonClasses\("primary"/g) || []).length === 0 && (libHead.match(/dsButton\("primary"/g) || []).length === 1);
   a("E-library-tab-follows-the-url", /useSearchParams\(\)\?\.get\("tab"\)/.test(lib) && /\[urlTab\]/.test(lib) && /onChange=\{handleTabChange\}/.test(lib) && /history\.replaceState/.test(lib));
   a("E-library-search-params-behind-suspense", /<Suspense fallback=\{null\}>\s*<CallLibraryPageInner \/>/.test(lib));
   a("E-library-sparring-distinct-heading", /tab === "sparring" \? "Practice" : "Calls"/.test(lib));

@@ -18,10 +18,10 @@ import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
 import { getScoringProvenance } from "@/lib/scoringProvenance";
 import { getScoringV2, buildScoringV2ViewModel } from "@/lib/scoringV2Client";
 import { ScoreV2Banner, StageCriteria, ObjectionMatches, ScoreV2Provenance } from "@/components/scoring-v2/ScoringV2Review";
-import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
+import { Button, buttonClasses, EmptyState } from "@/components/ui";
 import { Disclosure } from "@/components/ui/disclosure";
 import { planReviewActions, type ReviewActionId } from "@/lib/call-review-model";
-import { Badge } from "@/components/ds";
+import { Badge, Panel, PanelHeader, dsField } from "@/components/ds";
 import { callState, scoreTone, formatCallDate, coachingPriorities } from "@/lib/ds-model";
 
 import {
@@ -1987,21 +1987,23 @@ export default function CallPage() {
 
         {/* Player */}
         <section id="player">
-          <SectionCard eyebrow="Playback" title="Call recording" padded>
+          <Panel>
+            <PanelHeader title="Call recording" />
+            <div className="px-5 py-5 sm:px-6">
             {loadingCall ? (
-              <p className="text-sm text-neutral-400">Loading call…</p>
+              <p className="text-sm text-[var(--ds-text-3)]">Loading call…</p>
             ) : audioUrl ? (
               <div className="space-y-3">
                 <audio ref={audioRef} src={audioUrl} controls className="w-full" />
                 {duration > 0 && (
-                  <div className="relative h-2 bg-neutral-800 rounded w-full">
+                  <div className="relative h-2 w-full rounded bg-white/[0.08]">
                     {pins.map((p) => {
                       const pct = Math.max(0, Math.min(100, (p.t / duration) * 100));
                       return (
                         <button
                           key={p.id}
                           title={`${fmt(p.t)}${p.note ? ' • ' + p.note : ''}`}
-                          className="absolute top-0 h-2 w-[2px] bg-indigo-400 hover:h-3 hover:-top-0.5 transition"
+                          className="absolute top-0 h-2 w-[2px] bg-[var(--ds-highlight)] hover:h-3 hover:-top-0.5 transition motion-reduce:transition-none"
                           style={{ left: `${pct}%` }}
                           onClick={() => seek(p.t)}
                           aria-label={`Jump to ${fmt(p.t)}`}
@@ -2011,13 +2013,14 @@ export default function CallPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="text-sm text-neutral-400">Current: <span className="text-neutral-200 tabular-nums">{fmt(t)}</span></div>
+                  <div className="text-sm text-[var(--ds-text-3)]">Current: <span className="tabular-nums text-[var(--ds-text)]">{fmt(t)}</span></div>
                   <div className="ml-auto flex items-center gap-2">
                     <input
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="Optional note…"
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-neutral-500"
+                      aria-label="Pin note"
+                      className={`${dsField} !w-auto`}
                       style={{ minWidth: 220 }}
                     />
                     <Button
@@ -2037,38 +2040,36 @@ export default function CallPage() {
                 sub="The recording may still be uploading, or this call was logged without audio."
               />
             )}
-          </SectionCard>
+            </div>
+          </Panel>
         </section>
 
         {/* Pins */}
         <section id="pins">
-          <SectionCard
-            eyebrow="Moments"
-            title="Pins"
-            actions={pins.length > 0 ? <span className="text-xs text-neutral-400">{pins.length} pin{pins.length === 1 ? "" : "s"}</span> : undefined}
-            padded
-          >
-            {pinsErr ? <p className="text-sm text-red-400 mb-2">{pinsErr}</p> : null}
+          <Panel>
+            <PanelHeader title="Pins" meta={pins.length > 0 ? `${pins.length} pin${pins.length === 1 ? "" : "s"}` : undefined} />
+            <div className="px-5 py-5 sm:px-6">
+            {pinsErr ? <p className="mb-2 text-sm text-red-200">{pinsErr}</p> : null}
             {loadingPins ? (
-              <p className="text-sm text-neutral-400">Loading pins…</p>
+              <p className="text-sm text-[var(--ds-text-3)]">Loading pins…</p>
             ) : pins.length === 0 ? (
               <EmptyState
                 message="No pinned coaching notes yet."
                 sub="Pin a moment from the player to build a coaching timeline for this call."
               />
             ) : (
-              <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+              <ul className="divide-y divide-[var(--ds-border)] rounded-[var(--ds-radius-control)] border border-[var(--ds-border)]">
                 {pins.map((p) => (
                   <li key={p.id} className="flex items-center justify-between px-3 py-2">
                     <div className="text-sm">
                       <button
                         onClick={() => seek(p.t)}
-                        className="text-indigo-300 underline underline-offset-2 hover:text-indigo-200 tabular-nums"
+                        className="ds-focus rounded tabular-nums text-[var(--ds-highlight)] underline underline-offset-2 hover:text-[var(--ds-text)]"
                         title="Jump"
                       >
                         {fmt(p.t)}
                       </button>
-                      {p.note && <span className="ml-2 text-neutral-400">— {p.note}</span>}
+                      {p.note && <span className="ml-2 text-[var(--ds-text-3)]">— {p.note}</span>}
                     </div>
                     <Button onClick={() => onDelete(p.id)}>
                       Delete
@@ -2077,24 +2078,17 @@ export default function CallPage() {
                 ))}
               </ul>
             )}
-          </SectionCard>
+            </div>
+          </Panel>
         </section>
 
         {/* Whisperer Moments (Tier 2B Day 115) — live coaching moments linked to this call */}
         <section id="whisperer-moments">
-          <SectionCard
-            variant="ai"
-            eyebrow="Live coaching"
-            title="Whisperer Moments"
-            actions={
-              whispererMoments.length > 0 ? (
-                <span className="text-xs text-neutral-400">{whispererMoments.length} moment{whispererMoments.length === 1 ? "" : "s"}</span>
-              ) : undefined
-            }
-            padded
-          >
+          <Panel>
+            <PanelHeader title="Whisperer moments" meta={whispererMoments.length > 0 ? `${whispererMoments.length} moment${whispererMoments.length === 1 ? "" : "s"}` : undefined} />
+            <div className="px-5 py-5 sm:px-6">
             {whispererMomentsError ? (
-              <div className="text-sm text-red-400">Could not load Whisperer moments.</div>
+              <div className="text-sm text-red-200">Could not load Whisperer moments.</div>
             ) : whispererMoments.length === 0 ? (
               <EmptyState
                 message="No Whisperer moments linked to this call yet."
@@ -2102,39 +2096,33 @@ export default function CallPage() {
               />
             ) : (
               <div className="space-y-2">
-                {momentOutcomeNotice && <div className="text-[11px] text-neutral-400">{momentOutcomeNotice}</div>}
+                {momentOutcomeNotice && <div className="text-xs text-[var(--ds-text-3)]">{momentOutcomeNotice}</div>}
                 {whispererMoments.map((m) => (
-                  <div key={m.triggerId} className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 space-y-1.5">
+                  <div key={m.triggerId} className="space-y-1.5 rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-white/[0.02] px-3 py-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-300 shrink-0">
-                          {String(m.type).replace("_", " ")}
-                        </span>
-                        {m.phrase && <span className="text-xs text-neutral-400 truncate">“{m.phrase}”</span>}
+                        <Badge>{String(m.type).replace("_", " ")}</Badge>
+                        {m.phrase && <span className="truncate text-xs text-[var(--ds-text-3)]">“{m.phrase}”</span>}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {m.suggestion?.urgency && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold ${
-                            m.suggestion.urgency === "high" ? "border-red-500/30 bg-red-500/10 text-red-300"
-                            : m.suggestion.urgency === "medium" ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                            : "border-neutral-700 bg-neutral-900 text-neutral-400"
-                          }`}>
+                          <Badge tone={m.suggestion.urgency === "high" ? "bad" : m.suggestion.urgency === "medium" ? "warn" : "neutral"}>
                             {m.suggestion.urgency}
-                          </span>
+                          </Badge>
                         )}
                         {m.source && m.source !== "unknown" && (
-                          <span className="text-[10px] text-neutral-500 capitalize">{m.source}</span>
+                          <span className="text-xs capitalize text-[var(--ds-text-3)]">{m.source}</span>
                         )}
                       </div>
                     </div>
-                    {m.segmentText && <div className="text-xs text-neutral-400 italic">{m.segmentText}</div>}
+                    {m.segmentText && <div className="text-xs italic text-[var(--ds-text-3)]">{m.segmentText}</div>}
                     {m.suggestion?.title && (
-                      <div className="text-sm font-medium text-neutral-100">
+                      <div className="text-sm font-medium text-[var(--ds-text)]">
                         {m.suggestion.emoji ? `${m.suggestion.emoji} ` : ""}{m.suggestion.title}
                       </div>
                     )}
-                    {m.suggestion?.response && <p className="text-xs text-neutral-300 leading-relaxed">{m.suggestion.response}</p>}
-                    <div className="flex flex-wrap gap-x-3 text-[11px] text-neutral-500">
+                    {m.suggestion?.response && <p className="text-xs leading-relaxed text-[var(--ds-text-2)]">{m.suggestion.response}</p>}
+                    <div className="flex flex-wrap gap-x-3 text-xs text-[var(--ds-text-3)]">
                       {m.detectedAt && <span>{new Date(m.detectedAt).toLocaleString("en-GB")}</span>}
                       {typeof m.latencyMs === "number" && <span>{m.latencyMs}ms</span>}
                     </div>
@@ -2152,7 +2140,7 @@ export default function CallPage() {
                             type="button"
                             onClick={() => markMomentOutcome(m.triggerId, b.value)}
                             disabled={momentOutcomeBusyId === m.triggerId}
-                            className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${selected ? "border-indigo-400/40 bg-indigo-500/10 text-indigo-200" : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800"}`}
+                            className={`ds-focus rounded-md border px-2 py-0.5 text-xs transition-colors motion-reduce:transition-none disabled:opacity-50 ${selected ? "border-sky-300/30 bg-sky-400/10 text-sky-200" : "border-[var(--ds-border)] bg-white/[0.03] text-[var(--ds-text-3)] hover:bg-white/[0.07]"}`}
                           >
                             {b.label}{selected ? " ✓" : ""}
                           </button>
@@ -2163,21 +2151,15 @@ export default function CallPage() {
                 ))}
               </div>
             )}
-          </SectionCard>
+            </div>
+          </Panel>
         </section>
 
         {/* Coach assignments (main panel) */}
         <section id="coach">
-          <SectionCard
-            eyebrow="Coaching"
-            title="Coach assignments"
-            actions={
-              <span className="text-xs text-neutral-400">
-                {assignmentsLoading ? "Loading…" : `${assignments.length} item${assignments.length === 1 ? "" : "s"}`}
-              </span>
-            }
-            padded
-          >
+          <Panel>
+            <PanelHeader title="Coach assignments" meta={assignmentsLoading ? "Loading…" : `${assignments.length} item${assignments.length === 1 ? "" : "s"}`} />
+            <div className="px-5 py-5 sm:px-6">
             {(!Array.isArray(assignments) || assignments.filter(Boolean).length === 0) && !assignmentsLoading && (
               <EmptyState
                 message="No coaching assignments for this call yet."
@@ -2186,7 +2168,7 @@ export default function CallPage() {
             )}
 
             {Array.isArray(assignments) && assignments.filter(Boolean).length > 0 && (
-              <ul className="divide-y divide-neutral-800">
+              <ul className="divide-y divide-[var(--ds-border)]">
                 {(Array.isArray(assignments) ? assignments : [])
                   .filter((a): a is Record<string, any> => !!a && typeof a === "object")
                   .map((a, idx) => {
@@ -2197,9 +2179,9 @@ export default function CallPage() {
                     return (
                       <li key={id} className="py-2 flex items-center justify-between gap-3">
                         <div className="text-sm">
-                          <div className="font-medium">{drillLabel}</div>
+                          <div className="font-medium text-[var(--ds-text)]">{drillLabel}</div>
                           {notes && (
-                            <div className="text-neutral-400 text-xs mt-0.5">{notes}</div>
+                            <div className="mt-0.5 text-xs text-[var(--ds-text-3)]">{notes}</div>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -2217,21 +2199,21 @@ export default function CallPage() {
             {managerCheckDone && isManager && (
               <>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                  <label className="text-xs text-neutral-400">Drill</label>
+                  <label className="text-xs text-[var(--ds-text-3)]">Drill</label>
                   <input
                     value={quickDrill}
                     onChange={(e) => setQuickDrill(e.target.value)}
                     placeholder="e.g. Objection: Budget"
-                    className="sm:col-span-2 w-full bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm outline-none focus:border-neutral-500"
+                    className={`sm:col-span-2 ${dsField}`}
                   />
                 </div>
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                  <label className="text-xs text-neutral-400">Assignee</label>
+                  <label className="text-xs text-[var(--ds-text-3)]">Assignee</label>
                   <select
                     aria-label="Assignee"
                     value={assignee}
                     onChange={(e) => setAssignee(e.target.value)}
-                    className="sm:col-span-2 w-full bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm outline-none focus:border-neutral-500"
+                    className={`sm:col-span-2 ${dsField}`}
                   >
                     <option value="">{usersLoading ? 'Loading users…' : 'Select a user'}</option>
                     {users.map(u => (
@@ -2276,25 +2258,19 @@ export default function CallPage() {
                 </div>
               </>
             )}
-          </SectionCard>
+            </div>
+          </Panel>
         </section>
 
         {/* CRM summary chips (quick glance) */}
         <section id="crm">
-          <SectionCard
-            eyebrow="CRM"
-            title="Linked records"
-            actions={
-              <Button onClick={openCrm}>
-                Open CRM panel
-              </Button>
-            }
-            padded
-          >
+          <Panel>
+            <PanelHeader title="Linked records" action={<Button onClick={openCrm}>Open CRM panel</Button>} />
+            <div className="px-5 py-5 sm:px-6">
           <div className="flex flex-wrap gap-2 text-sm">
             {/* Contact */}
             {contactChip ? (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] px-2.5 py-0.5 text-[var(--ds-text)]">
                 <button
                   type="button"
                   onClick={openContact}
@@ -2317,12 +2293,12 @@ export default function CallPage() {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Contact: none</span>
+              <span className="rounded-full border border-[var(--ds-border)] bg-white/[0.02] px-2.5 py-0.5 text-[var(--ds-text-3)]">Contact: none</span>
             )}
 
             {/* Account */}
             {accountChip ? (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] px-2.5 py-0.5 text-[var(--ds-text)]">
                 <button
                   type="button"
                   onClick={openAccount}
@@ -2345,17 +2321,18 @@ export default function CallPage() {
                 </button>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Account: none</span>
+              <span className="rounded-full border border-[var(--ds-border)] bg-white/[0.02] px-2.5 py-0.5 text-[var(--ds-text-3)]">Account: none</span>
             )}
 
             {/* Opportunity (placeholder only for now) */}
             {opportunityChip ? (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-200">Opportunity: {opportunityChip}</span>
+              <span className="rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] px-2.5 py-0.5 text-[var(--ds-text)]">Opportunity: {opportunityChip}</span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Opportunity: none</span>
+              <span className="rounded-full border border-[var(--ds-border)] bg-white/[0.02] px-2.5 py-0.5 text-[var(--ds-text-3)]">Opportunity: none</span>
             )}
           </div>
-          </SectionCard>
+            </div>
+          </Panel>
         </section>
 
         {coachOpen && assignOpen && (

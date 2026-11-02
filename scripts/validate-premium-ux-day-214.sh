@@ -41,8 +41,8 @@ check "/team route exists (src/app/team/page.tsx)" $?
 grep -q 'proxyFetch(`/v1/team/members`' "$PAGE"
 check "page fetches GET /v1/team/members via the proxy" $?
 
-[[ "$(grep -c 'proxyFetch(' "$PAGE")" == "1" ]]
-check "members endpoint is the page's only fetch" $?
+[[ "$(grep -c 'proxyFetch(' "$PAGE")" == "2" ]] # members + the fail-soft readJson helper
+check "members endpoint is fetched once; other reads are fail-soft readJson joins (glass redesign)" $?
 
 if grep -qE 'method:\s*["'"'"']?(POST|PATCH|PUT|DELETE)' "$PAGE"; then false; else true; fi
 check "no mutating fetches on the page" $?
@@ -70,8 +70,8 @@ check "neutral fallback label for identity-less members" $?
 grep -q 'over_seat_allocation' "$PAGE"
 check "over_seat_allocation warning represented" $?
 
-grep -q 'Seats allocated' "$PAGE" && grep -q 'Seats available' "$PAGE"
-check "seat summary shown (allocated/available StatCards)" $?
+grep -q 'seats in use' "$PAGE" && grep -q 'seats.allocated' "$PAGE"
+check "seat summary shown (one subtitle line; glass redesign)" $?
 
 grep -q 'Seat usage never blocks coaching' "$PAGE"
 check "seat usage is informational, not blocking" $?
@@ -81,8 +81,8 @@ grep -q '"Office assigned"' "$PAGE" && grep -q '"Company-wide scope"' "$PAGE" &&
 check "human scope status copy (office/company/needs setup)" $?
 
 # --- Shell primitives ---
-grep -q 'PageContainer' "$PAGE" && grep -q 'PageHeader' "$PAGE" && grep -q 'SectionCard' "$PAGE" && grep -q 'StatCard' "$PAGE" && grep -q 'EmptyState' "$PAGE"
-check "built on shared shell primitives" $?
+grep -q 'PageShell' "$PAGE" && grep -q 'PageHead' "$PAGE" && grep -q 'Panel' "$PAGE" && grep -q 'EmptyPanel' "$PAGE"
+check "built on shared ds primitives (glass redesign)" $?
 
 # --- Navigation wiring ---
 grep -q "label: 'Team', href: '/team'" "$NAV"

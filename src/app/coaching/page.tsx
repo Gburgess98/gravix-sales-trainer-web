@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { PageContainer } from '@/components/layout/page-container'
+import { ManagerOverviewSummary } from '@/components/manager/overview-summary'
 import { PageHeader } from '@/components/layout/page-header'
 import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
@@ -1815,172 +1816,18 @@ function CoachingPageInner() {
                 </div>
               )}
 
-              {/* Day 180 — primary actions: the four things a manager does most,
-                  in one calm row. Jumps reuse existing tabs/anchors — no new data,
-                  no auto-actions. */}
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-                <Link
-                  href="/upload"
-                  className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500"
-                >
-                  Upload Call
-                </Link>
-                {[
-                  { label: 'Review Queue', onClick: () => setTab('review') },
-                  { label: 'Coaching Queue', onClick: () => document.getElementById('coaching-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                  { label: 'Assign Sparring', onClick: () => setTab('assignments') },
-                  { label: 'AI Discovery', onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
-                ].map((step) => (
-                  <button
-                    key={step.label}
-                    type="button"
-                    onClick={step.onClick}
-                    className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm font-medium text-neutral-200 hover:border-neutral-600 hover:text-white transition-colors"
-                  >
-                    {step.label}
-                  </button>
-                ))}
-                <span className="ml-auto hidden text-[11px] text-neutral-500 sm:block">Upload → review → assign → approve AI suggestions</span>
-              </div>
+              {/* Glass overview: health → reps → coaching → reviews → one trend. Everything below is the
+                  previous overview, kept intact behind one disclosure (progressive disclosure, nothing deleted). */}
+              {commandCentre && <ManagerOverviewSummary data={commandCentre} onOpenTab={setTab} />}
 
+              <details className="group ds-panel rounded-[var(--ds-radius-card)]">
+                <summary className="ds-focus cursor-pointer select-none list-none rounded-[var(--ds-radius-card)] px-5 py-4">
+                  <span className="text-sm font-medium text-[var(--ds-text)]">Detailed queues and insights</span>
+                  <span className="ml-2 text-xs text-[var(--ds-text-3)]">Coaching queue, skills, sparring, AI discovery, all reps</span>
+                </summary>
+                <div className="space-y-6 px-4 pb-5 sm:px-5">
               {commandCentre && (
                 <>
-                  {/* Team health first (staging redesign): the summary answers "how is my team?" before the queues. */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                    <StatCard
-                      glass
-                      label="Team Health"
-                      value={TEAM_HEALTH_LABELS[commandCentre.teamHealth.status] ?? commandCentre.teamHealth.status}
-                      subtext="last 30 days"
-                      variant={commandCentre.teamHealth.status === 'red' ? 'danger' : commandCentre.teamHealth.status === 'amber' ? 'warning' : 'success'}
-                    />
-                    <StatCard
-                      glass
-                      label="Average Score"
-                      value={commandCentre.teamHealth.averageScore}
-                      subtext="team average"
-                      variant={commandCentre.teamHealth.averageScore < 55 ? 'danger' : commandCentre.teamHealth.averageScore < 70 ? 'warning' : 'success'}
-                    />
-                    <StatCard glass label="Reviewed Calls" value={commandCentre.teamHealth.reviewedCalls} subtext="scored this period" />
-                    <StatCard
-                      glass
-                      label="Calls Needing Review"
-                      value={commandCentre.teamHealth.callsNeedingReview}
-                      variant={commandCentre.teamHealth.callsNeedingReview > 0 ? 'warning' : 'default'}
-                    />
-                    <StatCard glass label="Open Coaching" value={commandCentre.teamHealth.openAssignments} subtext="assignments" />
-                    <StatCard
-                      glass
-                      label="Overdue"
-                      value={commandCentre.teamHealth.overdueAssignments}
-                      subtext="assignments"
-                      variant={commandCentre.teamHealth.overdueAssignments > 0 ? 'danger' : 'default'}
-                    />
-                  </div>
-
-                  {/* Day 180 — Today's priorities: one compact block answering "what
-                      needs attention and what do I do next" (same already-loaded data
-                      as the former priority cards; no new API). */}
-                  {(() => {
-                    const reviewCount = commandCentre.teamHealth.callsNeedingReview
-                    const overdueCount = commandCentre.teamHealth.overdueAssignments
-                    const repsAtRisk = commandCentre.repsNeedingAttention.length
-                    const candidateCount = triggerCandidates.filter((c) => !dismissedCandidateIds.includes(c.id)).length
-                    const topRep = commandCentre.repsNeedingAttention[0]
-                    const topSkill = commandCentre.weakestSkills[0]?.skill
-                    // Recommended next drill from the weakest team skill (or top rep's risk reason).
-                    const recommendedDrill = sparringDrillForText(topSkill || topRep?.riskReason || topRep?.recommendedAction)
-
-                    type PriorityRow = { key: string; label: string; detail: string; count: number; cta: string; onClick: () => void; urgent?: boolean }
-                    const rows: PriorityRow[] = []
-                    if (reviewCount > 0) {
-                      rows.push({
-                        key: 'review',
-                        label: 'Calls waiting for review',
-                        detail: 'Lowest-scoring calls first.',
-                        count: reviewCount,
-                        cta: 'Open Review Queue',
-                        onClick: () => setTab('review'),
-                      })
-                    }
-                    if (repsAtRisk > 0) {
-                      rows.push({
-                        key: 'reps',
-                        label: 'Reps needing attention',
-                        detail: topRep ? `${topRep.repName} — ${topRep.recommendedAction}` : 'Rule-based risk from recent calls.',
-                        count: repsAtRisk,
-                        cta: 'View reps',
-                        onClick: () => setTab('interventions'),
-                        urgent: topRep?.riskLevel === 'red',
-                      })
-                    }
-                    if (overdueCount > 0) {
-                      rows.push({
-                        key: 'overdue',
-                        label: 'Overdue assignments',
-                        detail: 'Coaching drills past their due date.',
-                        count: overdueCount,
-                        cta: 'View assignments',
-                        onClick: () => setTab('assignments'),
-                        urgent: true,
-                      })
-                    } else if (topSkill || topRep) {
-                      rows.push({
-                        key: 'sparring',
-                        label: 'Suggested next drill',
-                        detail: recommendedDrill,
-                        count: 0,
-                        cta: 'Assign sparring',
-                        onClick: () => setTab('assignments'),
-                      })
-                    }
-                    if (candidateCount > 0) {
-                      rows.push({
-                        key: 'discovery',
-                        label: 'AI Discovery suggestions to review',
-                        detail: 'Suggested triggers — nothing activates without your approval.',
-                        count: candidateCount,
-                        cta: 'Review suggestions',
-                        onClick: () => document.getElementById('ai-discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-                      })
-                    }
-
-                    return (
-                      <SectionCard padded title="Today's priorities" subtitle="What needs your attention right now.">
-                        {rows.length === 0 ? (
-                          <EmptyRow message="All clear — nothing needs your attention right now." />
-                        ) : (
-                          <div className="divide-y divide-neutral-800/60">
-                            {rows.map((r) => (
-                              <div key={r.key} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
-                                {/* Day 181 — badge sits in its own column so the detail
-                                    line aligns with the label text. */}
-                                <div className="flex min-w-0 items-start gap-2">
-                                  {r.count > 0 && (
-                                    <span className={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums ${r.urgent ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-neutral-700 bg-neutral-900 text-neutral-300'}`}>
-                                      {r.count}
-                                    </span>
-                                  )}
-                                  <div className="min-w-0">
-                                    <span className="text-sm font-medium text-white">{r.label}</span>
-                                    <p className="mt-0.5 text-[12px] text-neutral-400">{r.detail}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={r.onClick}
-                                  className="shrink-0 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
-                                >
-                                  {r.cta}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </SectionCard>
-                    )
-                  })()}
-
                   {/* Day 150 — Coaching Queue: consolidates calls needing review, rep
                       risk, open/overdue assignments and weak skills into one
                       prioritised list (all from already-loaded command-centre data;
@@ -3678,6 +3525,8 @@ function CoachingPageInner() {
                   )}
                 </div>
               </div>
+                </div>
+              </details>
             </>
           )}
         </div>

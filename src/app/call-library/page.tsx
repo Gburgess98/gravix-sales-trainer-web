@@ -8,11 +8,10 @@ import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import { proxyFetch } from "@/lib/api";
 import SparringStartButton from "@/components/SparringStartButton";
 import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
-import { SectionCard, EmptyState, Button, buttonClasses } from "@/components/ui";
+import { EmptyState, Button } from "@/components/ui";
 import { formatCallDisplayTitle } from "@/lib/callDisplay";
-import { PageHead, GlassCard, Panel, Badge, dsButton, DataList, DataRow, EmptyPanel, ErrorPanel, LoadingRows, Segmented, SearchInput } from "@/components/ds";
+import { PageHead, GlassCard, Panel, Badge, dsButton, DataList, DataRow, EmptyPanel, ErrorPanel, LoadingRows, Segmented, SearchInput, PanelHeader, dsField } from "@/components/ds";
 import { callState, scoreTone, formatCallDate, formatDuration } from "@/lib/ds-model";
 
 // Shape returned by /api/proxy/v1/calls/paged
@@ -687,46 +686,24 @@ function CallLibraryPageInner() {
 
   return (
     <PageContainer>
-      {/* Header — glass pilot: one title, one primary action (Upload call). Practice keeps its own header. */}
-      {tab === "live" ? (
-        <PageHead
-          title="Calls"
-          subtitle="Find a scored call, review coaching, or upload a new recording."
-          actions={<Link href="/upload" className={dsButton("primary", "md")}>Upload call</Link>}
-        />
-      ) : (
-      <PageHeader
-        glass
+      {/* Header — glass pilot: one title, one primary action per tab. */}
+      <PageHead
         title={tab === "sparring" ? "Practice" : "Calls"}
         subtitle={
           tab === "sparring"
             ? "Practise objection handling against AI buyers and review your sessions."
-            : "Find scored calls, review coaching, or upload a new recording."
+            : tab === "upload"
+              ? "Recordings added through the upload workflow."
+              : "Find a scored call, review coaching, or upload a new recording."
         }
         actions={
-          <>
-            <input
-              type="search"
-              aria-label={tab === "sparring" ? "Search sparring sessions" : "Search calls"}
-              placeholder={tab === "sparring" ? "Search sessions…" : "Search calls…"}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full sm:w-64 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-            {tab !== "sparring" && (
-              <Link href="/upload" className={buttonClasses("primary", "md", "whitespace-nowrap")}>
-                Upload call
-              </Link>
-            )}
-            {tab === "sparring" && (
-              <Link href="/sparring" className={buttonClasses("ghost", "md", "whitespace-nowrap")}>
-                Open Sparring Arena
-              </Link>
-            )}
-          </>
+          tab === "sparring" ? (
+            <Link href="/sparring" className={dsButton("secondary", "md", "whitespace-nowrap")}>Open Sparring Arena</Link>
+          ) : (
+            <Link href="/upload" className={dsButton("primary", "md")}>Upload call</Link>
+          )
         }
       />
-      )}
 
       {/* Tabs — Day 199: shared WorkspaceTabs (indigo active) to match /coaching */}
       <WorkspaceTabs<Tab>
@@ -738,6 +715,17 @@ function CallLibraryPageInner() {
         active={tab}
         onChange={handleTabChange}
       />
+
+      {tab !== "live" && (
+        <GlassCard as="div" className="!p-3">
+          <SearchInput
+            label={tab === "sparring" ? "Search sparring sessions" : "Search calls"}
+            placeholder={tab === "sparring" ? "Search sessions…" : "Search uploads…"}
+            value={search}
+            onChange={setSearch}
+          />
+        </GlassCard>
+      )}
 
       {/* Filters — glass pilot: search + status + sort stay visible; reps/score/tags sit behind one "More filters" disclosure. */}
       {tab === "live" && (
@@ -1027,25 +1015,23 @@ function CallLibraryPageInner() {
 
       {/* SPARRING TAB (LIVE WIRED DATA) */}
       {tab === "sparring" && (
-        <SectionCard
-          title="Recent sparring sessions"
-          subtitle="Practise live objection handling against AI opponents."
-          actions={
-            /* One-click start sparring with chosen persona/difficulty */
-            <SparringStartButton
-              personaId={sparPersona}
-              difficulty={sparDifficulty}
-            />
-          }
-        >
+        <Panel>
+          <PanelHeader
+            title="Recent sessions"
+            action={
+              /* One-click start sparring with chosen persona/difficulty */
+              <SparringStartButton personaId={sparPersona} difficulty={sparDifficulty} />
+            }
+          />
           {/* Persona + difficulty presets for the next round */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-5 py-3 text-[11px] text-neutral-400">
-            <span>Preset:</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--ds-border)] px-5 py-3 text-xs text-[var(--ds-text-3)] sm:px-6">
+            <label htmlFor="spar-preset">Preset</label>
             <select
+              id="spar-preset"
               aria-label="Opponent preset"
               value={sparPersona}
               onChange={(e) => setSparPersona(e.target.value)}
-              className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"
+              className={`${dsField} !w-auto !py-1`}
             >
               {sparPersonas.length > 0 ? (
                 sparPersonas.map((p) => (
@@ -1063,162 +1049,108 @@ function CallLibraryPageInner() {
               )}
             </select>
 
-            <span className="ml-2">Difficulty:</span>
+            <label htmlFor="spar-difficulty" className="sm:ml-2">Difficulty</label>
             <select
+              id="spar-difficulty"
               aria-label="Difficulty"
               value={sparDifficulty}
               onChange={(e) => setSparDifficulty(e.target.value)}
-              className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"
+              className={`${dsField} !w-auto !py-1`}
             >
               <option value="easy">Easy</option>
               <option value="normal">Normal</option>
               <option value="hard">Hard</option>
             </select>
 
-            {sparPersonasLoading && (
-              <span className="text-[10px] text-neutral-500">
-                Loading personas…
-              </span>
-            )}
-            {sparPersonasError && !sparPersonasLoading && (
-              <span className="text-[10px] text-red-400">
-                {sparPersonasError}
-              </span>
-            )}
+            {sparPersonasLoading && <span>Loading personas…</span>}
+            {sparPersonasError && !sparPersonasLoading && <span className="text-red-200">{sparPersonasError}</span>}
           </div>
 
           {/* Body: list / loading / errors */}
-          {loadingSparring && (
-            <div className="px-4 py-6 text-sm text-neutral-500">
-              Loading sparring sessions…
-            </div>
-          )}
+          {loadingSparring && <LoadingRows rows={3} label="Loading sparring sessions" />}
 
-          {!loadingSparring && sparringError && (
-            <div className="px-4 py-6 text-sm text-red-400">{sparringError}</div>
-          )}
+          {!loadingSparring && sparringError && <ErrorPanel title="Couldn’t load sessions" body={sparringError} />}
 
           {!loadingSparring && !sparringError && sparring.length === 0 && (
-            <EmptyState
-              className="py-10"
-              message="No sparring sessions yet."
-              sub="Pick a persona and difficulty above, then start your first round."
+            <EmptyPanel
+              title="No sparring sessions yet"
+              body="Pick a persona and difficulty above, then start your first round."
             />
           )}
 
           {!loadingSparring && !sparringError && sparring.length > 0 && (
-            <div className="divide-y divide-neutral-800">
+            <DataList label="Sparring sessions">
               {sparring.map((s) => {
                 const created = new Date(s.created_at).toLocaleString();
-                const xp =
-                  typeof s.xp_awarded === "number" ? s.xp_awarded : undefined;
-                const total =
-                  typeof s.total === "number" ? Math.round(s.total) : null;
+                const xp = typeof s.xp_awarded === "number" ? s.xp_awarded : undefined;
+                const total = typeof s.total === "number" ? Math.round(s.total) : null;
                 const personaLabel =
                   s.persona_id &&
                   (sparPersonas.find((p) => p.id === s.persona_id)?.label || s.persona_id);
+                const detail = [personaLabel, s.difficulty ? difficultyLabel(s.difficulty) : null, created]
+                  .filter(Boolean)
+                  .join(" · ");
 
                 return (
-                  <Link
+                  <DataRow
                     key={s.id}
                     href={`/sparring/${s.id}`}
-                    className="block px-4 py-3 hover:bg-neutral-900/60 transition"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-neutral-100 truncate">
-                            Sparring session
-                          </div>
-                        </div>
-                        {(personaLabel || s.difficulty) && (
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                            {personaLabel && (
-                              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                                {personaLabel}
-                              </span>
-                            )}
-                            {s.difficulty && (
-                              <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                                {difficultyLabel(s.difficulty)}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        <div className="text-xs text-neutral-500">{created}</div>
-                      </div>
-
-                      <div className="flex items-center gap-3 text-xs">
-                        {total !== null && (
-                          <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-neutral-200">
-                            Score {total}
-                          </span>
-                        )}
-                        {xp !== undefined && (
-                          <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-neutral-200">
-                            XP {xp}
-                          </span>
-                        )}
-                        <span className="text-neutral-400">Open →</span>
-                      </div>
-                    </div>
-                  </Link>
+                    title="Sparring session"
+                    meta={detail}
+                    trailing={
+                      <>
+                        {total !== null && <Badge tone={scoreTone(total)}>Score {total}</Badge>}
+                        {xp !== undefined && <Badge>XP {xp}</Badge>}
+                        <span aria-hidden className="text-[var(--ds-text-3)]">›</span>
+                      </>
+                    }
+                  />
                 );
               })}
-            </div>
+            </DataList>
           )}
-        </SectionCard>
+        </Panel>
       )}
 
       {/* UPLOADS TAB */}
       {tab === "upload" && (
-        <SectionCard
-          title="Uploaded calls"
-          subtitle="Recordings added through the upload workflow."
-          padded
-        >
+        <Panel>
+          <PanelHeader title="Uploaded calls" meta={uploads.length > 0 ? `${uploads.length}` : undefined} />
           {uploads.length === 0 && (
-            <EmptyState
-              className="py-8"
-              message="No uploaded calls yet."
-              sub="Upload a recording to have it analysed and added to your library."
-              action={{ label: "Upload a call", href: "/upload" }}
+            <EmptyPanel
+              title="No uploaded calls yet"
+              body="Upload a recording to have it analysed and added to your library."
+              action={<Link href="/upload" className={dsButton("primary", "md")}>Upload a call</Link>}
             />
           )}
 
-          {uploads.length > 0 &&
-            uploads.map((c) => (
-              <Link
-                key={c.id}
-                href={`/calls/${c.id}`}
-                className="block rounded-lg border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-900/40 p-4 mb-3 transition"
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-sm font-medium text-neutral-100">
-                      {c.filename || `Upload ${c.id.slice(0, 8)}…`}
-                    </div>
-                    <div className="text-xs text-neutral-500">
-                      {new Date(c.created_at).toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs">
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.location.href = `/calls/${c.id}?crm=1`;
-                      }}
-                    >
-                      Open + link CRM
-                    </Button>
-                    <span className="text-neutral-400">Open →</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-        </SectionCard>
+          {uploads.length > 0 && (
+            <DataList label="Uploaded calls">
+              {uploads.map((c) => (
+                <DataRow
+                  key={c.id}
+                  href={`/calls/${c.id}`}
+                  title={c.filename || `Upload ${c.id.slice(0, 8)}…`}
+                  meta={new Date(c.created_at).toLocaleString()}
+                  trailing={
+                    <>
+                      <Button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.location.href = `/calls/${c.id}?crm=1`;
+                        }}
+                      >
+                        Open + link CRM
+                      </Button>
+                      <span aria-hidden className="text-[var(--ds-text-3)]">›</span>
+                    </>
+                  }
+                />
+              ))}
+            </DataList>
+          )}
+        </Panel>
       )}
     </PageContainer>
   );

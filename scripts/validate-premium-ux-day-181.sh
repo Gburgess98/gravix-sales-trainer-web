@@ -37,7 +37,9 @@ grep -q "more reviewed candidate" "$COACHING" 2>/dev/null
 check "/coaching reviewed-candidate history capped with Show more" $?
 
 # Day 180 surfaces all still present.
-for label in "Manager Command Centre" "Upload Call" "Review Queue" "Coaching Queue" "AI Discovery" "Whisperer Insights"; do
+grep -q "Upload call" "$SRC/components/manager/overview-summary.tsx" 2>/dev/null
+check "/coaching Overview still offers Upload call (glass redesign: ManagerOverviewSummary)" $?
+for label in "Manager Command Centre" "Review Queue" "Coaching Queue" "AI Discovery" "Whisperer Insights"; do
   grep -q "$label" "$COACHING" 2>/dev/null
   check "/coaching still includes $label" $?
 done

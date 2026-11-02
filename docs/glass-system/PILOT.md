@@ -68,8 +68,44 @@ Unchanged: every request (the Day 46 request fixture still matches), manager gat
 
 Legacy validators pinned the old markup. Updated on purpose (each still has non-vacuous mutation proofs): Day 45 shell-navigation (Home no longer has a disclosure/attention block; one more allowed read), Day 46 call-review guard (new wrapper/header/aside, 5-item nav), Days 195 and 203 (shell background / brand token now navy + blue).
 
-## 6. Open pilot work (recorded, not started)
+## 6. Design debt — visual identity NOT approved
 
-Call Review: the **Player, Pins, Whisperer moments, Coach assignments and CRM** cards still use the legacy `SectionCard` styling (neutral-950, uppercase eyebrow, old borders), so there is a visible seam below the transcript. Complete these before moving to Manager Overview and Team if they visibly break the system on hosted staging.
+Hosted review verdict: the structure is approved for continued staging work, **the visual direction is not**. It is calmer and easier to scan, but still reads as a generic dark SaaS dashboard: glass, depth and the premium/futuristic Gravix identity are not coming through strongly enough, and some large empty areas feel unfinished rather than intentional. A dedicated visual-identity refinement pass is scheduled for later. Continued rollout (sections 7–9) is **not** approval of the current aesthetic; every screen below uses the same tokens and primitives, so that pass can restyle them in one place.
 
-Other known gaps: Home no longer shows weakest/strongest area, motivation quote or AI feedback (cut, not moved); the Practice and Call Uploads tabs on `/call-library` keep their old styling.
+## 7. Call Review + Calls tabs (seams closed)
+
+| Before | After |
+|---|---|
+| Player, Pins, Whisperer moments, Coach assignments, Linked records on legacy `SectionCard` (neutral-950, uppercase eyebrow, indigo accents) | Opaque `Panel` + `PanelHeader` (new primitive) with ds tokens; Whisperer type/urgency now `Badge`; inputs use shared `dsField`; every handler, request, id and gate unchanged |
+| Practice tab: old header with its own search + ghost button, `SectionCard`, pill selects, pill chips | One `PageHead` for all three tabs (one action each), a single search bar, `Panel` with `DataList`/`DataRow`, score/XP as `Badge` |
+| Call Uploads tab: bordered card per upload | Same `DataRow` list as Calls; "Open + link CRM" kept |
+
+## 8. Manager Overview (`/coaching`, Overview tab)
+
+Order now answers: how is my team → who needs me → what coaching is open → what is waiting → which way are skills moving.
+
+| Removed / moved / collapsed | Why |
+|---|---|
+| Action row (Upload / Review Queue / Coaching Queue / Assign Sparring / AI Discovery + hint) → **removed**; Upload call + Review queue are two buttons in the health card | 5 jump links duplicated the tabs |
+| 6 StatCards (Team Health, Average, Reviewed, Needing Review, Open, Overdue) → **one health card**: R/A/G badge, one plain sentence, 4 inline numbers | "Needing review" lives in the sentence/button, not a 5th box |
+| "Today's priorities" block → **removed**; its three rows are now the first three panels | duplicated reps / overdue / reviews |
+| **New:** Reps requiring attention (top 4, R/A/G badge, recommended action, row → `/crm/reps/:id`), Outstanding coaching (overdue first), Recent reviews, Skill trend | all from the existing command-centre payload |
+| Everything else (coaching queue, skills + ROI, sparring, Whisperer, AI discovery, manager briefing, KPI row, rep breakdown, all-reps table) → **collapsed, unchanged** behind "Detailed queues and insights" | progressive disclosure; still legacy-styled inside, restyle in the visual pass |
+
+Status language everywhere: green **On track**, amber **Needs attention**, red **At risk** (`src/lib/manager-model.ts`, unit-tested; thresholds <55 red, <70 amber, as before).
+
+Honest limits: "Recent reviews" lists calls **waiting** for review (the only call list the command-centre returns; reviewed calls are a count). The one trend is the skill with the largest movement vs the previous 30 days (`weakestSkills[].delta`); there is no team-score time series in the existing API.
+
+## 9. Team (`/team`)
+
+| Before | After |
+|---|---|
+| 4 stat cards (members, seats allocated, seats available, scope setup) | One subtitle line (`5 members · 2 need attention · 5 of 8 seats in use`); over-allocation/setup shown only when true |
+| Table: member / role / office / scope badge | Searchable list sorted needs-attention first: name + role · office, 30-day score, trend, coaching status, R/A/G badge, whole row → `/crm/reps/:id` ("View"). Mobile: two-line rows |
+| No performance | Joined client-side from `GET /v1/manager/command-centre?days=30` and `GET /v1/dashboard/leaderboard` (30d and 90d), fail-soft |
+
+Trend = 30-day average vs 90-day average (±3 pts), labelled in the footnote — it is a proxy, not a period-over-period series. Members with no scored calls show "No calls / No data". Still read-only; no new endpoints, no new fields.
+
+## 10. Verification
+
+Playwright (plugin tools + `tests/e2e/glass-manager.spec.ts`, fully mocked, fake local session): desktop 1440 and mobile 375, manager navigation, keyboard, overflow (incl. panels wider than viewport), console. Screenshots: `screenshots/manager/*`.

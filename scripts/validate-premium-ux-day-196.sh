@@ -44,7 +44,7 @@ check "SectionCard has no emerald classes" $?
 # --- Coaching page: all SectionCards padded ---
 TOTAL=$(grep -c '<SectionCard' "$PAGE" 2>/dev/null || echo 0)
 PADDED=$(grep -c '<SectionCard[^>]*padded' "$PAGE" 2>/dev/null || echo 0)
-[[ "$TOTAL" -ge 14 && "$TOTAL" == "$PADDED" ]]
+[[ "$TOTAL" -ge 8 && "$TOTAL" == "$PADDED" ]] # glass redesign: summary cards left SectionCard, legacy detail keeps the rest
 check "all coaching SectionCards use padded ($PADDED/$TOTAL)" $?
 
 # --- Coaching page: no emerald/cyan action buttons ---
@@ -62,8 +62,8 @@ check "watch band border is amber" $?
 check "watch band label no longer cyan" $?
 
 # --- Canonical primary CTA ---
-grep -q 'rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white' "$PAGE" 2>/dev/null
-check "Upload Call CTA uses canonical indigo-600" $?
+grep -q "dsButton('primary', 'md')" "$SRC/components/manager/overview-summary.tsx" 2>/dev/null
+check "Upload call CTA uses the canonical primary button (glass redesign)" $?
 
 # --- Rhythm ---
 sed -n '/tab === .overview. && (/,+1p' "$PAGE" | grep -q 'space-y-6'

@@ -49,6 +49,23 @@ export function SectionTitle({ children, hint, action }: { children: ReactNode; 
   )
 }
 
+/** Header row for a Panel: title left, optional meta/action right. Pairs with `<Panel>` for work surfaces. */
+export function PanelHeader({ title, meta, action }: { title: string; meta?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ds-border)] px-5 py-4 sm:px-6">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-base font-semibold text-[var(--ds-text)]">{title}</h2>
+        {meta && <span className="text-xs text-[var(--ds-text-3)]">{meta}</span>}
+      </div>
+      {action}
+    </div>
+  )
+}
+
+/** Text input / select styling shared by forms inside panels. */
+export const dsField =
+  'ds-focus w-full rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-bg)] px-3 py-2 text-sm text-[var(--ds-text)] placeholder:text-[var(--ds-text-3)]'
+
 export function Metric({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
   return (
     <GlassCard as="div" className="!p-4 sm:!p-5">

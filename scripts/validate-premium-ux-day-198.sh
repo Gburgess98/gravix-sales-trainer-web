@@ -87,8 +87,8 @@ check "coaching Links use buttonClasses (>=8 sites, got $COACH_BC)" $?
 check "hand-copied tonal recipe gone from coaching" $?
 
 # --- Pinned contracts stay literal (day-196/197 validators must not break) ---
-grep -q 'rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white' "$COACHING" 2>/dev/null
-check "coaching Upload CTA still literal (day-196 pin)" $?
+grep -q "dsButton('primary', 'md')" "$SRC/components/manager/overview-summary.tsx" 2>/dev/null
+check "Overview Upload CTA uses the canonical primary button (glass redesign; supersedes day-196 literal)" $?
 grep -q 'hover:bg-indigo-500/20' "$COACHING" 2>/dev/null
 check "coaching assign-action family still literal (day-196 pin)" $?
 # Day 46 refresh: see Day 197 — the solid-indigo recipe was retired so the call page has exactly one primary.

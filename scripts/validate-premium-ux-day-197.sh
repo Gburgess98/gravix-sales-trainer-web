@@ -39,15 +39,15 @@ check "white active pill removed" $?
 # --- SectionCard adoption ---
 # Day 198 loosened this from the exact named-import list to the intent
 # (SectionCard imported from the ui barrel) — Day 198 added Button imports.
-grep -qE 'import \{[^}]*SectionCard[^}]*\} from "@/components/ui"' "$PAGE" 2>/dev/null
-check "SectionCard imported" $?
-CARDS=$(grep -c '<SectionCard' "$PAGE" 2>/dev/null || echo 0)
+grep -qE 'import \{[^}]*Panel[^}]*PanelHeader[^}]*\} from "@/components/ds"' "$PAGE" 2>/dev/null
+check "ds Panel/PanelHeader imported (glass redesign; was SectionCard)" $?
+CARDS=$(grep -c '<PanelHeader' "$PAGE" 2>/dev/null || echo 0)
 [[ "$CARDS" -ge 5 ]]
-check "at least 5 SectionCards adopted ($CARDS)" $?
+check "at least 5 ds Panels adopted ($CARDS; glass redesign, was SectionCards)" $?
 grep -q 'title="Call recording"' "$PAGE" 2>/dev/null
 check "Player section is a SectionCard" $?
-grep -q 'variant="ai"' "$PAGE" 2>/dev/null
-check "Whisperer Moments uses ai variant" $?
+grep -q 'title="Whisperer moments"' "$PAGE" 2>/dev/null
+check "Whisperer moments is a ds Panel (glass redesign; was ai variant)" $?
 grep -q 'title="Linked records"' "$PAGE" 2>/dev/null
 check "CRM section is a SectionCard" $?
 

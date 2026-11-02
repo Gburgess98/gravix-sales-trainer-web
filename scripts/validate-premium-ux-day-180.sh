@@ -27,8 +27,8 @@ check "PREMIUM_UX_AUDIT.md includes Day 180" $?
 grep -q "Manager Command Centre" "$COACHING" 2>/dev/null
 check "/coaching still includes Manager Command Centre" $?
 
-grep -q "Upload Call" "$COACHING" 2>/dev/null
-check "/coaching still includes Upload Call" $?
+grep -q "Upload call" $SRC/components/manager/overview-summary.tsx 2>/dev/null
+check "/coaching Overview still offers Upload call (ManagerOverviewSummary)" $?
 
 grep -q "Review Queue" "$COACHING" 2>/dev/null
 check "/coaching still includes Review Queue" $?

@@ -34,20 +34,20 @@ grep -q 'import { WorkspaceTabs } from "@/components/shell/workspace-tabs"' "$LI
 check "call-library imports WorkspaceTabs" $?
 grep -q 'WorkspaceTabs<Tab>' "$LIB" 2>/dev/null
 check "tab bar rendered via WorkspaceTabs" $?
-grep -q 'SectionCard, EmptyState, Button, buttonClasses } from "@/components/ui"' "$LIB" 2>/dev/null
-check "call-library imports SectionCard/EmptyState/Button/buttonClasses" $?
-LIB_CARDS=$(grep -c '<SectionCard' "$LIB" 2>/dev/null || echo 0)
+grep -q 'EmptyState, Button } from "@/components/ui"' "$LIB" 2>/dev/null
+check "call-library imports EmptyState/Button (glass redesign: SectionCard/buttonClasses retired)" $?
+LIB_CARDS=$(grep -c '<PanelHeader' "$LIB" 2>/dev/null || echo 0)
 [[ "$LIB_CARDS" -ge 2 ]]
-check "practice + uploads tab bodies use SectionCard (>=2, got $LIB_CARDS; live tab moved to ds Panel in glass pilot)" $?
+check "practice + uploads tab bodies are ds Panels (>=2, got $LIB_CARDS; glass redesign)" $?
 grep -q '<DataList label="Calls">' "$LIB" 2>/dev/null
 check "live tab is a labelled ds DataList (glass pilot; was card titled Latest analysed calls)" $?
-grep -q 'title="Recent sparring sessions"' "$LIB" 2>/dev/null
-check "sparring tab card titled Recent sparring sessions" $?
+grep -q 'title="Recent sessions"' "$LIB" 2>/dev/null
+check "sparring tab panel titled Recent sessions (glass redesign)" $?
 grep -q 'title="Uploaded calls"' "$LIB" 2>/dev/null
 check "uploads tab card titled Uploaded calls" $?
-LIB_EMPTY=$(grep -c '<EmptyState' "$LIB" 2>/dev/null || echo 0)
+LIB_EMPTY=$(grep -c '<EmptyPanel' "$LIB" 2>/dev/null || echo 0)
 [[ "$LIB_EMPTY" -ge 2 ]]
-check "EmptyState adopted for empty states (>=2, got $LIB_EMPTY; live tab uses EmptyPanel)" $?
+check "EmptyPanel adopted for empty states (>=2, got $LIB_EMPTY; glass redesign)" $?
 
 # --- Chip system: white-active inversion gone, indigo tonal in ---
 ! grep -q 'border-neutral-100 bg-neutral-100 text-neutral-900' "$LIB" 2>/dev/null
@@ -106,8 +106,8 @@ grep -q 'personaId={sparPersona}' "$LIB" 2>/dev/null
 check "SparringStartButton persona wiring intact" $?
 grep -q 'href={`/sparring/${s.id}`}' "$LIB" 2>/dev/null
 check "sparring session links intact" $?
-grep -q 'action={{ label: "Upload a call", href: "/upload" }}' "$LIB" 2>/dev/null
-check "empty-state Upload CTA points at /upload" $?
+grep -q 'href="/upload" className={dsButton("primary", "md")}>Upload a call' "$LIB" 2>/dev/null
+check "empty-state Upload CTA points at /upload (glass redesign)" $?
 
 if [[ "$fail" == "0" ]]; then
   echo "Day 199 validation PASSED"
