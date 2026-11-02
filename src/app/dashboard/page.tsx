@@ -122,7 +122,10 @@ export default function DashboardPage() {
 
       if (meRes.status === 'fulfilled') {
         const d = await meRes.value.json().catch(() => null)
-        if (d?.ok && d?.me) { setMe(d.me); repId = d.me.id ?? null; setHasAnyData(true) }
+        // /v1/reps/me answers either { ok, me: {...} } or the same fields at the top level
+        // (the API has two handlers on this path; the flat one wins). Accept both.
+        const meObj = d?.me ?? (d?.ok && d?.id ? d : null)
+        if (d?.ok && meObj) { setMe(meObj); repId = meObj.id ?? null; setHasAnyData(true) }
       }
       if (assignRes.status === 'fulfilled') {
         const d = await assignRes.value.json().catch(() => null)

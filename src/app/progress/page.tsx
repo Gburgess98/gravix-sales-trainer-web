@@ -53,7 +53,8 @@ export default function ProgressPage() {
       let repId: string | null = null
       if (meRes.status === 'fulfilled') {
         const d = await meRes.value.json().catch(() => null)
-        if (d?.ok && d?.me) { setMe(d.me); repId = d.me.id ?? null }
+        const meObj = d?.me ?? (d?.ok && d?.id ? d : null)
+        if (d?.ok && meObj) { setMe(meObj); repId = meObj.id ?? null }
       }
       if (assignRes.status === 'fulfilled') {
         const d = await assignRes.value.json().catch(() => null)
