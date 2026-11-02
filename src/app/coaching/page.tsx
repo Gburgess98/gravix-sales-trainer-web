@@ -1029,6 +1029,8 @@ function CoachingPageInner() {
   const [commandCentreError, setCommandCentreError] = useState<string | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState<string | null>(null)
+  // Rep-risk detail failed but the team-health aggregate loaded: keep the overview, say what is missing.
+  const [riskDetailNotice, setRiskDetailNotice] = useState<string | null>(null)
 
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
@@ -1180,6 +1182,7 @@ function CoachingPageInner() {
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true)
     setOverviewError(null)
+    setRiskDetailNotice(null)
     try {
       const [ccRes, repRes, mccData] = await Promise.all([
         proxyFetch('/v1/crm/manager/control-centre?days=7&limit=20', { cache: 'no-store' }),
@@ -1208,6 +1211,10 @@ function CoachingPageInner() {
           return Number(b.counts?.open ?? 0) - Number(a.counts?.open ?? 0)
         })
         setReps(allReps)
+      } else if (mccData?.ok && mccData.teamHealth) {
+        setHeadline(null)
+        setReps([])
+        setRiskDetailNotice(ccData?.error || 'Rep risk detail is unavailable right now.')
       } else {
         setOverviewError(ccData.error || 'Failed to load coaching data')
       }
@@ -1754,6 +1761,7 @@ function CoachingPageInner() {
           adoption; the redundant "Coaching" eyebrow was dropped (the sidebar
           already provides that context). */}
       <PageHeader
+        glass
         title="Manager Command Centre"
         subtitle="Upload calls, review them, and assign coaching from one place."
       />
@@ -1786,6 +1794,12 @@ function CoachingPageInner() {
               {commandCentreError && !commandCentre && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
                   Team health unavailable: {commandCentreError}
+                </div>
+              )}
+
+              {riskDetailNotice && (
+                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+                  Some rep detail couldn&apos;t load ({riskDetailNotice}). Team health below is still current.
                 </div>
               )}
 
@@ -1831,6 +1845,39 @@ function CoachingPageInner() {
 
               {commandCentre && (
                 <>
+                  {/* Team health first (staging redesign): the summary answers "how is my team?" before the queues. */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <StatCard
+                      glass
+                      label="Team Health"
+                      value={TEAM_HEALTH_LABELS[commandCentre.teamHealth.status] ?? commandCentre.teamHealth.status}
+                      subtext="last 30 days"
+                      variant={commandCentre.teamHealth.status === 'red' ? 'danger' : commandCentre.teamHealth.status === 'amber' ? 'warning' : 'success'}
+                    />
+                    <StatCard
+                      glass
+                      label="Average Score"
+                      value={commandCentre.teamHealth.averageScore}
+                      subtext="team average"
+                      variant={commandCentre.teamHealth.averageScore < 55 ? 'danger' : commandCentre.teamHealth.averageScore < 70 ? 'warning' : 'success'}
+                    />
+                    <StatCard glass label="Reviewed Calls" value={commandCentre.teamHealth.reviewedCalls} subtext="scored this period" />
+                    <StatCard
+                      glass
+                      label="Calls Needing Review"
+                      value={commandCentre.teamHealth.callsNeedingReview}
+                      variant={commandCentre.teamHealth.callsNeedingReview > 0 ? 'warning' : 'default'}
+                    />
+                    <StatCard glass label="Open Coaching" value={commandCentre.teamHealth.openAssignments} subtext="assignments" />
+                    <StatCard
+                      glass
+                      label="Overdue"
+                      value={commandCentre.teamHealth.overdueAssignments}
+                      subtext="assignments"
+                      variant={commandCentre.teamHealth.overdueAssignments > 0 ? 'danger' : 'default'}
+                    />
+                  </div>
+
                   {/* Day 180 — Today's priorities: one compact block answering "what
                       needs attention and what do I do next" (same already-loaded data
                       as the former priority cards; no new API). */}
@@ -2088,36 +2135,7 @@ function CoachingPageInner() {
                   })()}
 
                   {/* Day 180 — calm divider between primary actions and supporting evidence */}
-                  <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-neutral-600">More insights below — team health, skills and AI discovery</p>
-
-                  {/* Team Health */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                    <StatCard
-                      label="Team Health"
-                      value={TEAM_HEALTH_LABELS[commandCentre.teamHealth.status] ?? commandCentre.teamHealth.status}
-                      subtext="last 30 days"
-                      variant={commandCentre.teamHealth.status === 'red' ? 'danger' : commandCentre.teamHealth.status === 'amber' ? 'warning' : 'success'}
-                    />
-                    <StatCard
-                      label="Average Score"
-                      value={commandCentre.teamHealth.averageScore}
-                      subtext="team average"
-                      variant={commandCentre.teamHealth.averageScore < 55 ? 'danger' : commandCentre.teamHealth.averageScore < 70 ? 'warning' : 'success'}
-                    />
-                    <StatCard label="Reviewed Calls" value={commandCentre.teamHealth.reviewedCalls} subtext="scored this period" />
-                    <StatCard
-                      label="Calls Needing Review"
-                      value={commandCentre.teamHealth.callsNeedingReview}
-                      variant={commandCentre.teamHealth.callsNeedingReview > 0 ? 'warning' : 'default'}
-                    />
-                    <StatCard label="Open Coaching" value={commandCentre.teamHealth.openAssignments} subtext="assignments" />
-                    <StatCard
-                      label="Overdue"
-                      value={commandCentre.teamHealth.overdueAssignments}
-                      subtext="assignments"
-                      variant={commandCentre.teamHealth.overdueAssignments > 0 ? 'danger' : 'default'}
-                    />
-                  </div>
+                  <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-neutral-600">More insights below — skills and AI discovery</p>
 
                   {/* Reps / Calls / Assignments */}
                   <div className="grid gap-4 xl:grid-cols-3">
