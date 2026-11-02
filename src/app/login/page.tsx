@@ -66,7 +66,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(99,102,241,0.14),transparent_65%)] px-4">
       <div className="w-full max-w-sm space-y-6">
 
         {/* Brand */}
@@ -75,17 +75,17 @@ export default function LoginPage() {
             <Zap size={20} className="text-brand-400" />
             <span className="text-lg font-semibold tracking-tight text-white">Gravix</span>
           </div>
-          <p className="text-sm text-neutral-500">AI Sales Training Platform</p>
+          <p className="text-sm text-neutral-400">AI Sales Training Platform</p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6 space-y-5">
+        <div className="glass rounded-2xl p-6 space-y-5">
           <h1 className="text-center text-sm font-semibold text-white">Sign in to your workspace</h1>
 
           {/* ── Email / password form ── */}
           <form onSubmit={signInWithEmail} className="space-y-3">
             <div>
-              <label className="block text-[11px] uppercase tracking-[0.1em] text-neutral-500 mb-1.5">
+              <label className="block text-[11px] uppercase tracking-[0.1em] text-neutral-400 mb-1.5">
                 Email
               </label>
               <input
@@ -95,11 +95,11 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-600"
+                className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-500"
               />
             </div>
             <div>
-              <label className="block text-[11px] uppercase tracking-[0.1em] text-neutral-500 mb-1.5">
+              <label className="block text-[11px] uppercase tracking-[0.1em] text-neutral-400 mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -110,13 +110,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 pr-10 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-700 bg-black/40 px-3 py-2.5 pr-10 text-sm text-white outline-none transition-colors focus:border-brand-500/50 placeholder:text-neutral-500"
                 />
                 <button
                   type="button"
                   tabIndex={-1}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 transition-colors"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -142,7 +142,7 @@ export default function LoginPage() {
           {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="flex-1 border-t border-neutral-800" />
-            <span className="text-[11px] uppercase tracking-widest text-neutral-600">or</span>
+            <span className="text-[11px] uppercase tracking-widest text-neutral-400">or</span>
             <div className="flex-1 border-t border-neutral-800" />
           </div>
 
@@ -162,7 +162,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <p className="text-center text-[11px] text-neutral-700">
+        <p className="text-center text-[11px] text-neutral-400">
           Gravix Sales Training · Secure login
         </p>
       </div>

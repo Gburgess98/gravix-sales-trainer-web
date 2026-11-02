@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic"; // avoids static prerender issues
 export default function Page() {
   return (
     <div className="p-6">
-      <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+      <Suspense fallback={<p className="text-sm text-neutral-400">Signing you in…</p>}>
         <CallbackClient />
       </Suspense>
     </div>
