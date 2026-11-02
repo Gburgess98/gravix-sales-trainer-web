@@ -21,10 +21,10 @@ Owner of every production step: the operator (George). Claude does not deploy pr
 |---|---|
 | Typecheck, lint (0 errors), proxy-boundary check, identity guard, shell-nav validator, call-review guard, dependency guard, **production build** — `npm run check:release` | ✅ passing locally |
 | Unit tests (`npm test`): nav model + role filtering, active state, progress model, contrast tokens, skip link | ✅ 22 passing |
-| Automated WCAG 2 A/AA scan (axe-core) of 15 changed screens, manager role, desktop | ✅ 0 violations after fixes (see §5) |
+| Automated WCAG 2 A/AA + best-practice scan (axe-core), manager (15 screens) and rep (9 screens), desktop | ✅ 0 violations after fixes (see §5) |
 | Tablet (768) and mobile (375) layout: no horizontal overflow on checked screens | ✅ manager role |
 | Keyboard: skip link, sidebar order and focus rings, drawer Escape | ✅ |
-| **Rep-role verification on staging** (Home, Calls, Practice, Coaching, Progress, five-item nav) | ⬜ not done — needs a staging rep session |
+| **Rep-role verification** on local staging (Home, Calls, Practice, Coaching, Progress, Upload, Profile, call review): five-item nav exact, no manager items leak, axe 0 violations (WCAG 2 A/AA + best-practice), mobile drawer + no overflow | ✅ local staging, rep `SalesRep`. ⬜ repeat on the **hosted** staging deploy after push |
 | **Usability test** with the people who found the current system confusing (brief §Phase 5) | ⬜ not done |
 | Screen-reader pass (VoiceOver/NVDA) and manual contrast review of the Call Review transcript with real data | ⬜ not done |
 | Rep and manager data-rich walkthrough (staging seed has almost no calls/scores) | ⬜ not done |
@@ -85,6 +85,7 @@ security changes, follow `SECURITY_ROLLOUT_CHECKLIST.md` §6 (API first, then WE
   assignee/drill, Insights filters, Profile timezone, Settings fields, Upload file input).
 - "Skip to content" link + focusable `<main id="main-content">`.
 - Global `prefers-reduced-motion` and `prefers-reduced-transparency` handling (glass falls back to a solid panel).
+- Call Review had its own `<main>` nested in the shell's `<main>` (duplicate landmarks). Now a `<div data-review-shell>`; the Day 46 and Day 290 guards were re-pointed at it.
 
 ## 6. Production smoke list (after promotion; operator)
 
@@ -112,8 +113,13 @@ Record hesitations per screen; fix recurring ones before promotion.
   look like `00000000-2711-…`, so `/v1/crm/manager/control-centre` returns 400 on staging. The Overview now
   degrades with a notice instead of an error page. Production ids are random UUIDs and are not affected.
   The API fix is separate and was not made.
-- Opening `/dashboard` directly while signed in redirected to `/login` several times in local staging, while
-  sidebar navigation worked. Undiagnosed; reproduce on hosted staging before promotion.
+- Earlier, opening `/dashboard` directly bounced to `/login` and once showed `InvariantError: clientReferenceManifest`.
+  Both occurred in the local **dev** server after code edits / a stale `.next`; a clean restart fixed them and a direct load
+  now works for the rep. Treat as a dev-server artefact, but re-test a direct load on the hosted staging build.
+- **API route shadowing:** `GET /v1/reps/me` is defined twice (`routes/reps.ts` flat shape wins over
+  `routes/assignments.ts` `{ me: {…xp} }`). The web pages expected the second shape, so name, tier and points
+  were silently missing on Home/Progress. WEB now accepts both shapes (greeting and tier chip work). XP totals are
+  still absent until the API shadowing is resolved — separate API fix, not made here.
 - `/crm/manager/*`, `/whisperer`, `/recent-calls`, `/review/*`, `/dev/*` were not redesigned (audit lists them as unclear).
 - Profile and Admin Settings stay full-width: the page container's own max-width wins over `max-w-2xl`.
 - The brief's rep "XP/streak" metric and badges were not added: the design system retires XP/streak in primary
