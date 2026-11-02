@@ -465,7 +465,7 @@ export default function AnalyticsPage() {
     <PageContainer>
       {/* INTELLIGENCE HERO */}
 
-      <div className="relative overflow-hidden rounded-2xl border border-brand-500/15 bg-neutral-950 shadow-lg shadow-black/30">
+      <div className="glass relative overflow-hidden rounded-2xl">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_130%_at_85%_-30%,rgba(99,102,241,0.18),transparent_60%)]"
@@ -480,7 +480,7 @@ export default function AnalyticsPage() {
           </div>
           <PageHeader
             className="mt-1.5"
-            title="Analytics"
+            title="Insights"
             subtitle="Curated performance signals across your sales organisation"
             actions={
               <>
@@ -540,7 +540,7 @@ export default function AnalyticsPage() {
       {/* KPI STRIP */}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <div className="relative col-span-2 overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/5 px-5 py-4 shadow-md shadow-black/20">
+        <div className="glass relative col-span-2 overflow-hidden rounded-xl bg-gradient-to-br from-brand-500/15 to-transparent px-5 py-4">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_120%_at_100%_-20%,rgba(99,102,241,0.12),transparent_60%)]"
@@ -568,23 +568,26 @@ export default function AnalyticsPage() {
                 </span>
               )}
             </div>
-            <div className="mt-1 text-[11px] text-neutral-500">
+            <div className="mt-1 text-[11px] text-neutral-400">
               Average review score · {rangeLabel}
             </div>
           </div>
         </div>
 
         <StatCard
+          glass
           label="Activities created"
           value={totalActivities}
           subtext="Coaching tasks generated"
         />
         <StatCard
+          glass
           label="Tasks completed"
           value={completedActivities}
           subtext={completionRate !== null ? `${completionRate}% completion rate` : "Completed coaching actions"}
         />
         <StatCard
+          glass
           label="Pipeline events"
           value={conversionTotal}
           subtext="Stage transitions"
@@ -595,6 +598,7 @@ export default function AnalyticsPage() {
 
       <SectionCard
         variant="ai"
+        glass
         eyebrow="Signals"
         title="This range at a glance"
         subtitle="Read automatically from the figures in this range"
@@ -610,7 +614,7 @@ export default function AnalyticsPage() {
                 <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
                 <div className="min-w-0">
                   <div className="text-xs font-medium text-neutral-200">{s.title}</div>
-                  <div className="mt-0.5 text-[11px] text-neutral-500">{s.detail}</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-400">{s.detail}</div>
                 </div>
               </div>
             ))}
