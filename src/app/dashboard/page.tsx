@@ -342,6 +342,7 @@ export default function DashboardPage() {
 
       {/* ── Header: where am I ── */}
       <PageHeader
+        glass
         eyebrow="Dashboard"
         title={greeting}
         subtitle={`AI coaching briefing · ${today}`}
@@ -388,13 +389,13 @@ export default function DashboardPage() {
 
       {/* ── 1. What should I do next? One primary action. ── */}
       {hasAnyData && (
-        <SectionCard variant="ai" eyebrow="Next Best Action" padded>
+        <SectionCard variant="ai" glass eyebrow="Next Best Action" padded>
           {mission ? (
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0 space-y-1.5">
                 <h2 className="text-lg font-semibold text-white">{mission.label}</h2>
                 <p className="max-w-2xl text-sm text-neutral-400">{mission.detail}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-neutral-400">
                   Impact: <span className="font-medium text-neutral-300">{mission.impact}</span>
                   <span className="mx-2 text-neutral-700">·</span>
                   Time: <span className="font-medium text-neutral-300">{mission.time}</span>
@@ -436,6 +437,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── 3. Where do I continue? ── */}
+      {hasAnyData && (
       <section aria-label="Continue" className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-[0.1em] text-neutral-500">Continue</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -458,32 +460,30 @@ export default function DashboardPage() {
           ))}
         </div>
       </section>
+      )}
 
-      {/* ── Performance KPI strip ── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* ── Performance summary: three metrics maximum. Points / streak live under Coaching detail. ── */}
+      <div className="grid gap-3 sm:grid-cols-3">
         <StatCard
+          glass
+          label="Voice Score"
+          value={voiceScore ?? '—'}
+          subtext={voiceScore === null ? 'after your first scored call' : voiceScore >= 80 ? 'strong · latest avg' : voiceScore >= 60 ? 'steady · latest avg' : 'needs work · latest avg'}
+          variant={voiceScore === null ? 'default' : voiceScore >= 80 ? 'success' : voiceScore >= 60 ? 'warning' : 'danger'}
+        />
+        <StatCard
+          glass
+          label="Trend"
+          value={trend.length === 0 ? '—' : briefing.voiceTrend === 'improving' ? '↑ Improving' : briefing.voiceTrend === 'declining' ? '↓ Declining' : '→ Stable'}
+          subtext="voice score, last 30 days"
+          valueClass="text-lg text-white"
+        />
+        <StatCard
+          glass
           label="Open Assignments"
           value={openAssignments}
           subtext={summary?.overdue_count ? `${summary.overdue_count} overdue` : 'in queue'}
           variant={summary?.overdue_count ? 'danger' : 'default'}
-        />
-        <StatCard
-          label="Progress Today"
-          value={todayXp}
-          subtext="points earned today"
-          variant="default"
-        />
-        <StatCard
-          label="Streak"
-          value={streak === 0 ? '—' : streak}
-          subtext={streak === 1 ? 'day' : streak === 0 ? 'start today' : 'days'}
-          variant="default"
-        />
-        <StatCard
-          label="Voice Score"
-          value={voiceScore ?? '—'}
-          subtext="latest avg"
-          variant={voiceScore === null ? 'default' : voiceScore >= 80 ? 'success' : voiceScore >= 60 ? 'warning' : 'danger'}
         />
       </div>
 

@@ -43,6 +43,8 @@ interface SectionCardProps {
   className?: string
   /** Inset the body from the card edges. Off by default — list/table bodies manage their own padding. */
   padded?: boolean
+  /** Translucent hero surface (staging redesign pilot): summaries and next actions only, never data/forms/transcripts. */
+  glass?: boolean
 }
 
 export function SectionCard({
@@ -54,10 +56,19 @@ export function SectionCard({
   children,
   className,
   padded = false,
+  glass = false,
 }: SectionCardProps) {
   const hasHeader = eyebrow || title || subtitle || actions
   return (
-    <div className={clsx('rounded-xl border overflow-hidden shadow-md shadow-black/20', BORDER[variant], className)}>
+    <div
+      className={clsx(
+        'overflow-hidden',
+        glass
+          ? clsx('glass rounded-2xl', variant === 'ai' && 'bg-gradient-to-br from-brand-500/15 to-transparent')
+          : clsx('rounded-xl border shadow-md shadow-black/20', BORDER[variant]),
+        className,
+      )}
+    >
       {hasHeader && (
         <div
           className={clsx(

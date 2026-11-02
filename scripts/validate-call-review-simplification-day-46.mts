@@ -128,7 +128,7 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   const firstLoad = between(page, "// Treat not-found AND unusable ids", "setErr(\"Call not found or no longer available.\")");
   t("U5-first-load-classifies-missing-forbidden-invalid", ["not_found", "404", "invalid id", "400", "403", "forbidden"].every((k) => firstLoad.includes(`msg.includes("${k}")`)) && /setCallMissing\(true\)/.test(firstLoad));
   t("U7-poll-loop-classifies-not-found", /const isNotFound = msg\.includes\("not_found"\) \|\| msg\.includes\("404"\);\s*if \(isNotFound\) \{\s*if \(!cancelled\) \{\s*setCallMissing\(true\)/.test(page));
-  t("U6-workspace-header-only-after-guard", page.indexOf("<header className=\"space-y-3\">") > guard && guard > 0);
+  t("U6-workspace-header-only-after-guard", page.indexOf("<header className=\"glass space-y-3 rounded-2xl px-5 py-4\">") > guard && guard > 0);
 
   // N — destinations
   const navIds = [...between(main, '<nav\n          aria-label="Call review sections"', "</nav>").matchAll(/\{ id: "(\w+)", label: "(\w+)" \}/g)].map((m) => m[1]);

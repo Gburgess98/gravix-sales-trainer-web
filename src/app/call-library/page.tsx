@@ -735,6 +735,7 @@ function CallLibraryPageInner() {
       {/* Header — Day 45: Calls and AI Sparring read as distinct destinations even
           though they share a route; one primary action (Upload call), search secondary. */}
       <PageHeader
+        glass
         title={tab === "sparring" ? "AI Sparring" : "Calls"}
         subtitle={
           tab === "sparring"

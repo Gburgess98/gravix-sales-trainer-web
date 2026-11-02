@@ -29,6 +29,8 @@ interface StatCardProps {
   variant?: StatVariant
   valueClass?: string
   size?: 'sm' | 'md'
+  /** Translucent summary metric (staging redesign pilot). Status variants keep their tint. */
+  glass?: boolean
   className?: string
 }
 
@@ -39,11 +41,22 @@ export function StatCard({
   variant = 'default',
   valueClass,
   size = 'md',
+  glass = false,
   className,
 }: StatCardProps) {
   return (
-    <div className={clsx('rounded-xl border px-4 py-3 shadow-md shadow-black/20', BORDER_CLASS[variant], className)}>
-      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">{label}</div>
+    <div
+      className={clsx(
+        'rounded-xl px-4 py-3',
+        glass && variant === 'default'
+          ? 'glass'
+          : clsx('border shadow-md shadow-black/20', BORDER_CLASS[variant], glass && 'backdrop-blur-md'),
+        className,
+      )}
+    >
+      <div className={clsx('uppercase tracking-[0.12em]', glass ? 'text-[11px] text-neutral-400' : 'text-[10px] text-neutral-500')}>
+        {label}
+      </div>
       <div
         className={clsx(
           'tabular-nums font-semibold',
@@ -54,7 +67,7 @@ export function StatCard({
         {value}
       </div>
       {subtext && (
-        <div className="mt-0.5 text-[10px] text-neutral-500">{subtext}</div>
+        <div className={clsx('mt-0.5', glass ? 'text-xs text-neutral-400' : 'text-[10px] text-neutral-500')}>{subtext}</div>
       )}
     </div>
   )

@@ -64,6 +64,56 @@
   --color-danger-600: var(--color-red-600);
 }
 
+/* Staging redesign — surface tokens. Glass is for chrome and summaries only (page header,
+   summary metrics, next-action hero, sticky nav). Anything people READ or WORK in —
+   transcripts, coaching feedback, scoring, tables, forms — stays on the opaque content
+   surface (`surface-content`, today's neutral-950 card). Never put text smaller than
+   `text-xs` or lighter than neutral-400 on glass (neutral-500 is ~4.2:1: below AA). */
+:root {
+  --surface-glass: rgb(255 255 255 / 0.045);
+  --surface-glass-strong: rgb(255 255 255 / 0.07);
+  --surface-glass-border: rgb(255 255 255 / 0.09);
+  --surface-glass-blur: 16px;
+  --surface-content: #0a0a0a;
+  --surface-content-border: rgb(38 38 38 / 0.7);
+  --shadow-glass: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+}
+
+@utility glass {
+  background-color: var(--surface-glass);
+  border: 1px solid var(--surface-glass-border);
+  box-shadow: var(--shadow-glass);
+  -webkit-backdrop-filter: blur(var(--surface-glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--surface-glass-blur)) saturate(140%);
+}
+
+@utility surface-content {
+  background-color: var(--surface-content);
+  border: 1px solid var(--surface-content-border);
+}
+
+/* No blur support, or the user asked for less transparency: fall back to a solid panel. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background-color: #121217; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background-color: #121217;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

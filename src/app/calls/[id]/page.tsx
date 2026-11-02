@@ -1643,22 +1643,22 @@ export default function CallPage() {
   return (
     <AuthGate>
       <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6">
-        <header className="space-y-3">
+        <header className="glass space-y-3 rounded-2xl px-5 py-4">
           <Link
             href="/call-library"
-            className="inline-flex text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+            className="inline-flex text-xs text-neutral-400 transition-colors hover:text-neutral-200"
           >
             ← Call Library
           </Link>
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
             <div className="min-w-0 flex-1 basis-[28rem]">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 mb-1">Call review</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400 mb-1">Call review</div>
               <h1 className="text-2xl font-semibold tracking-tight break-words flex flex-wrap items-center gap-x-3 gap-y-1">
                 {loadingCall ? (
                   <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
                 ) : (
                   <>
-                    {callDisplayTitle}
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{callDisplayTitle}</span>
                     {displayOverall != null ? (
                       <ScorePill score={displayOverall} />
                     ) : (
