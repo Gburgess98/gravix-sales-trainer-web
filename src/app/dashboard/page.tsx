@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
 import { AiInsightCard, AiInsightItem } from '@/components/ui/ai-insight-card'
@@ -13,59 +12,21 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Disclosure } from '@/components/ui/disclosure'
 import { PageHeader } from '@/components/layout/page-header'
 import { buttonClasses } from '@/components/ui/button'
+import {
+  TIER_COLORS,
+  trendDelta,
+  trendDirection,
+  xpLevel,
+  type Assignment,
+  type DailyFeed,
+  type RepMe,
+  type AssignmentSummary,
+  type TrendPoint,
+} from '@/lib/progress-model'
 
 // ── Chart imports (dynamic — avoid SSR hydration issues) ─────────────────────
-const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false })
-const LineChart = dynamic(() => import('recharts').then(m => m.LineChart), { ssr: false })
-const Line = dynamic(() => import('recharts').then(m => m.Line), { ssr: false })
-const XAxis = dynamic(() => import('recharts').then(m => m.XAxis), { ssr: false })
-const YAxis = dynamic(() => import('recharts').then(m => m.YAxis), { ssr: false })
-const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip), { ssr: false })
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type RepMe = {
-  id: string
-  name?: string | null
-  tier?: string | null
-  xp_total?: number | null
-  xp_today?: number | null
-}
-
-type Assignment = {
-  id: string
-  title?: string | null
-  type?: string | null
-  status: 'open' | 'assigned' | 'completed' | string
-  due_at?: string | null
-  completed_at?: string | null
-  created_at?: string | null
-  meta?: Record<string, any> | null
-}
-
-type AssignmentSummary = {
-  open_count?: number
-  completed_count?: number
-  overdue_count?: number
-  due_today_count?: number
-  today_focus?: Assignment | null
-}
-
-type TrendPoint = { date: string; voice_score: number }
-
-type DailyFeed = {
-  coaching_summary?: string | null
-  weakest_area?: { category?: string; score?: number } | null
-  strongest_area?: { category?: string; score?: number } | null
-  momentum_insight?: string | null
-  momentum_delta?: number | null
-  regression_warnings?: string[]
-  recommended_replay?: { call_id?: string; score?: number } | null
-  recommended_drill?: string | null
-  coaching_urgency?: 'low' | 'medium' | 'high' | null
-  ai_motivation_message?: string | null
-  todays_focus?: string | null
-}
 
 type BriefingData = {
   voiceScore: number | null
@@ -84,91 +45,7 @@ type BriefingData = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SKILL_CATEGORIES = [
-  { key: 'discovery', label: 'Discovery' },
-  { key: 'objection_handling', label: 'Objection Handling' },
-  { key: 'closing', label: 'Closing' },
-  { key: 'confidence', label: 'Confidence' },
-]
-
-const TIER_COLORS: Record<string, string> = {
-  bronze: 'text-orange-300',
-  silver: 'text-slate-300',
-  gold: 'text-yellow-300',
-  platinum: 'text-indigo-300',
-  diamond: 'text-indigo-200',
-}
-
-// Performance-level names per progress level — purely cosmetic, no backend change needed
-const RANK_NAMES: string[] = [
-  'Foundation',
-  'Developing I', 'Developing II', 'Developing III',
-  'Emerging I', 'Emerging II', 'Emerging III',
-  'Established I', 'Established II', 'Established III',
-  'Advanced I', 'Advanced II', 'Advanced III',
-  'Expert I', 'Expert II', 'Expert III',
-  'Principal',
-]
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function ymdLocal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function computeStreak(assignments: Assignment[]): number {
-  const days = new Set<string>()
-  for (const a of assignments) {
-    if (!a.completed_at) continue
-    const t = new Date(a.completed_at)
-    if (!Number.isNaN(t.getTime())) days.add(ymdLocal(t))
-  }
-  let streak = 0
-  const cur = new Date()
-  while (days.has(ymdLocal(cur))) {
-    streak++
-    cur.setDate(cur.getDate() - 1)
-  }
-  return streak
-}
-
-function xpLevel(xp: number): { level: number; pct: number; next: number; rank: string; nextRank: string } {
-  const level = Math.floor(xp / 100)
-  const pct = xp % 100
-  const rank = RANK_NAMES[Math.min(level, RANK_NAMES.length - 1)]
-  const nextRank = RANK_NAMES[Math.min(level + 1, RANK_NAMES.length - 1)]
-  return { level, pct, next: (level + 1) * 100, rank, nextRank }
-}
-
-function trendDirection(trend: TrendPoint[]): 'improving' | 'declining' | 'stable' {
-  if (trend.length < 4) return 'stable'
-  const recent = trend.slice(-3).reduce((s, p) => s + p.voice_score, 0) / 3
-  const earlier = trend.slice(-7, -4).reduce((s, p) => s + p.voice_score, 0) / 3
-  if (recent - earlier > 3) return 'improving'
-  if (earlier - recent > 3) return 'declining'
-  return 'stable'
-}
-
-function trendDelta(trend: TrendPoint[]): number | null {
-  if (trend.length < 4) return null
-  const recent = trend.slice(-3).reduce((s, p) => s + p.voice_score, 0) / 3
-  const earlier = trend.slice(-7, -4).reduce((s, p) => s + p.voice_score, 0) / 3
-  return Math.round(recent - earlier)
-}
-
-function skillStatus(key: string, feed: DailyFeed | null): 'improving' | 'stable' | 'attention' {
-  if (!feed) return 'stable'
-  const weakest = String(feed.weakest_area?.category ?? '').toLowerCase().replace(/\s+/g, '_')
-  const keyRoot = key.replace('_handling', '').split('_')[0]
-  if (weakest && weakest.includes(keyRoot)) return 'attention'
-  const warnings = (feed.regression_warnings ?? []).join(' ').toLowerCase()
-  const keyword = key.replace('_handling', '').replace('_', ' ')
-  if (warnings.includes(keyword)) return 'attention'
-  const strongest = String(feed.strongest_area?.category ?? '').toLowerCase().replace(/\s+/g, '_')
-  if (strongest && strongest.includes(keyRoot)) return 'improving'
-  if ((feed.momentum_delta ?? 0) > 0) return 'improving'
-  return 'stable'
-}
 
 function computeBriefingData(
   me: RepMe | null,
@@ -279,11 +156,9 @@ export default function DashboardPage() {
 
   // ── Derived values ────────────────────────────────────────────────────────────
 
-  const streak = useMemo(() => computeStreak(assignments), [assignments])
   const openAssignments = useMemo(() =>
     summary?.open_count ?? assignments.filter(a => a.status === 'open' || a.status === 'assigned').length
   , [summary, assignments])
-  const todayXp = useMemo(() => Number(me?.xp_today ?? 0), [me])
   const totalXp = useMemo(() => Number(me?.xp_total ?? 0), [me])
   const xpInfo = useMemo(() => xpLevel(totalXp), [totalXp])
   const tierKey = String(me?.tier ?? '').toLowerCase()
@@ -487,92 +362,11 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Skill momentum + performance ── */}
-      <div className="grid gap-4 xl:grid-cols-2">
-        {/* Skill Momentum Board */}
-        <SectionCard title="Skill Momentum" subtitle="Coaching signals from recent calls.">
-          <div className="px-5 py-4 space-y-4">
-            {SKILL_CATEGORIES.map(({ key, label }) => {
-              const noData = !feed && trend.length === 0
-              const status = noData ? 'stable' : skillStatus(key, feed)
-              const isAttention = status === 'attention'
-              const isImproving = status === 'improving'
-              const arrow = noData ? '—' : isAttention ? '↓' : isImproving ? '↑' : '→'
-              const arrowCls = noData ? 'text-neutral-700' : isAttention ? 'text-amber-400' : isImproving ? 'text-emerald-400' : 'text-neutral-500'
-              const statusLabel = noData ? 'Awaiting data' : isAttention ? 'Needs attention' : isImproving ? 'Improving' : 'Stable'
-              const statusCls = noData ? 'text-neutral-600' : isAttention ? 'text-amber-400' : isImproving ? 'text-emerald-400' : 'text-neutral-500'
-
-              return (
-                <div key={key} className="flex items-center justify-between gap-2 border-b border-neutral-800/50 pb-2.5 last:border-b-0 last:pb-0">
-                  <span className={`text-sm ${noData ? 'text-neutral-500' : 'text-neutral-200'}`}>{label}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-sm font-semibold leading-none ${arrowCls}`}>{arrow}</span>
-                    <span className={`text-xs font-medium ${statusCls}`}>{statusLabel}</span>
-                  </div>
-                </div>
-              )
-            })}
-            {!feed && trend.length === 0 && (
-              <p className="text-[11px] text-neutral-600 border-t border-neutral-800/50 pt-3">
-                Trend data appears after more scored calls.
-              </p>
-            )}
-            {feed?.momentum_insight && (
-              <p className="text-[11px] text-neutral-500 italic border-t border-neutral-800 pt-3">
-                &quot;{feed.momentum_insight}&quot;
-              </p>
-            )}
-          </div>
-        </SectionCard>
-      {/* chart sits beside skill momentum on wide screens */}
-      {/* ── Section 3 (Progress): Performance Progress chart ── */}
-      <SectionCard
-        title="Performance Progress"
-        subtitle="Voice score — last 30 days"
-        actions={
-          <>
-            {latestAvg !== null && (
-              <div className="text-right">
-                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Latest avg</div>
-                <div className="text-lg font-semibold text-white">{Math.round(latestAvg)}</div>
-              </div>
-            )}
-            {trend.length > 0 && (
-              <div className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                briefing.voiceTrend === 'improving' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' :
-                briefing.voiceTrend === 'declining' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' :
-                'border-neutral-700 bg-neutral-900 text-neutral-400'
-              }`}>
-                {briefing.voiceTrend === 'improving' ? '↑ Improving' : briefing.voiceTrend === 'declining' ? '↓ Declining' : '→ Stable'}
-              </div>
-            )}
-          </>
-        }
-      >
-        <div className="px-5 pb-4 pt-2">
-          {trend.length > 0 ? (
-            <div className="h-36">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend}>
-                  <XAxis dataKey="date" stroke="#404040" tick={{ fontSize: 9 }} tickLine={false} />
-                  <YAxis domain={[40, 100]} stroke="#404040" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={28} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #262626', borderRadius: 8, fontSize: 11 }}
-                    labelStyle={{ color: '#737373' }}
-                  />
-                  <Line type="monotone" dataKey="voice_score" stroke="#818cf8" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: '#818cf8', strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-36 flex flex-col items-center justify-center gap-2 border border-dashed border-neutral-800 rounded-lg">
-              <div className="text-sm text-neutral-600">Awaiting first scored call</div>
-              <Link href="/upload" className="text-xs text-indigo-300 hover:text-indigo-200 transition-colors">Upload a call →</Link>
-            </div>
-          )}
-        </div>
-      </SectionCard>
-
+      {/* Progress detail (trend chart, skill breakdown, development level) now lives on /progress. */}
+      <div>
+        <Link href="/progress" className={buttonClasses('ghost', 'sm')}>
+          View full progress →
+        </Link>
       </div>
 
       {/* ── Secondary detail: progressive disclosure (collapsed by default) ── */}
@@ -610,61 +404,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Section 6: Development Progress ── */}
-      <SectionCard title="Development Progress">
-        {totalXp > 0 ? (
-          <div className="px-5 py-4 space-y-4">
-            {/* Level + progress summary */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Performance Level</div>
-                <div className="text-lg font-semibold text-white">{xpInfo.rank}</div>
-              </div>
-              <div className="text-right space-y-0.5">
-                <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Progress Points</div>
-                <div className="text-lg font-semibold text-white">{totalXp.toLocaleString()}</div>
-              </div>
-              {streak > 0 && (
-                <div className="text-right space-y-0.5">
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-neutral-500">Streak</div>
-                  <div className="text-lg font-semibold text-white">{streak}</div>
-                </div>
-              )}
-            </div>
 
-            {/* Progress bar to next level */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-neutral-500">
-                <span>Level {xpInfo.level} — {xpInfo.rank}</span>
-                <span className="text-neutral-400">Next level: {xpInfo.nextRank}</span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-indigo-500 transition-all"
-                  style={{ width: `${xpInfo.pct}%` }}
-                />
-              </div>
-              <div className="text-xs text-neutral-600">{xpInfo.pct} / 100 points — {100 - xpInfo.pct} to next level</div>
-            </div>
-
-            {/* Operating level ── real backend tier, presentation only */}
-            {me?.tier && (
-              <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs text-neutral-400">
-                <span className="text-neutral-300 font-medium">Operating level: </span>
-                <span className={TIER_COLORS[tierKey] ?? 'text-neutral-300'}>{me.tier}</span>
-                {todayXp > 0 && <span className="ml-3 text-neutral-400">+{todayXp} points today</span>}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="px-4 py-5">
-            <EmptyState
-              message="No progress recorded yet"
-              sub="Complete assignments and calls to build your performance level and reach your next milestone."
-            />
-          </div>
-        )}
-      </SectionCard>
 
       </Disclosure>
 

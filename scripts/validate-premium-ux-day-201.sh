@@ -16,7 +16,10 @@ set -u
 WEB_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AUDIT="$WEB_ROOT/PREMIUM_UX_AUDIT.md"
 PKG="$WEB_ROOT/package.json"
-DASH="$WEB_ROOT/src/app/dashboard/page.tsx"
+# Staging redesign: Home keeps the summary; the trend chart, skill board and development level moved to
+# /progress (+ shared src/lib/progress-model.ts). Pins that describe that content read all three.
+DASH="$(mktemp)"
+cat "$WEB_ROOT/src/app/dashboard/page.tsx" "$WEB_ROOT/src/app/progress/page.tsx" "$WEB_ROOT/src/lib/progress-model.ts" > "$DASH" 2>/dev/null
 
 fail=0
 check() {

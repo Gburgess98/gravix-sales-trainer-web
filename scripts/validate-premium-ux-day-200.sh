@@ -17,7 +17,10 @@ AUDIT="$WEB_ROOT/PREMIUM_UX_AUDIT.md"
 SRC="$WEB_ROOT/src"
 ACCOUNTS="$SRC/app/crm/accounts/page.tsx"
 ACC_DETAIL="$SRC/app/crm/accounts/[id]/page.tsx"
-DASH="$SRC/app/dashboard/page.tsx"
+# Staging redesign: Home keeps the summary; the trend chart, skill board and development level moved to
+# /progress (+ shared src/lib/progress-model.ts). Pins that describe that content read all three.
+DASH="$(mktemp)"
+cat "$SRC/app/dashboard/page.tsx" "$SRC/app/progress/page.tsx" "$SRC/lib/progress-model.ts" > "$DASH" 2>/dev/null
 
 fail=0
 check() {

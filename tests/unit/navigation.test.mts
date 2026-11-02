@@ -38,6 +38,7 @@ test('rep primary nav is Home, Calls, Practice, Coaching (+ Upload Call utility)
     'Calls|/call-library',
     'Practice|/call-library?tab=sparring',
     'Coaching|/assignments',
+    'Progress|/progress',
     'Upload Call|/upload',
   ])
 })
@@ -60,6 +61,7 @@ test('manager sees Calls and Practice under More, not primary', () => {
   assert.ok(more.includes('Practice|/call-library?tab=sparring'))
   assert.ok(more.includes('My Dashboard|/dashboard'), 'rep dashboard stays reachable for managers')
   assert.ok(more.includes('My Assignments|/assignments'), 'own assignment queue stays reachable for managers')
+  assert.ok(more.includes('My Progress|/progress'), 'own progress stays reachable for managers')
 })
 
 test('never more than five destinations plus Upload Call, for any persona', () => {
@@ -149,6 +151,7 @@ test('active state: exactly one destination is active on each nav URL', () => {
     ['/coaching', '', '/coaching'],
     ['/coaching', 'tab=overview', '/coaching'],
     ['/assignments', '', '/assignments'],
+    ['/progress', '', '/progress'],
     ['/team', '', '/team'],
     ['/crm/analytics', '', '/crm/analytics'],
     ['/upload', '', '/upload'],

@@ -6,6 +6,7 @@ import {
   Users2,
   ClipboardList,
   ClipboardCheck,
+  TrendingUp,
   Swords,
   Brain,
   BarChart2,
@@ -51,6 +52,7 @@ export interface NavSection {
 // Everything else (login, auth, home) uses the legacy header.
 export const SHELL_PATHS = [
   '/dashboard',
+  '/progress',
   '/call-library',
   '/calls',
   '/crm',
@@ -79,7 +81,7 @@ export const navigation: NavSection[] = [
   // Staging redesign — five labelled destinations per role. Rep: Home, Calls, Practice,
   // Coaching. Manager: Overview, Team, Reviews, Assignments, Insights. Same hrefs and
   // role gates as before; only wording and primary/"More" placement differ by role.
-  // (Rep "Progress" waits for an approved route.)
+  // Rep Progress lives at /progress.
   {
     title: 'Workspace',
     items: [
@@ -98,6 +100,8 @@ export const navigation: NavSection[] = [
       // viewer's OWN queue, so it stays reachable for managers as "My Assignments" under More.
       { label: 'Assignments', href: '/coaching?tab=assignments', icon: ClipboardList, roles: ['manager'] },
       { label: 'Coaching', href: '/assignments', icon: ClipboardList, manager: { label: 'My Assignments', secondary: true } },
+      // Rep Progress: trend, skill breakdown, completed work. Managers keep it as "My Progress" under More.
+      { label: 'Progress', href: '/progress', icon: TrendingUp, manager: { label: 'My Progress', secondary: true } },
       { label: 'Insights', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
       // Lower-frequency destinations, listed under the labelled "More" group.
       { label: 'Accounts', href: '/crm/accounts', icon: Building2, secondary: true },

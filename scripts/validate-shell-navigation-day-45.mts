@@ -50,11 +50,11 @@ const PERSONAS: { name: string; isManager: boolean; tier?: string }[] = [
 const PINNED_HREFS = [
   "/dashboard", "/upload", "/call-library", "/crm/accounts", "/crm/manager/contacts", "/team", "/crm/manager",
   "/assignments", "/call-library?tab=sparring", "/coaching", "/crm/analytics", "/intelligence", "/admin/settings",
-  "/settings/profile", "/coaching?tab=review", "/coaching?tab=assignments", "/admin/partners", "/admin/companies", "/admin/users",
+  "/settings/profile", "/progress", "/coaching?tab=review", "/coaching?tab=assignments", "/admin/partners", "/admin/companies", "/admin/users",
 ].sort();
 // Staging redesign — five labelled destinations per role (+ Upload Call as a utility).
 const PRIMARY_BY_ROLE: Record<string, string[]> = {
-  rep: ["Home|/dashboard", "Calls|/call-library", "Practice|/call-library?tab=sparring", "Coaching|/assignments", "Upload Call|/upload"],
+  rep: ["Home|/dashboard", "Calls|/call-library", "Practice|/call-library?tab=sparring", "Coaching|/assignments", "Progress|/progress", "Upload Call|/upload"],
   manager: ["Overview|/coaching", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/coaching?tab=assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
 };
 
