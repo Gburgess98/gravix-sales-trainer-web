@@ -24,7 +24,7 @@ Owner of every production step: the operator (George). Claude does not deploy pr
 | Automated WCAG 2 A/AA + best-practice scan (axe-core), manager (15 screens) and rep (9 screens), desktop | ✅ 0 violations after fixes (see §5) |
 | Tablet (768) and mobile (375) layout: no horizontal overflow on checked screens | ✅ manager role |
 | Keyboard: skip link, sidebar order and focus rings, drawer Escape | ✅ |
-| **Rep-role verification** on local staging (Home, Calls, Practice, Coaching, Progress, Upload, Profile, call review): five-item nav exact, no manager items leak, axe 0 violations (WCAG 2 A/AA + best-practice), mobile drawer + no overflow | ✅ local staging, rep `SalesRep`. ⬜ repeat on the **hosted** staging deploy after push |
+| **Rep-role verification** on local staging (Home, Calls, Practice, Coaching, Progress, Upload, Profile, call review): five-item nav exact, no manager items leak, axe 0 violations (WCAG 2 A/AA + best-practice), mobile drawer + no overflow | ✅ local staging, rep `SalesRep`. ✅ **hosted staging** (deploy of `78e05b1`, 2026-11-02): direct `/dashboard` load, greeting + SalesRep chip, six-item nav, skip link, Progress, Calls, Practice, call review (single main, glass header, no blur in transcript), sidebar back/forward, mobile drawer + Escape, upload form fits 375px. ⬜ hosted **manager** pass |
 | **Usability test** with the people who found the current system confusing (brief §Phase 5) | ⬜ not done |
 | Screen-reader pass (VoiceOver/NVDA) and manual contrast review of the Call Review transcript with real data | ⬜ not done |
 | Rep and manager data-rich walkthrough (staging seed has almost no calls/scores) | ⬜ not done |
