@@ -10,9 +10,10 @@ import SparringStartButton from "@/components/SparringStartButton";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
-import { ScorePill } from "@/components/ui/status-badge";
 import { SectionCard, EmptyState, Button, buttonClasses } from "@/components/ui";
 import { formatCallDisplayTitle } from "@/lib/callDisplay";
+import { PageHead, GlassCard, Panel, Badge, dsButton, DataList, DataRow, EmptyPanel, ErrorPanel, LoadingRows, Segmented, SearchInput } from "@/components/ds";
+import { callState, scoreTone, formatCallDate, formatDuration } from "@/lib/ds-model";
 
 // Shape returned by /api/proxy/v1/calls/paged
 type CallItem = {
@@ -109,41 +110,9 @@ function buildCallsPagedUrl(params: {
   return `/api/proxy/v1/calls/paged?${searchParams.toString()}`;
 }
 
-function formatCallDuration(call: CallItem): string {
-  if (call.duration_ms && call.duration_ms > 0) {
-    const totalSeconds = Math.floor(call.duration_ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    if (minutes === 0) return `${seconds}s`;
-    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
-  }
-
-  if (call.duration_sec && call.duration_sec > 0) {
-    const minutes = Math.floor(call.duration_sec / 60);
-    const seconds = call.duration_sec % 60;
-    if (minutes === 0) return `${seconds}s`;
-    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
-  }
-
-  return "—";
-}
-
-function summarySnippet(summary?: string | null, max = 120): string {
-  if (!summary) return "No summary yet.";
-  if (summary.length <= max) return summary;
-  return summary.slice(0, max - 1) + "…";
-}
 
 
-function statusDotColour(status: string) {
-  const s = status.toLowerCase();
-  if (s === "failed" || s === "error") return "bg-red-400";
-  if (s === "processing" || s === "queued" || s === "running")
-    return "bg-amber-300";
-  if (s === "scored" || s === "processed" || s === "completed")
-    return "bg-emerald-400";
-  return "bg-neutral-500";
-}
+
 
 function buildAssignmentsByTargetUrl(targetIds: string[], type = "call_review") {
   const searchParams = new URLSearchParams();
@@ -174,13 +143,6 @@ function callAssignmentBadge(call: CallItem): { label: string; className: string
 }
 
 
-function displayType(type?: string | null): string {
-  if (!type) return "Live";
-  const t = type.toLowerCase();
-  if (t === "upload") return "Upload";
-  if (t === "sparring") return "Sparring";
-  return "Live";
-}
 
 function difficultyLabel(value?: string | null) {
   if (!value) return "Normal";
@@ -228,7 +190,6 @@ function CallLibraryPageInner() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sparPersona, setSparPersona] = useState<string>("price_sensitive");
   const [sparDifficulty, setSparDifficulty] = useState<string>("normal");
-  const [expandedSummaries, setExpandedSummaries] = useState<Record<string, boolean>>({});
   const [callScope, setCallScope] = useState<CallScope>("mine");
   // Day 292 — company-call access is the API's authority, resolved PER CALLER.
   // Day 291 gated the toggle on the org policy alone (`everyone`), which wrongly
@@ -270,7 +231,7 @@ function CallLibraryPageInner() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
-  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [, setAssignmentsLoading] = useState(false);
   const callsRef = useRef<CallItem[]>([]);
   useEffect(() => {
     callsRef.current = calls;
@@ -615,12 +576,6 @@ function CallLibraryPageInner() {
     }
   }
 
-  function toggleSummary(callId: string) {
-    setExpandedSummaries((prev) => ({
-      ...prev,
-      [callId]: !prev[callId],
-    }));
-  }
 
   // Apply status/score + rep + tag filters to live calls
   const filteredCalls = calls.filter((c) => {
@@ -732,8 +687,14 @@ function CallLibraryPageInner() {
 
   return (
     <PageContainer>
-      {/* Header — Day 45: Calls and AI Sparring read as distinct destinations even
-          though they share a route; one primary action (Upload call), search secondary. */}
+      {/* Header — glass pilot: one title, one primary action (Upload call). Practice keeps its own header. */}
+      {tab === "live" ? (
+        <PageHead
+          title="Calls"
+          subtitle="Find a scored call, review coaching, or upload a new recording."
+          actions={<Link href="/upload" className={dsButton("primary", "md")}>Upload call</Link>}
+        />
+      ) : (
       <PageHeader
         glass
         title={tab === "sparring" ? "Practice" : "Calls"}
@@ -765,6 +726,7 @@ function CallLibraryPageInner() {
           </>
         }
       />
+      )}
 
       {/* Tabs — Day 199: shared WorkspaceTabs (indigo active) to match /coaching */}
       <WorkspaceTabs<Tab>
@@ -777,104 +739,79 @@ function CallLibraryPageInner() {
         onChange={handleTabChange}
       />
 
-      {/* Filters — Day 45: scope + status stay visible; the rest sits behind one
-          "Filters" disclosure (all existing controls and state preserved). */}
+      {/* Filters — glass pilot: search + status + sort stay visible; reps/score/tags sit behind one "More filters" disclosure. */}
       {tab === "live" && (
-        <div className="space-y-3 text-xs">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Call status">
-              {[
-                { id: "all", label: "All calls" },
-                { id: "scored", label: "Scored" },
-                { id: "processing", label: "Processing" },
-                { id: "failed", label: "Failed" },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  aria-pressed={statusFilter === opt.id}
-                  onClick={() => setStatusFilter(opt.id as StatusFilter)}
-                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${statusFilter === opt.id
-                    ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
-                    : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                    }`}
-                >
-                  <span>{opt.label}</span>
-                </button>
-              ))}
+        <GlassCard as="div" className="!p-4 space-y-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="md:w-72">
+              <SearchInput label="Search calls" placeholder="Search calls" value={search} onChange={setSearch} />
             </div>
-
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Call scope">
-              <span className="text-neutral-500">View</span>
-              {[
-                { id: "mine", label: "My calls" },
-                { id: "company", label: "Company calls", disabled: companyAccess !== "allowed" },
-              ].map((opt) => {
-                const isDisabled = (opt as any).disabled;
-                const active = callScope === opt.id;
-
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={isDisabled}
-                    aria-pressed={active}
-                    onClick={() => {
-                      if (isDisabled) return;
-                      setCallScope(opt.id as CallScope);
-                    }}
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 transition ${
-                      active
-                        ? "border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200"
-                        : isDisabled
-                        ? "border-neutral-700 bg-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                        : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-                    }`}
-                  >
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
+            <Segmented
+              label="Call status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: "All" },
+                { value: "scored", label: "Scored" },
+                { value: "processing", label: "Processing" },
+                { value: "failed", label: "Failed" },
+              ]}
+            />
+            <div className="flex items-center gap-2 md:ml-auto">
+              {companyAccess === "allowed" && (
+                <Segmented
+                  label="Call scope"
+                  value={callScope}
+                  onChange={setCallScope}
+                  options={[
+                    { value: "mine", label: "My calls" },
+                    { value: "company", label: "Company" },
+                  ]}
+                />
+              )}
+              <select
+                aria-label="Sort calls"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+                className="ds-focus rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-panel)] px-2.5 py-2 text-sm text-[var(--ds-text)]"
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="scoreHigh">Highest score</option>
+                <option value="scoreLow">Lowest score</option>
+                <option value="durationHigh">Longest</option>
+                <option value="durationLow">Shortest</option>
+              </select>
             </div>
           </div>
 
           {companyAccess === "managers" && (
-            <div className="text-[11px] text-amber-400">
-              Company calls are restricted to managers.
-            </div>
+            <p className="text-xs text-[var(--ds-text-3)]">Company calls are restricted to managers.</p>
           )}
           {companyAccess === "disabled" && (
-            <div className="text-[11px] text-red-400">
-              Company call visibility is disabled.
-            </div>
+            <p className="text-xs text-[var(--ds-text-3)]">Company call visibility is disabled.</p>
           )}
           {companyAccessError && (
-            <div className="flex items-center gap-2 text-[11px] text-neutral-400">
-              <span>Couldn’t confirm company-call access — showing your calls only.</span>
-              <button
-                type="button"
-                onClick={() => void loadCompanyAccess()}
-                className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
-              >
-                Retry
-              </button>
-            </div>
+            <p className="flex items-center gap-2 text-xs text-[var(--ds-text-3)]">
+              Couldn’t confirm company-call access — showing your calls only.
+              <button type="button" onClick={() => void loadCompanyAccess()} className={dsButton("quiet", "sm")}>Retry</button>
+            </p>
           )}
 
-          <details className="group rounded-lg border border-neutral-800 bg-neutral-950">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2.5 text-neutral-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 [&::-webkit-details-marker]:hidden">
+          <details className="group border-t border-[var(--ds-border)] pt-3">
+            <summary className="ds-focus flex cursor-pointer list-none items-center justify-between gap-3 rounded-md text-sm text-[var(--ds-text-2)] hover:text-[var(--ds-text)] [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
-                <span className="font-medium">Filters</span>
+                <span className="font-medium">More filters</span>
                 {activeFilterCount > 0 && (
                   <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-200 tabular-nums">
                     {activeFilterCount} active
                   </span>
                 )}
-                <span className="text-neutral-500">Reps, score, tags</span>
+                <span className="text-[var(--ds-text-3)]">Reps, score, tags</span>
               </span>
               <span aria-hidden className="text-neutral-500 transition-transform group-open:rotate-180">▾</span>
             </summary>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-neutral-800 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-3 text-xs">
               {/* Rep multi-select */}
               <div className="relative">
                 <details className="group">
@@ -1009,182 +946,83 @@ function CallLibraryPageInner() {
               </button>
             </div>
           </details>
-        </div>
+        </GlassCard>
       )}
 
-      {/* LIVE CALLS */}
+      {/* LIVE CALLS — rows, not cards: title, date · duration, status, score; whole row opens the review. */}
       {tab === "live" && (
-        <SectionCard
-          title="Latest analysed calls"
-          subtitle={assignmentsLoading ? "Checking assignments…" : undefined}
-          actions={
-            <div className="flex items-center gap-2 text-xs text-neutral-400">
-              <span>Sort by</span>
-              <select
-                aria-label="Sort calls"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortBy)}
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
-              >
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
-                <option value="scoreHigh">Highest score</option>
-                <option value="scoreLow">Lowest score</option>
-                <option value="durationHigh">Longest duration</option>
-                <option value="durationLow">Shortest duration</option>
-              </select>
-            </div>
-          }
-        >
-
+        <Panel>
           {debouncedSearch && !loading && !error && (
-            <div className="px-4 pt-2 text-xs text-neutral-500">
-              Showing {sortedCalls.length} result
-              {sortedCalls.length === 1 ? "" : "s"} for “{debouncedSearch}”
-            </div>
+            <p className="border-b border-[var(--ds-border)] px-5 py-3 text-sm text-[var(--ds-text-3)]">
+              {sortedCalls.length} result{sortedCalls.length === 1 ? "" : "s"} for “{debouncedSearch}”
+            </p>
           )}
 
-          {loading && (
-            <div className="px-4 py-6 text-sm text-neutral-500">
-              Loading calls…
-            </div>
-          )}
+          {loading && <LoadingRows rows={6} label="Loading calls" />}
 
           {error && !loading && (
-            <div className="px-4 py-6 text-sm text-red-400">{error}</div>
+            <ErrorPanel title="Couldn’t load your calls" body="Check your connection and try again." onRetry={() => window.location.reload()} />
           )}
 
           {!loading && !error && sortedCalls.length === 0 && (
             calls.length === 0 ? (
-              <EmptyState
-                className="py-10"
-                message="No calls in your library yet."
-                sub="Upload a recording or run a live call to start building your training library."
-                action={{ label: "Upload a call", href: "/upload" }}
+              <EmptyPanel
+                title="No calls yet"
+                body="Upload a recording and you’ll get a scored breakdown with coaching points."
+                action={<Link href="/upload" className={dsButton("primary", "md")}>Upload call</Link>}
               />
             ) : (
-              <EmptyState
-                className="py-10"
-                message={
-                  debouncedSearch
-                    ? "No calls match this search yet."
-                    : "No calls match this filter."
-                }
-                sub="Try widening the score range or resetting the filters above."
+              <EmptyPanel
+                title={debouncedSearch ? "No calls match this search" : "No calls match these filters"}
+                body="Try a different search or clear the filters."
               />
             )
           )}
 
           {!loading && !error && sortedCalls.length > 0 && (
             <>
-              <div className="divide-y divide-neutral-800">
+              <DataList label="Calls">
                 {sortedCalls.map((c) => {
-                  const score =
-                    typeof c.score_overall === "number"
-                      ? Math.round(c.score_overall)
-                      : null;
-                  const created = new Date(c.created_at).toLocaleString();
-                  const durationLabel = formatCallDuration(c);
-                  const badge = callAssignmentBadge(c);
-                  const isExpanded = !!expandedSummaries[c.id];
-                  const hasLongSummary = !!c.summary && c.summary.length > 120;
-                  const snippet = isExpanded ? (c.summary || "No summary yet.") : summarySnippet(c.summary);
-
+                  const st = callState(c.status);
+                  const score = typeof c.score_overall === "number" ? Math.round(c.score_overall) : null;
+                  const meta = [
+                    callScope === "company" && c.rep_name ? c.rep_name : null,
+                    formatCallDate(c.created_at),
+                    formatDuration(c.duration_ms, c.duration_sec),
+                  ].filter(Boolean).join(" · ");
                   return (
-                    <div
+                    <DataRow
                       key={c.id}
-                      className="px-4 py-3 flex items-center justify-between gap-4 transition-colors hover:bg-neutral-900/40"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="text-sm text-neutral-100 truncate">
-                            {formatCallDisplayTitle({ title: c.filename, repName: c.rep_name })}
-                          </div>
-                          <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                            {displayType(c.type)}
-                          </span>
-                          {badge && (
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${badge.className}`}
-                            >
-                              {badge.label}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          {c.rep_name ? c.rep_name : "Unknown rep"} • {created}
-                          {durationLabel && <> • {durationLabel}</>}
-                        </div>
-                        <div className={`mt-1 text-xs text-neutral-400 ${isExpanded ? "" : "line-clamp-2"}`}>
-                          {snippet}
-                        </div>
-                        {hasLongSummary && (
-                          <button
-                            type="button"
-                            onClick={() => toggleSummary(c.id)}
-                            className="mt-1 text-[11px] text-neutral-300 underline hover:text-white"
-                          >
-                            {isExpanded ? "Show less" : "Show more"}
-                          </button>
-                        )}
-                        {Array.isArray(c.tags) && c.tags.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {c.tags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[10px] text-neutral-300"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex h-2 w-2 rounded-full ${statusDotColour(
-                              c.status
-                            )}`}
-                          />
-                          <span className="text-xs text-neutral-500">
-                            {c.status}
-                          </span>
-                        </div>
-                        <ScorePill score={score} />
-                        <Link
-                          href={`/calls/${c.id}`}
-                          className={buttonClasses("secondary", "sm", "whitespace-nowrap")}
-                        >
-                          Open
-                        </Link>
-                      </div>
-                    </div>
+                      href={`/calls/${c.id}`}
+                      title={formatCallDisplayTitle({ title: c.filename, repName: c.rep_name })}
+                      meta={meta}
+                      trailing={
+                        <>
+                          {st.kind !== "scored" && <Badge tone={st.tone}>{st.label}</Badge>}
+                          {st.kind === "scored" && callAssignmentBadge(c) && <Badge tone="info">{callAssignmentBadge(c)!.label}</Badge>}
+                          {st.kind === "scored" && <Badge tone={scoreTone(score)}>{score ?? "—"}</Badge>}
+                          <span aria-hidden className="text-[var(--ds-text-3)]">›</span>
+                        </>
+                      }
+                    />
                   );
                 })}
-              </div>
+              </DataList>
 
-              {/* Load more footer */}
-              <div className="px-4 py-3 border-t border-neutral-800 flex items-center justify-between">
-                {moreError && (
-                  <span className="text-xs text-red-300">{moreError}</span>
-                )}
-                <Button
+              <div className="flex items-center justify-between border-t border-[var(--ds-border)] px-5 py-3">
+                {moreError && <span className="text-xs text-red-300">{moreError}</span>}
+                <button
+                  type="button"
                   onClick={loadMore}
                   disabled={!cursor || loadingMore}
-                  className="ml-auto"
+                  className={dsButton("secondary", "sm", "ml-auto")}
                 >
-                  {loadingMore
-                    ? "Loading…"
-                    : cursor
-                      ? "Load older calls"
-                      : "No more calls"}
-                </Button>
+                  {loadingMore ? "Loading…" : cursor ? "Load older calls" : "No more calls"}
+                </button>
               </div>
             </>
           )}
-        </SectionCard>
+        </Panel>
       )}
 
       {/* SPARRING TAB (LIVE WIRED DATA) */}

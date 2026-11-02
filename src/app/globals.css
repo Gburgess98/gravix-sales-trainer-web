@@ -39,12 +39,12 @@
   --color-neutral-500: #8f8f8f;
   --color-neutral-600: #828282;
 
-  /* brand → indigo (action / AI) */
-  --color-brand-200: var(--color-indigo-200);
-  --color-brand-300: var(--color-indigo-300);
-  --color-brand-400: var(--color-indigo-400);
-  --color-brand-500: var(--color-indigo-500);
-  --color-brand-600: var(--color-indigo-600);
+  /* brand → blue (action / AI). Glass system v2: one primary blue accent app-wide; violet stays a rare secondary. */
+  --color-brand-200: var(--color-blue-200);
+  --color-brand-300: var(--color-blue-300);
+  --color-brand-400: var(--color-blue-400);
+  --color-brand-500: var(--color-blue-500);
+  --color-brand-600: var(--color-blue-600);
 
   /* accent → cyan (sparing highlight / medium urgency) */
   --color-accent-300: var(--color-cyan-300);
@@ -119,6 +119,77 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   Gravix design system v2 ("glass pilot"). Additive: nothing here changes a page until it opts in via
+   src/components/ds/*. Rules: glass for navigation, page headers, filters and summary cards ONLY;
+   every surface people read or work in (transcripts, forms, tables, detail) is the opaque `ds-panel`.
+   One primary accent (blue fill, cyan highlight), violet used sparingly, red/amber/green = status only.
+   Text tokens are contrast-tested in tests/unit/design-system.test.mts (AA on every surface).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --ds-bg: #070b13;
+  --ds-panel: #0d1422;
+  --ds-panel-raised: #121a2b;
+  --ds-border: rgb(148 163 184 / 0.14);
+  --ds-border-strong: rgb(148 163 184 / 0.26);
+  --ds-text: #eef2f9;
+  --ds-text-2: #b4bfd0;
+  --ds-text-3: #8b97ab;
+  --ds-primary: #2563eb;
+  --ds-primary-hover: #1d4ed8;
+  --ds-highlight: #67e8f9;
+  --ds-glass: rgb(255 255 255 / 0.04);
+  --ds-glass-border: rgb(255 255 255 / 0.09);
+  --ds-blur: 14px;
+  --ds-radius-card: 1rem;
+  --ds-radius-control: 0.625rem;
+  --ds-shadow-glass: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 10px 30px -20px rgb(0 0 0 / 0.65);
+  --ds-shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+/* Application background: deep navy with two very faint ambient washes. No imagery, no animation. */
+@utility ds-app-bg {
+  background-color: var(--ds-bg);
+  background-image:
+    radial-gradient(60rem 34rem at 10% -10%, rgb(56 189 248 / 0.065), transparent 62%),
+    radial-gradient(52rem 32rem at 100% 112%, rgb(139 92 246 / 0.045), transparent 62%);
+  background-attachment: fixed;
+}
+
+/* Translucent glass: navigation, page headers, filters, summary cards. */
+@utility ds-glass {
+  background-color: var(--ds-glass);
+  border: 1px solid var(--ds-glass-border);
+  box-shadow: var(--ds-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ds-blur)) saturate(130%);
+  backdrop-filter: blur(var(--ds-blur)) saturate(130%);
+}
+
+/* Opaque content surface: transcripts, forms, tables, detail. */
+@utility ds-panel {
+  background-color: var(--ds-panel);
+  border: 1px solid var(--ds-border);
+  box-shadow: var(--ds-shadow-panel);
+}
+
+@utility ds-focus {
+  &:focus-visible {
+    outline: 2px solid var(--ds-highlight);
+    outline-offset: 2px;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ds-glass { background-color: #101827; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ds-glass {
+    background-color: #101827;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

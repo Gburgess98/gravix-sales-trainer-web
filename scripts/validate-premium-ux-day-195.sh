@@ -35,10 +35,10 @@ grep -q 'scrollbar-width: thin' "$SRC/app/globals.css" 2>/dev/null
 check "thin scrollbars styled" $?
 
 # --- Depth model: shell background + ambient glow ---
-grep -q 'bg-\[#060609\]' "$SRC/components/shell/app-shell.tsx" 2>/dev/null
-check "shell base is near-black #060609" $?
-grep -q 'radial-gradient' "$SRC/components/shell/app-shell.tsx" 2>/dev/null
-check "shell has ambient radial glow" $?
+grep -q 'ds-app-bg' "$SRC/components/shell/app-shell.tsx" 2>/dev/null
+check "shell base is the deep-navy ds-app-bg (glass system v2; was near-black #060609)" $?
+grep -q 'radial-gradient' "$SRC/app/globals.css" 2>/dev/null
+check "shell has ambient radial glow (ds-app-bg utility in globals.css)" $?
 ! grep -q 'rgba(99,102,241,0.[2-9]' "$SRC/components/shell/app-shell.tsx" 2>/dev/null
 check "glow stays subtle (<0.2 alpha)" $?
 

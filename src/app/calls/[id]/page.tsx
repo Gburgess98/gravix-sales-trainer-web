@@ -21,6 +21,8 @@ import { ScoreV2Banner, StageCriteria, ObjectionMatches, ScoreV2Provenance } fro
 import { SectionCard, Button, buttonClasses, EmptyState } from "@/components/ui";
 import { Disclosure } from "@/components/ui/disclosure";
 import { planReviewActions, type ReviewActionId } from "@/lib/call-review-model";
+import { Badge } from "@/components/ds";
+import { callState, scoreTone, formatCallDate, coachingPriorities } from "@/lib/ds-model";
 
 import {
   listPins,
@@ -42,20 +44,8 @@ type Pin = {
 type Contact = { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; account_id?: string | null };
 type Account = { id: string; name?: string | null; domain?: string | null };
 
-function scoreColour(score: number) {
-  if (score >= 80) return "bg-green-600/20 text-green-400";
-  if (score >= 60) return "bg-amber-600/20 text-amber-300";
-  return "bg-red-600/20 text-red-300";
-}
 
 
-function ScorePill({ score, className = "" }: { score: number; className?: string }) {
-  return (
-    <span className={`inline-flex items-center rounded border px-2 py-0.5 text-sm ${scoreColour(score)} ${className}`}>
-      {score}/100
-    </span>
-  );
-}
 
 function ReviewTagChip({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -178,14 +168,6 @@ function formatCallDuration(meta: any): string {
   return "—";
 }
 
-function statusDotColour(status: string | undefined | null): string {
-  if (!status) return "bg-neutral-500";
-  const s = status.toLowerCase();
-  if (s === "failed" || s === "error") return "bg-red-400";
-  if (s === "processing" || s === "queued" || s === "running") return "bg-amber-300";
-  if (s === "scored" || s === "processed" || s === "completed") return "bg-emerald-400";
-  return "bg-neutral-500";
-}
 
 function renderTranscriptText(meta: any): string | null {
   const raw =
@@ -1378,7 +1360,7 @@ export default function CallPage() {
   // Track active section as user scrolls. The sections mount after the inner AuthGate
   // resolves, so retry briefly until they exist (a one-shot lookup at mount found none).
   useEffect(() => {
-    const ids = ['summary', 'review', 'transcript', 'player', 'crm', 'coach'];
+    const ids = ['summary', 'priorities', 'review', 'transcript', 'player', 'crm', 'coach'];
     let observers: (IntersectionObserver | null)[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
     let tries = 0;
@@ -1509,20 +1491,10 @@ export default function CallPage() {
     }),
     [rubricStages, scoreV2VM]
   );
-  const strongestStage = useMemo(
-    () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) > (a.score as number) ? b : a)) : null),
-    [scoredStages]
-  );
   const weakestStage = useMemo(
     () => (scoredStages.length ? scoredStages.reduce((a, b) => ((b.score as number) < (a.score as number) ? b : a)) : null),
     [scoredStages]
   );
-  // Day 216 — stages below target (70), weakest first: the "where points were lost" list.
-  const priorityStages = useMemo(
-    () => scoredStages.filter((s) => (s.score as number) < 70).sort((a, b) => (a.score as number) - (b.score as number)),
-    [scoredStages]
-  );
-
   function formatContactName(c: any): string | null {
     if (!c) return null;
     const first = String(c?.first_name ?? c?.firstName ?? "").trim();
@@ -1642,60 +1614,34 @@ export default function CallPage() {
 
   return (
     <AuthGate>
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6" data-review-shell>
-        <header className="glass space-y-3 rounded-2xl px-5 py-4">
+      <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-10 lg:py-12" data-review-shell>
+        <header className="space-y-4">
           <Link
             href="/call-library"
-            className="inline-flex text-xs text-neutral-400 transition-colors hover:text-neutral-200"
+            className="ds-focus inline-flex rounded text-sm text-[var(--ds-text-3)] transition-colors hover:text-[var(--ds-text)]"
           >
             ← Call Library
           </Link>
-          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-            <div className="min-w-0 flex-1 basis-[28rem]">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400 mb-1">Call review</div>
-              <h1 className="text-2xl font-semibold tracking-tight break-words flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+            <div className="min-w-0 flex-1 basis-[22rem]">
+              <h1 className="text-2xl font-semibold tracking-tight text-[var(--ds-text)] sm:text-3xl [overflow-wrap:anywhere]">
                 {loadingCall ? (
-                  <span className="inline-block h-6 w-48 rounded bg-white/10 animate-pulse" />
+                  <span className="inline-block h-6 w-48 animate-pulse rounded bg-white/10 motion-reduce:animate-none" />
                 ) : (
-                  <>
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{callDisplayTitle}</span>
-                    {displayOverall != null ? (
-                      <ScorePill score={displayOverall} />
-                    ) : (
-                      <span className="text-sm px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">—</span>
-                    )}
-                  </>
+                  callDisplayTitle
                 )}
               </h1>
-              {(trend && trend.length > 1) || (managerCheckDone && isManager && callMeta?.status === "scored" && (managerReviewed || coachingAssigned)) ? (
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  {trend && trend.length > 1 && (
-                    <div className="flex items-center gap-1 text-xs text-neutral-500">
-                      <span>Trend</span>
-                      <div className="text-emerald-400"><ScoreSparkline scores={trend} /></div>
-                    </div>
-                  )}
-                  {managerCheckDone && isManager && callMeta?.status === "scored" && (managerReviewed || coachingAssigned) && (
-                  <div className="flex flex-wrap items-center gap-1.5">
+              <p className="mt-1.5 text-sm text-[var(--ds-text-2)]">
+                {[callMeta?.rep_name, formatCallDate(callMeta?.created_at), durationLabel !== "—" ? durationLabel : null].filter(Boolean).join(" · ")}
+              </p>
+              {managerCheckDone && isManager && callMeta?.status === "scored" && (managerReviewed || coachingAssigned) && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   {managerReviewed && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                      Reviewed ✓
-                      {reviewedAt && (
-                        <span className="text-emerald-400/70 font-normal">
-                          {new Date(reviewedAt).toLocaleDateString("en-GB")}
-                        </span>
-                      )}
-                    </span>
+                    <Badge tone="good">Reviewed{reviewedAt ? ` · ${new Date(reviewedAt).toLocaleDateString("en-GB")}` : ""}</Badge>
                   )}
-                  {coachingAssigned && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                      Coaching assigned ✓
-                    </span>
-                  )}
-                  </div>
-                  )}
+                  {coachingAssigned && <Badge tone="good">Coaching assigned</Badge>}
                 </div>
-              ) : null}
+              )}
             </div>
 
             <div role="group" aria-label="Call actions" className="flex flex-wrap items-center gap-2">
@@ -1717,49 +1663,9 @@ export default function CallPage() {
           </div>
         </header>
 
-        {/* Section nav — sticky. Summary → Review → Transcript → Player read as the review;
-            CRM and Coach are linked-record panels, set apart and visually quieter. */}
-        <nav
-          aria-label="Call review sections"
-          className="sticky top-0 z-10 -mx-6 px-6 lg:-mx-8 lg:px-8 bg-[#060609]/90 backdrop-blur-md border-b border-neutral-800/80"
-        >
-          <div className="flex items-center gap-1 overflow-x-auto py-1.5">
-            {[
-              { id: "summary", label: "Summary" },
-              { id: "review", label: "Review" },
-              { id: "transcript", label: "Transcript" },
-              { id: "player", label: "Player" },
-              { id: "crm", label: "CRM" },
-              { id: "coach", label: "Coach" },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-current={activeSection === item.id ? "location" : undefined}
-                onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" })}
-                className={`min-h-9 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 ${
-                  item.id === "crm" ? "ml-2 border-l border-neutral-800 rounded-l-none pl-4 " : ""
-                }${
-                  activeSection === item.id
-                    ? "bg-indigo-500/20 text-indigo-200"
-                    : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-            <div className="ml-auto hidden items-center gap-1 pl-2 text-[11px] text-neutral-600 whitespace-nowrap shrink-0 md:flex">
-              <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">c</kbd>
-              <span className="mr-2">CRM</span>
-              <kbd className="px-1 py-0.5 border border-neutral-800 rounded text-[10px]">a</kbd>
-              <span>Coach</span>
-            </div>
-          </div>
-        </nav>
-
         {/* Processing status banner */}
         {callMeta && callMeta.status !== 'scored' && (
-          <div role="status" aria-live="polite" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-3 text-sm flex items-center gap-2">
+          <div role="status" aria-live="polite" className="ds-glass flex items-center gap-2 rounded-[var(--ds-radius-card)] px-5 py-3 text-sm text-[var(--ds-text)]">
             {callMeta.status !== "failed" && (
               <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-400 animate-pulse" />
             )}
@@ -1790,485 +1696,185 @@ export default function CallPage() {
         )}
 
 
-        {/* Call hero — outcome, metadata, score reasoning and next actions */}
-        <section id="summary" className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 sm:py-5 space-y-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            {/* Left: score + status + duration */}
-            <div className="flex items-center gap-4">
-              <div
-                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold tabular-nums ${
-                  displayOverall == null
-                    ? "border-neutral-700 text-neutral-400"
-                    : displayOverall >= 80
-                      ? "border-emerald-500/50 text-emerald-300"
-                      : displayOverall >= 60
-                        ? "border-amber-500/50 text-amber-300"
-                        : "border-red-500/50 text-red-300"
-                }`}
-              >
-                {displayOverall != null ? displayOverall : "—"}
-              </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex h-2 w-2 rounded-full ${statusDotColour(
-                      callMeta?.status
-                    )}`}
-                  />
-                  <span className="text-neutral-300 capitalize">
-                    {callMeta?.status ?? "queued"}
-                  </span>
-                </div>
-                <div className="text-neutral-400">
-                  Duration:{" "}
-                  <span className="text-neutral-100">{durationLabel}</span>
-                </div>
-                {(rubricStages.length > 0 || callMeta?.ai_model) && (
-                  <div className="text-xs text-neutral-500" title={provenance.detailTitle ?? undefined}>
-                    {rubricStages.length > 0
-                      ? provenance.hasCustomScorecard
-                        ? `Scored with ${provenance.scorecardLabel}${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
-                        : `Scored with the Gravix default rubric${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
-                      : `Scored by ${callMeta.ai_model}`}
-                    {provenance.contextLabel && (
-                      <span className="text-neutral-600"> · {provenance.contextLabel}</span>
-                    )}
-                  </div>
-                )}
-                {rawFileLabel && (
-                  <div className="text-xs text-neutral-600 truncate max-w-[16rem]" title={rawFileLabel}>
-                    File: {rawFileLabel}
-                  </div>
-                )}
-              </div>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+          <div className="min-w-0 space-y-6 lg:space-y-8">
+        {/* 1 · Overall result and score */}
+        <section id="summary" className="ds-glass space-y-5 rounded-[var(--ds-radius-card)] p-5 sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+            <div
+              className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 text-3xl font-semibold tabular-nums ${
+                displayOverall == null
+                  ? "border-neutral-700 text-[var(--ds-text-3)]"
+                  : displayOverall >= 80
+                    ? "border-emerald-400/60 text-emerald-200"
+                    : displayOverall >= 60
+                      ? "border-amber-400/60 text-amber-200"
+                      : "border-red-400/60 text-red-200"
+              }`}
+              aria-label={displayOverall != null ? `Overall score ${displayOverall} out of 100` : "No score yet"}
+            >
+              {displayOverall != null ? displayOverall : "—"}
             </div>
-
-            {/* Right: summary + flags */}
-            <div className="md:max-w-md space-y-2 text-sm">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                  Summary
-                </div>
-                <p className="text-neutral-200">
-                  {callMeta?.summary ||
-                    "No summary has been generated for this call yet."}
-                </p>
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-[var(--ds-text)]">
+                  {displayOverall == null ? "Not scored yet" : stageVerdict(displayOverall).label}
+                </h2>
+                {callMeta?.status && callMeta.status !== "scored" && <Badge tone={callState(callMeta.status).tone}>{callState(callMeta.status).label}</Badge>}
               </div>
-
-              {managerReviewed && reviewNote && (
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                  <div className="text-xs uppercase tracking-wide text-emerald-400/80 mb-1">
-                    Manager Review Note
-                  </div>
-                  <p className="text-neutral-200 text-xs leading-relaxed">{reviewNote}</p>
-                </div>
-              )}
-
+              <p className="max-w-2xl text-sm leading-relaxed text-[var(--ds-text-2)]">
+                {callMeta?.summary || "No summary has been generated for this call yet."}
+              </p>
               {flags.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                    Flags
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {flags.map((flag) => (
-                      <span
-                        key={flag}
-                        className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-0.5 text-[11px] font-medium text-neutral-200"
-                      >
-                        {flag}
-                      </span>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {flags.map((flag) => <Badge key={flag}>{flag}</Badge>)}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Why this scored — reasoning band from the existing scored rubric */}
-          {callMeta?.status === "scored" && (
-            <div className="border-t border-neutral-800 pt-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs uppercase tracking-wide text-neutral-500">
-                  {displayOverall != null ? `Why this scored ${displayOverall}` : "Score reasoning"}
-                </div>
-                {scoredStages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById("review")?.scrollIntoView({ behavior: "smooth" })}
-                    className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
-                  >
-                    Open the full review audit
-                  </button>
-                )}
-              </div>
-              {scoredStages.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                  {strongestStage && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-medium text-emerald-300">
-                      Strongest · {strongestStage.label} {strongestStage.score}
-                    </span>
-                  )}
-                  {weakestStage && weakestStage.key !== strongestStage?.key && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-medium text-amber-300">
-                      Weakest · {weakestStage.label} {weakestStage.score}
-                    </span>
-                  )}
-                  {reviewBot.weakClose && (
-                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-medium text-amber-300">
-                      Weak close detected
-                    </span>
-                  )}
-                  {reviewBot.fillerCount > 0 && (
-                    <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-neutral-300">
-                      Fillers · {reviewBot.fillerCount}
-                    </span>
-                  )}
-                  {reviewBot.voiceScore != null && (
-                    <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-neutral-300">
-                      Voice · {reviewBot.voiceScore}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-neutral-500">
-                  {overall != null
-                    ? "This call has an overall score but no stage breakdown. Re-score the call to generate a full audit."
-                    : "Stage-by-stage reasoning will appear here once this call has a scored rubric."}
-                </p>
-              )}
+          {managerReviewed && reviewNote && (
+            <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
+              <div className="mb-1 text-xs font-medium text-emerald-200">Manager Review Note</div>
+              <p className="text-sm leading-relaxed text-[var(--ds-text)]">{reviewNote}</p>
             </div>
-          )}
-
-          {/* Manager review note — the actions themselves live in the header */}
-          {managerCheckDone && isManager && callMeta?.status === "scored" && (
-            <p className="border-t border-neutral-800 pt-3 text-[11px] text-neutral-500">
-              Assign Coaching auto-targets the weakest stage from this review
-              {weakestStage ? ` (currently ${weakestStage.label})` : ""}.
-            </p>
           )}
         </section>
-
-        {/* Review audit — why this call scored the way it did */}
-        <section id="review" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5 space-y-5">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Review audit</div>
-              <h2 className="text-lg font-medium text-neutral-100">
-                {displayOverall != null ? `Why this call scored ${displayOverall}/100` : "Call review audit"}
-              </h2>
+        {/* 2 · Three coaching priorities (lowest-scoring stages first; from the existing rubric, nothing invented) */}
+        {scoredStages.length > 0 && (
+          <section id="priorities" aria-labelledby="priorities-h" className="ds-panel rounded-[var(--ds-radius-card)]">
+            <div className="border-b border-[var(--ds-border)] px-5 py-4 sm:px-6">
+              <h2 id="priorities-h" className="text-base font-semibold text-[var(--ds-text)]">Top coaching priorities</h2>
+              <p className="mt-0.5 text-sm text-[var(--ds-text-3)]">{scoredStages.some((st) => (st.score as number) < 70)
+                  ? "Where to focus first, lowest-scoring stage first."
+                  : "No stage fell below target on this call — these are the best places to keep improving."}</p>
             </div>
+            <ol className="divide-y divide-[var(--ds-border)]">
+              {coachingPriorities(scoredStages.map((st) => ({ label: st.label, score: typeof st.score === "number" ? st.score : null, note: st.notes ?? null })), 3).map((st, i) => (
+                <li key={st.label} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2.5 text-sm font-medium text-[var(--ds-text)]">
+                      <span className="tabular-nums text-[var(--ds-text-3)]">{i + 1}</span>
+                      {st.label}
+                      {st.score !== null && <Badge tone={scoreTone(st.score)}>{st.score}</Badge>}
+                    </p>
+                    {st.note && <p className="mt-1.5 line-clamp-2 max-w-2xl text-sm leading-relaxed text-[var(--ds-text-2)]">{st.note}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 text-sm">
+                    {managerCheckDone && isManager && (
+                      <button type="button" onClick={() => openCoach(true)} className="ds-focus rounded text-[var(--ds-highlight)] hover:underline">Assign drill</button>
+                    )}
+                    <a
+                      href={`/sparring/default?focus=${encodeURIComponent(st.label.toLowerCase())}&source=call-review`}
+                      className="ds-focus rounded text-[var(--ds-highlight)] hover:underline"
+                    >
+                      Practise this stage
+                    </a>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {managerCheckDone && isManager && (
+              <p className="border-t border-[var(--ds-border)] px-5 py-3 text-xs text-[var(--ds-text-3)] sm:px-6">
+                Assign Coaching auto-targets the weakest stage from this review
+                {weakestStage ? ` (currently ${weakestStage.label})` : ""}.
+              </p>
+            )}
+            {momentumNext && momentumNext.focus && (
+              <div className="border-t border-[var(--ds-border)] px-5 py-3 sm:px-6">
+                <button
+                  type="button"
+                  className={buttonClasses("secondary", "md")}
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set("focus", momentumNext.focus ?? "");
+                    params.set("source", "call-review");
+                    window.location.href = `/sparring/default?${params.toString()}`;
+                  }}
+                >
+                  Practise this next →
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 3 · Intro, discovery, objection and close breakdown — evidence collapsed per stage */}
+        <section id="review" aria-labelledby="breakdown-h" className="ds-panel rounded-[var(--ds-radius-card)]">
+          <div className="border-b border-[var(--ds-border)] px-5 py-4 sm:px-6">
+            <h2 id="breakdown-h" className="text-base font-semibold text-[var(--ds-text)]">Stage breakdown</h2>
           </div>
-
-          {/* Day 268 — Scoring v2 confidence / degraded-score banner (only for valid v2). */}
-          {scoreV2VM && <ScoreV2Banner banner={scoreV2VM.banner} />}
-
-          {/* Stage audit blocks from the existing rubric stages */}
+          {scoreV2VM && <div className="px-5 pt-4 sm:px-6"><ScoreV2Banner banner={scoreV2VM.banner} /></div>}
           {rubricStages.length > 0 ? (
-            <div className="space-y-4">
+            <ul className="divide-y divide-[var(--ds-border)]">
               {rubricStages.map((stage) => {
                 const v2Stage = scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"];
                 const stageObserved = !v2Stage || v2Stage.criteria.some((criterion) => criterion.observed);
                 const displayStageScore = stageObserved ? stage.score : null;
                 const verdict = displayStageScore !== null ? stageVerdict(displayStageScore) : null;
-                // Only real review tags become stage signals — weak_close is the
-                // one stage-mappable tag the current runtime emits.
                 const showWeakCloseSignal = stage.key === "close" && reviewBot.weakClose;
+                const hasDetail = !!stage.notes || displayStageScore !== null || !!v2Stage;
                 return (
-                  <div key={stage.key} className="border-t border-neutral-800/70 pt-4 first:border-t-0 first:pt-0">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
+                  <li key={stage.key} className="px-5 py-4 sm:px-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="text-sm font-medium text-[var(--ds-text)]">{stage.label}</span>
                         {verdict ? (
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${verdict.chip}`}>
-                            {verdict.label}
-                          </span>
+                          <Badge tone={scoreTone(displayStageScore)}>{verdict.label}</Badge>
                         ) : (
-                          <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-400">
-                            {v2Stage && !stageObserved ? "Not observed" : "Not scored"}
-                          </span>
+                          <Badge>{v2Stage && !stageObserved ? "Not observed" : "Not scored"}</Badge>
                         )}
-                        {showWeakCloseSignal && (
-                          <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-                            Signal observed · Weak close
-                          </span>
-                        )}
+                        {showWeakCloseSignal && <Badge tone="warn">Weak close</Badge>}
                       </div>
-                      <span className="text-sm font-semibold tabular-nums text-neutral-200">
+                      <span className="text-sm font-semibold tabular-nums text-[var(--ds-text)]">
                         {displayStageScore !== null ? `${displayStageScore}/100` : "—"}
                       </span>
                     </div>
                     {displayStageScore !== null && verdict && (
-                      <div className="mt-2 h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${verdict.bar}`}
-                          style={{ width: `${Math.max(2, Math.min(100, displayStageScore))}%` }}
-                        />
+                      <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07]">
+                        <div className={`h-full rounded-full ${verdict.bar}`} style={{ width: `${Math.max(2, Math.min(100, displayStageScore))}%` }} />
                       </div>
                     )}
-                    {stage.notes && (
-                      <div className="mt-3 border-l-2 border-neutral-700 pl-3">
-                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Evidence</div>
-                        <p className="text-sm leading-6 text-neutral-300 whitespace-pre-wrap">{stage.notes}</p>
-                      </div>
+                    {hasDetail && (
+                      <details className="group mt-3">
+                        <summary className="ds-focus inline-flex cursor-pointer list-none items-center gap-1.5 rounded text-sm text-[var(--ds-text-2)] hover:text-[var(--ds-text)] [&::-webkit-details-marker]:hidden">
+                          Evidence and coaching
+                          <span aria-hidden className="text-[var(--ds-text-3)] transition-transform group-open:rotate-180 motion-reduce:transition-none">▾</span>
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          {stage.notes && (
+                            <div className="border-l-2 border-[var(--ds-border-strong)] pl-3">
+                              <div className="mb-0.5 text-xs font-medium text-[var(--ds-text-3)]">Evidence</div>
+                              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--ds-text-2)]">{stage.notes}</p>
+                            </div>
+                          )}
+                          {displayStageScore !== null && (
+                            <div>
+                              <div className="mb-0.5 text-xs font-medium text-[var(--ds-text-3)]">Coaching implication</div>
+                              <p className="text-sm text-[var(--ds-text-2)]">{stageImplication(displayStageScore)}</p>
+                            </div>
+                          )}
+                          {v2Stage && (
+                            <StageCriteria vm={v2Stage} jumps={v2Jumps} />
+                          )}
+                        </div>
+                      </details>
                     )}
-                    {displayStageScore !== null && (
-                      <div className="mt-2.5">
-                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Coaching implication</div>
-                        <p className="text-sm text-neutral-400">{stageImplication(displayStageScore)}</p>
-                      </div>
-                    )}
-                    {/* Day 268 — expandable criteria for this stage (only when valid v2 exists). */}
-                    {scoreV2VM?.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"] && (
-                      <StageCriteria
-                        vm={scoreV2VM.stagesByKey[stage.key as "intro" | "discovery" | "objection" | "close"]!}
-                        jumps={v2Jumps}
-                      />
-                    )}
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
             <EmptyState
-              message={
-                overall != null
-                  ? "This call has an overall score but no stage breakdown."
-                  : "No scored rubric for this call yet."
-              }
-              sub={
-                overall != null
-                  ? "Re-score the call to generate a full audit."
-                  : "Stage-by-stage reasoning and evidence appear here once scoring completes."
-              }
+              message={overall != null ? "This call has an overall score but no stage breakdown." : "No scored rubric for this call yet."}
+              sub={overall != null ? "Re-score the call to generate a full audit." : "Stage-by-stage reasoning and evidence appear here once scoring completes."}
             />
           )}
-
-          {/* Day 268 — Scoring v2 objection matches + provenance detail (only for valid v2). */}
-          {scoreV2VM && scoreV2VM.objections.length > 0 && (
-            <ObjectionMatches objections={scoreV2VM.objections} jumps={v2Jumps} />
-          )}
-          {scoreV2VM && <ScoreV2Provenance rows={scoreV2VM.provenanceRows} />}
-
-          {/* Where this call lost points — priorities mapped to next actions */}
-          {scoredStages.length > 0 && (
-            <div className="border-t border-neutral-800/70 pt-5">
-              <div className="text-xs uppercase tracking-wide text-neutral-500">Where this call lost points</div>
-              <p className="mt-1 text-xs text-neutral-500">
-                Stages scoring below 70, weakest first — each mapped to a next action.
-              </p>
-              {priorityStages.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {priorityStages.map((stage, i) => (
-                    <div key={stage.key} className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] font-semibold tabular-nums text-neutral-500">#{i + 1}</span>
-                          <span className="text-sm font-medium text-neutral-100">{stage.label}</span>
-                          <span className="text-xs tabular-nums text-neutral-400">{stage.score}/100</span>
-                        </div>
-                        <div className="flex items-center gap-2.5">
-                          {managerCheckDone && isManager && (
-                            <Button onClick={() => openCoach(true)}>Assign drill</Button>
-                          )}
-                          <a
-                            href={`/sparring/default?focus=${encodeURIComponent(stage.label.toLowerCase())}&source=call-review`}
-                            className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
-                          >
-                            Practise this stage
-                          </a>
-                        </div>
-                      </div>
-                      {stage.notes && (
-                        <p className="mt-1.5 text-xs leading-5 text-neutral-400 line-clamp-2">{stage.notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-neutral-400">
-                  No stage fell below target on this call — reinforce what worked.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Voice Personality Score — supporting signal, collapsed until wanted */}
-          <Disclosure
-            title="Voice Personality Score"
-            hint={reviewBot.voiceScore != null ? `Supporting signal · ${reviewBot.voiceScore}/100` : "Supporting signal · no voice score yet"}
-          >
-            {reviewBot.hasData ? (
-              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ReviewTagChip
-                      ok={!reviewBot.weakClose}
-                      label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
-                    />
-                    <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
-                      Filler count: {reviewBot.fillerCount}
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
-                    {reviewBot.fillerWords.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {reviewBot.fillerWords.map((word: string) => (
-                          <span
-                            key={word}
-                            className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
-                          >
-                            {word}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
-                  {reviewBot.rubricRows.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {reviewBot.rubricRows.map((item) => (
-                        <div
-                          key={item.key}
-                          className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
-                        >
-                          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
-                          <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-neutral-400">
-                No voice and delivery breakdown has been generated for this call yet.
-              </div>
-            )}
-          </Disclosure>
-
-          {/* Coaching priority — what to practise next */}
-          {postAction ? (
-            <div className="rounded-xl border border-neutral-800 bg-black/30 p-4">
-              <div className="text-xs uppercase tracking-wide text-neutral-500">
-                What to practise next
-              </div>
-
-              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
-                  <div className="text-neutral-400">Strongest area on this call</div>
-                  <div className="mt-1 font-semibold text-neutral-100">
-                    {postAction.strongest}
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
-                  <div className="text-neutral-400">Coaching priority</div>
-                  <div className="mt-1 font-semibold text-neutral-100">
-                    {postAction.improve}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {momentumNext && momentumNext.focus && (
-                  <button
-                    className={buttonClasses("secondary", "md")}
-                    onClick={() => {
-                      const params = new URLSearchParams();
-                      params.set("focus", momentumNext.focus ?? "");
-                      params.set("source", "call-review");
-                      // Day 178 — the legacy "new" sparring path is not a supported route; /sparring/default
-                      // is the launch shortcut that creates a session and redirects into it.
-                      window.location.href = `/sparring/default?${params.toString()}`;
-                    }}
-                  >
-                    Practise this next →
-                  </button>
-                )}
-
-                <a href="/call-library" className={buttonClasses("ghost", "md")}>
-                  Review another call
-                </a>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Scoring transparency — what this call was scored with, honestly.
-              Day 223 reads the real provenance from rubric._meta; calls with no
-              provenance (everything scored before the runtime stamped it) keep
-              the original default-rubric wording. */}
-          <Disclosure title="Scoring transparency" hint="Rubric, scorecard and model used for this score">
-            {provenance.hasCustomScorecard ? (
-              <p className="text-sm leading-6 text-neutral-300">
-                This call was scored with{" "}
-                <span className="font-medium text-neutral-100">{provenance.scorecardLabel}</span> — your company
-                scorecard, applied within the same fixed call stages (
-                {(rubricStages.length > 0
-                  ? rubricStages.map((s) => s.label)
-                  : ["Intro", "Discovery", "Objection handling", "Close"]
-                ).join(" · ")}
-                ), each scored out of 100 with evidence notes.
-              </p>
-            ) : (
-              <p className="text-sm leading-6 text-neutral-300">
-                Calls are scored with the{" "}
-                <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
-                stages (
-                {(rubricStages.length > 0
-                  ? rubricStages.map((s) => s.label)
-                  : ["Intro", "Discovery", "Objection handling", "Close"]
-                ).join(" · ")}
-                ), each scored out of 100 with evidence notes.
-              </p>
-            )}
-
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
-              <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Rubric used</dt>
-                <dd className="text-neutral-300 sm:mt-0.5" title={provenance.detailTitle ?? undefined}>
-                  {provenance.scorecardLabel}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Scorecard source</dt>
-                <dd className="text-neutral-300 sm:mt-0.5">{provenance.scorecardSourceLabel}</dd>
-              </div>
-              <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Company context</dt>
-                <dd className="text-neutral-300 sm:mt-0.5">
-                  {provenance.contextLabel ?? "Not applied"}
-                </dd>
-              </div>
-              {provenance.modelLabel && (
-                <div className="flex justify-between gap-3 sm:block">
-                  <dt className="text-neutral-500">Scoring model:</dt>
-                  <dd className="text-neutral-300 sm:mt-0.5">{provenance.modelLabel}</dd>
-                </div>
-              )}
-            </dl>
-
-            {!provenance.hasCustomScorecard && (
-              <p className="text-xs text-neutral-500">
-                Custom scorecards will appear here once activated.
-              </p>
-            )}
-          </Disclosure>
         </section>
-
-        <section id="transcript" className="rounded-xl border border-neutral-800 bg-neutral-950 shadow-md shadow-black/20 px-4 py-4 sm:px-5">
+        <section id="transcript" className="ds-panel rounded-[var(--ds-radius-card)] px-5 py-5 sm:px-6">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Transcript</div>
-              <h2 className="text-lg font-medium text-neutral-100">Call transcript</h2>
+              <h2 className="text-base font-semibold text-[var(--ds-text)]">Transcript</h2>
             </div>
             {transcriptText ? (
               <span className="text-xs px-2 py-1 rounded border bg-emerald-600/10 text-emerald-300 border-emerald-500/20">
@@ -2766,6 +2372,193 @@ export default function CallPage() {
                 : err}
           </div>
         )}
+        {/* 5 · Technical metadata — collapsed at the bottom */}
+        <Disclosure title="Technical details" hint="Scoring model, rubric, voice signals and file">
+          {(rubricStages.length > 0 || callMeta?.ai_model) && (
+            <p className="text-sm text-[var(--ds-text-2)]" title={provenance.detailTitle ?? undefined}>
+              {rubricStages.length > 0
+                ? provenance.hasCustomScorecard
+                  ? `Scored with ${provenance.scorecardLabel}${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
+                  : `Scored with the Gravix default rubric${provenance.modelLabel ? ` · ${provenance.modelLabel}` : ""}`
+                : `Scored by ${callMeta.ai_model}`}
+              {provenance.contextLabel && <span className="text-[var(--ds-text-3)]"> · {provenance.contextLabel}</span>}
+            </p>
+          )}
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <div><dt className="text-[var(--ds-text-3)]">Status</dt><dd className="capitalize text-[var(--ds-text)]">{callMeta?.status ?? "queued"}</dd></div>
+            <div><dt className="text-[var(--ds-text-3)]">Duration</dt><dd className="text-[var(--ds-text)]">{durationLabel}</dd></div>
+            {callMeta?.ai_model && <div><dt className="text-[var(--ds-text-3)]">AI model</dt><dd className="text-[var(--ds-text)]">{callMeta.ai_model}</dd></div>}
+            {rawFileLabel && <div className="min-w-0"><dt className="text-[var(--ds-text-3)]">File</dt><dd className="truncate text-[var(--ds-text)]" title={rawFileLabel}>{rawFileLabel}</dd></div>}
+          </dl>
+          {/* Day 268 — Scoring v2 objection matches + provenance detail (only for valid v2). */}
+          {scoreV2VM && scoreV2VM.objections.length > 0 && (
+            <ObjectionMatches objections={scoreV2VM.objections} jumps={v2Jumps} />
+          )}
+          {scoreV2VM && <ScoreV2Provenance rows={scoreV2VM.provenanceRows} />}
+
+          {/* Voice Personality Score — supporting signal, collapsed until wanted */}
+          <Disclosure
+            title="Voice Personality Score"
+            hint={reviewBot.voiceScore != null ? `Supporting signal · ${reviewBot.voiceScore}/100` : "Supporting signal · no voice score yet"}
+          >
+            {reviewBot.hasData ? (
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ReviewTagChip
+                      ok={!reviewBot.weakClose}
+                      label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
+                    />
+                    <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
+                      Filler count: {reviewBot.fillerCount}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
+                    {reviewBot.fillerWords.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {reviewBot.fillerWords.map((word: string) => (
+                          <span
+                            key={word}
+                            className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
+                          >
+                            {word}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
+                  {reviewBot.rubricRows.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {reviewBot.rubricRows.map((item) => (
+                        <div
+                          key={item.key}
+                          className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
+                        >
+                          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
+                          <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-neutral-400">
+                No voice and delivery breakdown has been generated for this call yet.
+              </div>
+            )}
+          </Disclosure>
+
+          {/* Scoring transparency — what this call was scored with, honestly.
+              Day 223 reads the real provenance from rubric._meta; calls with no
+              provenance (everything scored before the runtime stamped it) keep
+              the original default-rubric wording. */}
+          <Disclosure title="Scoring transparency" hint="Rubric, scorecard and model used for this score">
+            {provenance.hasCustomScorecard ? (
+              <p className="text-sm leading-6 text-neutral-300">
+                This call was scored with{" "}
+                <span className="font-medium text-neutral-100">{provenance.scorecardLabel}</span> — your company
+                scorecard, applied within the same fixed call stages (
+                {(rubricStages.length > 0
+                  ? rubricStages.map((s) => s.label)
+                  : ["Intro", "Discovery", "Objection handling", "Close"]
+                ).join(" · ")}
+                ), each scored out of 100 with evidence notes.
+              </p>
+            ) : (
+              <p className="text-sm leading-6 text-neutral-300">
+                Calls are scored with the{" "}
+                <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
+                stages (
+                {(rubricStages.length > 0
+                  ? rubricStages.map((s) => s.label)
+                  : ["Intro", "Discovery", "Objection handling", "Close"]
+                ).join(" · ")}
+                ), each scored out of 100 with evidence notes.
+              </p>
+            )}
+
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Rubric used</dt>
+                <dd className="text-neutral-300 sm:mt-0.5" title={provenance.detailTitle ?? undefined}>
+                  {provenance.scorecardLabel}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Scorecard source</dt>
+                <dd className="text-neutral-300 sm:mt-0.5">{provenance.scorecardSourceLabel}</dd>
+              </div>
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-neutral-500">Company context</dt>
+                <dd className="text-neutral-300 sm:mt-0.5">
+                  {provenance.contextLabel ?? "Not applied"}
+                </dd>
+              </div>
+              {provenance.modelLabel && (
+                <div className="flex justify-between gap-3 sm:block">
+                  <dt className="text-neutral-500">Scoring model:</dt>
+                  <dd className="text-neutral-300 sm:mt-0.5">{provenance.modelLabel}</dd>
+                </div>
+              )}
+            </dl>
+
+            {!provenance.hasCustomScorecard && (
+              <p className="text-xs text-neutral-500">
+                Custom scorecards will appear here once activated.
+              </p>
+            )}
+          </Disclosure>
+        </Disclosure>
+          </div>
+          <aside aria-label="Call summary" className="hidden lg:block">
+            <div className="sticky top-6 space-y-4">
+              <div className="ds-glass rounded-[var(--ds-radius-card)] p-5">
+                <p className="text-xs font-medium text-[var(--ds-text-3)]">Overall score</p>
+                <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-[var(--ds-text)]">{displayOverall != null ? displayOverall : "—"}</p>
+                <dl className="mt-4 space-y-2 text-sm">
+                  <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Status</dt><dd className="capitalize text-[var(--ds-text)]">{callMeta?.status ?? "queued"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Duration</dt><dd className="text-[var(--ds-text)]">{durationLabel}</dd></div>
+                  {weakestStage && <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Focus</dt><dd className="text-[var(--ds-text)]">{weakestStage.label}</dd></div>}
+                  {trend && trend.length > 1 && (
+                    <div className="flex items-center justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Trend</dt><dd className="text-[var(--ds-highlight)]"><ScoreSparkline scores={trend} /></dd></div>
+                  )}
+                </dl>
+              </div>
+              <nav aria-label="Call review sections" className="ds-glass rounded-[var(--ds-radius-card)] p-2">
+                {[
+                  { id: "summary", label: "Result" },
+                  { id: "priorities", label: "Priorities" },
+                  { id: "review", label: "Breakdown" },
+                  { id: "transcript", label: "Transcript" },
+                  { id: "coach", label: "Coaching" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={activeSection === item.id ? "location" : undefined}
+                    onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" })}
+                    className={`ds-focus block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors motion-reduce:transition-none ${
+                      activeSection === item.id ? "bg-white/[0.08] text-[var(--ds-text)]" : "text-[var(--ds-text-3)] hover:text-[var(--ds-text)]"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </aside>
+        </div>
       </div>{/* /review-shell */}
 
       {/* === CRM DRAWER === */}

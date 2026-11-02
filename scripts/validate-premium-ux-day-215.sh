@@ -29,8 +29,8 @@ check() {
 echo "Premium UX / Day 215 — call review intelligence workspace (own checks only)"
 
 # --- Hero: score reasoning + transparency + next actions ---
-grep -q 'Why this scored' "$CALL"
-check "hero has a 'Why this scored' reasoning band" $?
+grep -q 'Top coaching priorities' "$CALL" && grep -q 'Overall result and score' "$CALL"
+check "result card + 'Top coaching priorities' carry the score reasoning (glass pilot; was 'Why this scored' band)" $?
 
 grep -q 'Scored with the Gravix default rubric' "$CALL"
 check "honest scoring transparency line (Gravix default rubric)" $?
@@ -39,12 +39,12 @@ check "honest scoring transparency line (Gravix default rubric)" $?
 grep -q 'planReviewActions' "$CALL" && grep -q 'aria-label="Call actions"' "$CALL" && grep -q 'onClick={markCallReviewed}' "$CALL"
 check "manager next-actions live in the header action group" $?
 
-grep -q 'Strongest · ' "$CALL" && grep -q 'Weakest · ' "$CALL"
-check "reasoning chips derive strongest/weakest stage" $?
+grep -q 'coachingPriorities(' "$CALL" && grep -q 'weakestStage' "$CALL"
+check "priorities derive from the lowest-scoring real stages (glass pilot; was strongest/weakest chips)" $?
 
 # --- Review audit: criteria rows from the real rubric only ---
-grep -q 'Why this call scored' "$CALL"
-check "#review leads with 'Why this call scored N/100'" $?
+grep -q 'Stage breakdown' "$CALL"
+check "#review is the 'Stage breakdown' (glass pilot; was 'Why this call scored N/100')" $?
 
 grep -q 'stageVerdict' "$CALL" && grep -q '"Needs work"' "$CALL"
 check "criteria rows carry verdict labels (Strong/Developing/Needs work)" $?
@@ -97,7 +97,7 @@ for a in summary review transcript player pins whisperer-moments coach crm assig
 done
 check "all section anchors preserved (summary/review/transcript/player/pins/whisperer-moments/coach/crm/assign-form)" $ok
 
-grep -q "\['summary', 'review', 'transcript', 'player', 'crm', 'coach'\]" "$CALL"
+grep -q "\['summary', 'priorities', 'review', 'transcript', 'player', 'crm', 'coach'\]" "$CALL"
 check "IntersectionObserver section list unchanged" $?
 
 # --- Drawers, shortcuts, handlers preserved ---

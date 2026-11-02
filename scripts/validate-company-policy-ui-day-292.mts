@@ -103,7 +103,7 @@ check(
 );
 check(
   "Company toggle offered ONLY when access === 'allowed'",
-  /disabled:\s*companyAccess\s*!==\s*["']allowed["']/.test(lib)
+  /\{companyAccess === "allowed" && \(\s*<Segmented/.test(lib) // glass pilot: the toggle is not rendered at all unless allowed
 );
 check(
   "paged scope opens to company ONLY when access === 'allowed' (both load sites)",

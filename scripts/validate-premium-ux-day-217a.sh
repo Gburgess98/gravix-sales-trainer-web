@@ -50,7 +50,7 @@ if grep -qE 'placeholder[sS]tage|fakeStage|mockRubric' "$CALL"; then false; else
 check "no fabricated stage data in the page" $?
 
 # --- Day 215/216 surfaces intact ---
-grep -q 'Why this call scored' "$CALL" && grep -q 'Where this call lost points' "$CALL" && grep -q 'Scoring transparency' "$CALL"
+grep -q 'Stage breakdown' "$CALL" && grep -q 'Top coaching priorities' "$CALL" && grep -q 'Scoring transparency' "$CALL"
 check "Day 215/216 audit surfaces preserved" $?
 
 echo

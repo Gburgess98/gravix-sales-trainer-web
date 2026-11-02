@@ -150,19 +150,21 @@ function sourceChecks(f: Files, tag = ""): Check[] {
   const disc = f("src/components/ui/disclosure.tsx");
   a("E-disclosure-native-details-collapsed-by-default", /<details/.test(disc) && /defaultOpen = false/.test(disc) && !/useState/.test(disc));
   const dash = f("src/app/dashboard/page.tsx");
-  a("E-home-uses-disclosure-for-secondary-detail", /<Disclosure/.test(dash) && /title="Coaching detail"/.test(dash));
-  a("E-home-one-primary-action", (dash.match(/buttonClasses\('primary'/g) || []).length === 1);
+  // Glass pilot: Home is a short page — no collapsed "detail" section, at most three summary metrics.
+  a("E-home-no-collapsed-detail-and-max-three-metrics", !/<Disclosure/.test(dash) && (dash.match(/<Metric\b/g) || []).length === 3);
+  // One primary per visible state: the recommendation card renders EITHER the mission button OR the upload button (mutually exclusive branches).
+  a("E-home-one-primary-action", (dash.match(/dsButton\('primary'/g) || []).length === 2);
   a("E-home-quick-link-duplicates-removed", !/Quick links/.test(dash));
-  a("E-home-attention-derived-from-real-data-only", /summary\?\.overdue_count/.test(dash) && /feed\?\.regression_warnings/.test(dash));
+  a("E-home-overdue-derived-from-real-data-only", /summary\?\.overdue_count/.test(dash) && /isOverdue\(a\)/.test(dash) && !/Needs attention/.test(dash));
   const lib = f("src/app/call-library/page.tsx");
   for (const fn of ["setStatusFilter", "setCallScope", "setSelectedReps", "setSelectedTags", "setMinScore", "setMaxScore", "setScoreFilter"])
-    a(`E-library-keeps-filter-handler:${fn}`, (lib.match(new RegExp(fn + "\\(", "g")) || []).length >= 2, "needs its control handler AND the Reset handler");
+    a(`E-library-keeps-filter-handler:${fn}`, (lib.match(new RegExp(fn + "\\(|onChange=\\{" + fn + "\\}", "g")) || []).length >= 2, "needs its control handler AND the Reset handler");
   a("E-library-keeps-company-access-probe", /\/v1\/calls\/paged\?scope=company&limit=1/.test(lib) && /manager_only_access/.test(lib));
   a("E-library-one-primary-action", (lib.match(/buttonClasses\("primary"/g) || []).length === 1);
   a("E-library-tab-follows-the-url", /useSearchParams\(\)\?\.get\("tab"\)/.test(lib) && /\[urlTab\]/.test(lib) && /onChange=\{handleTabChange\}/.test(lib) && /history\.replaceState/.test(lib));
   a("E-library-search-params-behind-suspense", /<Suspense fallback=\{null\}>\s*<CallLibraryPageInner \/>/.test(lib));
   a("E-library-sparring-distinct-heading", /tab === "sparring" \? "Practice" : "Calls"/.test(lib));
-  a("E-library-filters-behind-disclosure-with-active-count", /activeFilterCount/.test(lib) && /<details className="group rounded-lg border border-neutral-800 bg-neutral-950">/.test(lib));
+  a("E-library-filters-behind-disclosure-with-active-count", /activeFilterCount/.test(lib) && /<details className="group border-t border-\[var\(--ds-border\)\] pt-3">/.test(lib));
   // no new network surface: fetch call counts equal the committed pre-Day-45 baseline
   const BASE = "f5598a5";
   for (const p of ["src/app/dashboard/page.tsx", "src/app/call-library/page.tsx"]) {
@@ -170,7 +172,10 @@ function sourceChecks(f: Files, tag = ""): Check[] {
     try { base = execFileSync("git", ["show", `${BASE}:${p}`], { cwd: ROOT, encoding: "utf8" }); } catch { base = ""; }
     const count = (t: string) => (t.match(/proxyFetch\(|fetchJsonWithRetry|\bfetch\(/g) || []).length;
     const urls = (t: string) => [...t.matchAll(/["'`](\/v1\/[^"'`?$]*)/g)].map((m) => m[1]).sort().join(",");
-    if (base) a(`E-no-new-network-calls:${p}`, count(f(p)) === count(base) && urls(f(p)) === urls(base), `now=${count(f(p))} base=${count(base)}`);
+    // Glass pilot: Home reads its "Recent calls" list from the existing /v1/calls/paged endpoint (one added call, no new route).
+    const added = p.endsWith("dashboard/page.tsx") ? 1 : 0;
+    const expectUrls = (added ? [...urls(base).split(","), "/v1/calls/paged"].sort().join(",") : urls(base));
+    if (base) a(`E-no-new-network-calls:${p}`, count(f(p)) === count(base) + added && urls(f(p)) === expectUrls, `now=${count(f(p))} base=${count(base)}+${added}`);
     else a(`E-no-new-network-calls:${p}`, true, "baseline commit not available (shallow clone) — skipped");
   }
   return r;
@@ -240,7 +245,7 @@ try {
   await sourceMutation("shell ignores the staging banner height", "src/components/shell/app-shell.tsx", "h-[calc(100dvh-var(--staging-banner-h,0px))]", "h-screen", "E-shell-subtracts-staging-banner");
   await sourceMutation("staging banner shown outside staging", "src/components/StagingBanner.tsx", "if (APP_ENV !== \"staging\") return null;", "", "E-banner-publishes-height-and-stays-staging-only");
   await sourceMutation("disclosure open by default", "src/components/ui/disclosure.tsx", "defaultOpen = false", "defaultOpen = true", "E-disclosure-native-details-collapsed-by-default");
-  await sourceMutation("a second primary action on Home", "src/app/dashboard/page.tsx", "<Link href=\"/upload\" className=\"group", "<Link href=\"/upload\" className={buttonClasses('primary', 'md')} data-x=\"", "E-home-one-primary-action");
+  await sourceMutation("a second primary action on Home", "src/app/dashboard/page.tsx", "<Link href=\"/upload\" className={dsButton('secondary', 'sm')}>Upload call</Link>", "<Link href=\"/upload\" className={dsButton('primary', 'sm')}>Upload call</Link>", "E-home-one-primary-action");
   await sourceMutation("a library filter handler removed", "src/app/call-library/page.tsx", "setScoreFilter(opt.id as ScoreFilter)", "void (opt.id as ScoreFilter)", "E-library-keeps-filter-handler:setScoreFilter");
   await sourceMutation("a new fetch added to Home", "src/app/dashboard/page.tsx", "const loadDashboard = useCallback(async () => {", "const loadDashboard = useCallback(async () => {\n    void proxyFetch('/v1/invented')", "E-no-new-network-calls:src/app/dashboard/page.tsx");
 } finally {

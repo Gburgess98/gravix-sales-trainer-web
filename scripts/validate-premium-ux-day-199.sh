@@ -37,28 +37,28 @@ check "tab bar rendered via WorkspaceTabs" $?
 grep -q 'SectionCard, EmptyState, Button, buttonClasses } from "@/components/ui"' "$LIB" 2>/dev/null
 check "call-library imports SectionCard/EmptyState/Button/buttonClasses" $?
 LIB_CARDS=$(grep -c '<SectionCard' "$LIB" 2>/dev/null || echo 0)
-[[ "$LIB_CARDS" -ge 3 ]]
-check "all three tab bodies use SectionCard (>=3, got $LIB_CARDS)" $?
-grep -q 'title="Latest analysed calls"' "$LIB" 2>/dev/null
-check "live tab card titled Latest analysed calls" $?
+[[ "$LIB_CARDS" -ge 2 ]]
+check "practice + uploads tab bodies use SectionCard (>=2, got $LIB_CARDS; live tab moved to ds Panel in glass pilot)" $?
+grep -q '<DataList label="Calls">' "$LIB" 2>/dev/null
+check "live tab is a labelled ds DataList (glass pilot; was card titled Latest analysed calls)" $?
 grep -q 'title="Recent sparring sessions"' "$LIB" 2>/dev/null
 check "sparring tab card titled Recent sparring sessions" $?
 grep -q 'title="Uploaded calls"' "$LIB" 2>/dev/null
 check "uploads tab card titled Uploaded calls" $?
 LIB_EMPTY=$(grep -c '<EmptyState' "$LIB" 2>/dev/null || echo 0)
-[[ "$LIB_EMPTY" -ge 3 ]]
-check "EmptyState adopted for empty states (>=3, got $LIB_EMPTY)" $?
+[[ "$LIB_EMPTY" -ge 2 ]]
+check "EmptyState adopted for empty states (>=2, got $LIB_EMPTY; live tab uses EmptyPanel)" $?
 
 # --- Chip system: white-active inversion gone, indigo tonal in ---
 ! grep -q 'border-neutral-100 bg-neutral-100 text-neutral-900' "$LIB" 2>/dev/null
 check "white-active chip inversion removed" $?
 LIB_CHIPS=$(grep -c 'border-indigo-500/40 bg-indigo-500/15 font-medium text-indigo-200' "$LIB" 2>/dev/null || echo 0)
-[[ "$LIB_CHIPS" -ge 3 ]]
-check "active chips use indigo tonal recipe (>=3, got $LIB_CHIPS)" $?
+[[ "$LIB_CHIPS" -ge 1 ]]
+check "remaining chips keep the tonal recipe (>=1, got $LIB_CHIPS; live filters are ds Segmented)" $?
 
 # --- Day 198 Button adoption ---
-grep -q 'buttonClasses("secondary", "sm", "whitespace-nowrap")' "$LIB" 2>/dev/null
-check "row Open links use buttonClasses secondary" $?
+grep -q '<DataRow' "$LIB" 2>/dev/null
+check "live rows are whole-row DataRow links (glass pilot; was Open buttons)" $?
 grep -q '<Button' "$LIB" 2>/dev/null
 check "call-library adopted Button" $?
 ! grep -q 'text-xs text-neutral-200 underline' "$LIB" 2>/dev/null
@@ -75,11 +75,12 @@ grep -q 'focus:border-indigo-500' "$SPAR" 2>/dev/null
 check "modal inputs focus indigo" $?
 
 # --- Status colours stay status-only ---
-grep -q 'return "bg-emerald-400";' "$LIB" 2>/dev/null
-check "emerald retained for scored status dot only" $?
-LIB_EMERALD=$(grep -c 'emerald' "$LIB" 2>/dev/null || echo 0)
+grep -q 'callState(c.status)' "$LIB" 2>/dev/null
+check "status colour comes from callState/Badge tones only (glass pilot)" $?
+LIB_EMERALD=$(grep -c 'emerald' "$LIB" 2>/dev/null || true)
+LIB_EMERALD=${LIB_EMERALD:-0}
 [[ "$LIB_EMERALD" -le 1 ]]
-check "no other emerald usage on call-library (<=1, got $LIB_EMERALD)" $?
+check "no decorative emerald on call-library (<=1, got $LIB_EMERALD)" $?
 ! grep -Eq 'fuchsia|pink-' "$LIB" 2>/dev/null
 check "no fuchsia/pink on call-library" $?
 
@@ -97,7 +98,7 @@ grep -q 'onClick={loadMore}' "$LIB" 2>/dev/null
 check "load-more handler intact" $?
 grep -q 'onClick={() => setScoreFilter(opt.id as ScoreFilter)}' "$LIB" 2>/dev/null
 check "score band filter handler intact" $?
-grep -q 'onClick={() => setStatusFilter(opt.id as StatusFilter)}' "$LIB" 2>/dev/null
+grep -q 'onChange={setStatusFilter}' "$LIB" 2>/dev/null
 check "status filter handler intact" $?
 grep -q 'window.location.href = `/calls/${c.id}?crm=1`;' "$LIB" 2>/dev/null
 check "Open + link CRM handler intact" $?

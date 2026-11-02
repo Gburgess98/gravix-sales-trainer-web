@@ -41,8 +41,8 @@ check "package.json has validate-premium-ux-day-203 script" $?
 # --- Token layer: semantic roles alias the palette via var() ---
 grep -q '@theme {' "$CSS" 2>/dev/null
 check "globals.css declares a @theme token block" $?
-grep -q -- '--color-brand-600: var(--color-indigo-600);' "$CSS" 2>/dev/null
-check "brand token aliases indigo" $?
+grep -q -- '--color-brand-600: var(--color-blue-600);' "$CSS" 2>/dev/null
+check "brand token aliases blue (glass system v2; was indigo)" $?
 grep -q -- '--color-accent-500: var(--color-cyan-500);' "$CSS" 2>/dev/null
 check "accent token aliases cyan" $?
 grep -q -- '--color-success-500: var(--color-emerald-500);' "$CSS" 2>/dev/null
@@ -53,7 +53,7 @@ grep -q -- '--color-danger-500: var(--color-red-500);' "$CSS" 2>/dev/null
 check "danger token aliases red" $?
 # Every semantic token must resolve to a real palette var (no typo'd alias that
 # would render as a missing colour). Each --color-<role>-<n> RHS must be var().
-BAD_ALIAS=$(grep -oE -- '--color-(brand|accent|success|warning|danger)-[0-9]+: [^;]+' "$CSS" 2>/dev/null | grep -vE ': var\(--color-(indigo|cyan|emerald|amber|red)-[0-9]+\)' || true)
+BAD_ALIAS=$(grep -oE -- '--color-(brand|accent|success|warning|danger)-[0-9]+: [^;]+' "$CSS" 2>/dev/null | grep -vE ': var\(--color-(indigo|blue|cyan|emerald|amber|red)-[0-9]+\)' || true)
 [[ -z "$BAD_ALIAS" ]]
 check "all semantic tokens alias a palette var (no dangling aliases)" $?
 

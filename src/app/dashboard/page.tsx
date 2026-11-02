@@ -3,20 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { proxyFetch } from '@/lib/api'
-import { StatCard } from '@/components/ui/stat-card'
-import { AiInsightCard, AiInsightItem } from '@/components/ui/ai-insight-card'
-import { EmptyState } from '@/components/ui/empty-state'
-import { LoadingText } from '@/components/ui/loading-skeleton'
-import { PageContainer } from '@/components/layout/page-container'
-import { SectionCard } from '@/components/ui/section-card'
-import { Disclosure } from '@/components/ui/disclosure'
-import { PageHeader } from '@/components/layout/page-header'
-import { buttonClasses } from '@/components/ui/button'
+import { PageShell, PageHead, GlassCard, Panel, Metric, Badge, dsButton, DataList, DataRow, SectionTitle, EmptyPanel, LoadingRows } from '@/components/ds'
+import { callState, scoreTone, formatCallDate, firstName, greetingFor } from '@/lib/ds-model'
+import { formatCallDisplayTitle } from '@/lib/callDisplay'
 import {
-  TIER_COLORS,
   trendDelta,
   trendDirection,
-  xpLevel,
   type Assignment,
   type DailyFeed,
   type RepMe,
@@ -41,6 +33,15 @@ type BriefingData = {
   recommendedAction: string | null
   expectedImpact: string | null
   motivationMessage: string | null
+}
+
+type RecentCall = {
+  id: string
+  filename: string | null
+  status: string
+  created_at: string
+  score_overall: number | null
+  rep_name?: string | null
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -106,16 +107,18 @@ export default function DashboardPage() {
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [latestAvg, setLatestAvg] = useState<number | null>(null)
   const [feed, setFeed] = useState<DailyFeed | null>(null)
+  const [recent, setRecent] = useState<RecentCall[]>([])
   const [loading, setLoading] = useState(true)
   const [hasAnyData, setHasAnyData] = useState(false)
 
   const loadDashboard = useCallback(async () => {
     setLoading(true)
     try {
-      const [meRes, assignRes, trendRes] = await Promise.allSettled([
+      const [meRes, assignRes, trendRes, callsRes] = await Promise.allSettled([
         proxyFetch('/v1/reps/me', { cache: 'no-store' }),
         proxyFetch('/v1/assignments', { cache: 'no-store' }),
         proxyFetch('/v1/dashboard/voice-score-trend?days=30', { cache: 'no-store' }),
+        proxyFetch('/v1/calls/paged?limit=4&scope=mine', { cache: 'no-store' }),
       ])
 
       let repId: string | null = null
@@ -143,6 +146,12 @@ export default function DashboardPage() {
         }
       }
 
+      if (callsRes.status === 'fulfilled') {
+        const d = await callsRes.value.json().catch(() => null)
+        const items: RecentCall[] = d?.calls ?? d?.items ?? []
+        if (d?.ok && items.length > 0) { setRecent(items.slice(0, 4)); setHasAnyData(true) }
+      }
+
       if (repId) {
         try {
           const feedRes = await proxyFetch(`/v1/reps/${encodeURIComponent(repId)}/daily-feed`, { cache: 'no-store' })
@@ -162,9 +171,6 @@ export default function DashboardPage() {
   const openAssignments = useMemo(() =>
     summary?.open_count ?? assignments.filter(a => a.status === 'open' || a.status === 'assigned').length
   , [summary, assignments])
-  const totalXp = useMemo(() => Number(me?.xp_total ?? 0), [me])
-  const xpInfo = useMemo(() => xpLevel(totalXp), [totalXp])
-  const tierKey = String(me?.tier ?? '').toLowerCase()
 
   const briefing = useMemo(
     () => computeBriefingData(me, summary, trend, feed, assignments),
@@ -180,237 +186,131 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <PageContainer>
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Dashboard</p>
-          <h1 className="mt-0.5 text-xl font-semibold text-white">My Dashboard</h1>
-        </div>
-        <LoadingText text="Loading your coaching data…" />
-      </PageContainer>
+      <PageShell>
+        <PageHead title="Home" />
+        <Panel><LoadingRows rows={4} label="Loading your coaching data" /></Panel>
+      </PageShell>
     )
   }
 
-  // ── Always render the full dashboard ────────────────────────────────────────
-  // When hasAnyData is false the onboarding section renders first,
-  // then all coaching sections render in placeholder state so users and
-  // demo clients can see the full platform layout.
-
-  // Day 45 — everything below is derived from the same real data as before; nothing
-  // here is invented. "Needs attention" only lists signals the API already returned.
-  const attention: { tone: 'danger' | 'warning'; text: string; href?: string }[] = []
-  if ((summary?.overdue_count ?? 0) > 0) {
-    attention.push({
-      tone: 'danger',
-      text: `${summary!.overdue_count} overdue assignment${summary!.overdue_count === 1 ? '' : 's'}`,
-      href: '/assignments',
-    })
-  }
-  if (briefing.urgency === 'high') attention.push({ tone: 'warning', text: 'Coaching urgency is high' })
-  if (briefing.weakestArea && briefing.weakestScore !== null && briefing.weakestScore < 60) {
-    attention.push({ tone: 'warning', text: `${briefing.weakestArea} needs attention (score ${Math.round(briefing.weakestScore)})` })
-  }
-  for (const w of feed?.regression_warnings ?? []) attention.push({ tone: 'warning', text: w })
-
-  const replayId = feed?.recommended_replay?.call_id ?? null
-  const greeting = me?.name ? `Good day, ${me.name.split(' ')[0]}` : 'My Dashboard'
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+  // Glass pilot — Home answers three questions in order: how am I doing (3 metrics), what should I
+  // work on (recommended action + assigned task), what did I do lately (4 recent calls).
+  // Everything shown comes from the same API responses as before; nothing is invented.
+  const now = new Date()
+  const name = firstName(me?.name)
+  const greeting = name ? `${greetingFor(now.getHours())}, ${name}` : 'Home'
+  const today = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const trendLabel = trend.length === 0 ? '—' : briefing.voiceTrend === 'improving' ? 'Improving' : briefing.voiceTrend === 'declining' ? 'Declining' : 'Steady'
+  const trendNote = briefing.voiceDelta !== null && trend.length > 0 ? `${briefing.voiceDelta > 0 ? '+' : ''}${Math.round(briefing.voiceDelta)} pts over 30 days` : 'voice score, 30 days'
+  const queue = assignments
+    .filter(a => a.status === 'open' || a.status === 'assigned')
+    .filter(a => !mission || (a.title ?? '') !== mission.label)
+    .slice(0, 3)
+  const isOverdue = (a: Assignment) => !!a.due_at && new Date(a.due_at) < now
 
   return (
-    <PageContainer>
+    <PageShell>
+      <PageHead title={greeting} subtitle={today} />
 
-      {/* ── Header: where am I ── */}
-      <PageHeader
-        glass
-        eyebrow="Dashboard"
-        title={greeting}
-        subtitle={`AI coaching briefing · ${today}`}
-        actions={
-          <>
-            {xpInfo.rank && (
-              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold text-neutral-300">
-                {xpInfo.rank}
-              </span>
-            )}
-            {me?.tier && (
-              <span className={`rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold ${TIER_COLORS[tierKey] ?? 'text-neutral-300'}`}>
-                {me.tier}
-              </span>
-            )}
-          </>
-        }
-      />
-
-      {/* ── Getting Started (onboarding) — visible only when no data yet ── */}
-      {!hasAnyData && (
-        <div className="space-y-3">
-          <AiInsightCard
-            type="summary"
-            label="Getting Started"
-            content="Your AI coaching dashboard is ready. Upload a call, complete an assignment, or run a sparring session to activate your personalised insights below."
-          />
-          <div className="grid gap-3 md:grid-cols-3">
-            <Link href="/upload" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
-              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Upload Your First Call</div>
-              <div className="mt-0.5 text-xs text-neutral-500">Get AI-scored feedback on your technique.</div>
-            </Link>
-            <Link href="/call-library?tab=sparring" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
-              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Run a Sparring Session</div>
-              <div className="mt-0.5 text-xs text-neutral-500">Practice objection handling with AI personas.</div>
-            </Link>
-            <Link href="/assignments" className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-all hover:border-indigo-500/40 hover:bg-neutral-900/70">
-              <div className="text-sm font-semibold text-white group-hover:text-indigo-200 transition-colors">Complete an Assignment</div>
-              <div className="mt-0.5 text-xs text-neutral-500">Work through your coach&apos;s recommended drills.</div>
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* ── 1. What should I do next? One primary action. ── */}
-      {hasAnyData && (
-        <SectionCard variant="ai" glass eyebrow="Next Best Action" padded>
-          {mission ? (
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0 space-y-1.5">
-                <h2 className="text-lg font-semibold text-white">{mission.label}</h2>
-                <p className="max-w-2xl text-sm text-neutral-400">{mission.detail}</p>
-                <p className="text-xs text-neutral-400">
-                  Impact: <span className="font-medium text-neutral-300">{mission.impact}</span>
-                  <span className="mx-2 text-neutral-700">·</span>
-                  Time: <span className="font-medium text-neutral-300">{mission.time}</span>
-                </p>
-              </div>
-              <Link href={mission.href} className={buttonClasses('primary', 'md', 'shrink-0 self-start md:self-auto')}>
-                Start now →
-              </Link>
+      {/* ── What is my next action? One recommendation, one button. ── */}
+      <GlassCard>
+        <p className="text-xs font-medium uppercase tracking-wider text-[var(--ds-highlight)]">Recommended next</p>
+        {mission ? (
+          <div className="mt-2 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold tracking-tight text-[var(--ds-text)] sm:text-2xl">{mission.label}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--ds-text-2)]">{mission.detail}</p>
+              <p className="mt-3 text-xs text-[var(--ds-text-3)]">{mission.impact} · about {mission.time}</p>
             </div>
-          ) : (
-            <EmptyState
-              message="You're clear"
-              sub="Upload a call or run a sparring session to generate coaching recommendations."
-              action={{ label: 'Upload a call', onClick: () => { window.location.href = '/upload' } }}
-            />
-          )}
-        </SectionCard>
-      )}
-
-      {/* ── 2. What needs attention? Only shown when the API returned a signal. ── */}
-      {attention.length > 0 && (
-        <SectionCard title="Needs attention" padded>
-          <ul className="space-y-2">
-            {attention.map((a, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm">
-                <span
-                  aria-hidden
-                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.tone === 'danger' ? 'bg-danger-500' : 'bg-warning-500'}`}
-                />
-                {a.href ? (
-                  <Link href={a.href} className="text-neutral-200 underline-offset-2 hover:underline">{a.text}</Link>
-                ) : (
-                  <span className="text-neutral-300">{a.text}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
-
-      {/* ── 3. Where do I continue? ── */}
-      {hasAnyData && (
-      <section aria-label="Continue" className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-[0.1em] text-neutral-500">Continue</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            replayId
-              ? { href: `/calls/${encodeURIComponent(replayId)}`, title: 'Review flagged call', sub: 'Recommended by your coach' }
-              : { href: '/call-library', title: 'Browse calls', sub: 'Scored conversations' },
-            { href: '/assignments', title: 'Assignments', sub: `${openAssignments} open` },
-            { href: '/call-library?tab=sparring', title: 'Sparring', sub: 'Practise with an AI buyer' },
-            { href: '/upload', title: 'Upload a call', sub: 'Get it scored' },
-          ].map((c) => (
-            <Link
-              key={c.title}
-              href={c.href}
-              className="group rounded-xl border border-neutral-800 bg-neutral-950 p-4 transition-colors hover:border-neutral-600 hover:bg-neutral-900/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70"
-            >
-              <div className="text-sm font-semibold text-white">{c.title}</div>
-              <div className="mt-0.5 text-xs text-neutral-500">{c.sub}</div>
-            </Link>
-          ))}
-        </div>
-      </section>
-      )}
-
-      {/* ── Performance summary: three metrics maximum. Points / streak live under Coaching detail. ── */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard
-          glass
-          label="Voice Score"
-          value={voiceScore ?? '—'}
-          subtext={voiceScore === null ? 'after your first scored call' : voiceScore >= 80 ? 'strong · latest avg' : voiceScore >= 60 ? 'steady · latest avg' : 'needs work · latest avg'}
-          variant={voiceScore === null ? 'default' : voiceScore >= 80 ? 'success' : voiceScore >= 60 ? 'warning' : 'danger'}
-        />
-        <StatCard
-          glass
-          label="Trend"
-          value={trend.length === 0 ? '—' : briefing.voiceTrend === 'improving' ? '↑ Improving' : briefing.voiceTrend === 'declining' ? '↓ Declining' : '→ Stable'}
-          subtext="voice score, last 30 days"
-          valueClass="text-lg text-white"
-        />
-        <StatCard
-          glass
-          label="Open Assignments"
-          value={openAssignments}
-          subtext={summary?.overdue_count ? `${summary.overdue_count} overdue` : 'in queue'}
-          variant={summary?.overdue_count ? 'danger' : 'default'}
-        />
-      </div>
-
-      {/* Progress detail (trend chart, skill breakdown, development level) now lives on /progress. */}
-      <div>
-        <Link href="/progress" className={buttonClasses('ghost', 'sm')}>
-          View full progress →
-        </Link>
-      </div>
-
-      {/* ── Secondary detail: progressive disclosure (collapsed by default) ── */}
-      <Disclosure
-        title="Coaching detail"
-        hint="AI briefing, recent feedback and development progress"
-      >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-            <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-neutral-500">Weakest area</div>
-            <div className="text-sm font-semibold text-amber-300">{briefing.weakestArea ?? '—'}</div>
-            {briefing.weakestScore !== null && (
-              <div className="mt-0.5 text-[11px] text-neutral-600">score {Math.round(briefing.weakestScore)}</div>
-            )}
+            <Link href={mission.href} className={dsButton('primary', 'md', 'shrink-0 self-start md:self-auto')}>Start now</Link>
           </div>
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3">
-            <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-neutral-500">Strongest area</div>
-            {briefing.strongestArea
-              ? <div className="text-sm font-semibold text-emerald-300">{briefing.strongestArea}</div>
-              : <div className="text-sm text-neutral-600">No coaching data yet</div>}
+        ) : (
+          <div className="mt-2 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[var(--ds-text)] sm:text-2xl">
+                {hasAnyData ? "You're all caught up" : 'Upload your first call'}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--ds-text-2)]">
+                {hasAnyData
+                  ? 'Nothing is waiting on you. Upload a recent call to get new coaching.'
+                  : 'Get an AI-scored breakdown of your technique and a personal coaching plan.'}
+              </p>
+            </div>
+            <Link href="/upload" className={dsButton('primary', 'md', 'shrink-0 self-start md:self-auto')}>Upload call</Link>
           </div>
-        </div>
-        {briefing.motivationMessage && (
-          <p className="text-xs italic text-indigo-300/70">&quot;{briefing.motivationMessage}&quot;</p>
         )}
-      {/* ── Section 5: Recent AI Feedback ── */}
-      <div className="space-y-2">
-        <div className="text-xs font-medium text-neutral-400 uppercase tracking-[0.1em]">Recent AI Feedback</div>
-        {feed?.coaching_summary
-          ? <AiInsightCard type="summary" label="Coaching Summary" content={feed.coaching_summary} />
-          : <AiInsightCard type="summary" label="No coaching data yet" content="Your AI feedback will appear here after your first scored call or sparring session. Upload a call to get started." />
-        }
-        {feed?.regression_warnings?.map((w, i) => (
-          <AiInsightItem key={i} content={w} type="flag" />
-        ))}
+      </GlassCard>
+
+      {/* ── How am I performing? Three metrics, no more. ── */}
+      <section aria-label="Performance" className="grid gap-3 sm:grid-cols-3">
+        <Metric
+          label="Voice score"
+          value={voiceScore ?? '—'}
+          note={voiceScore === null ? 'Appears after your first scored call' : voiceScore >= 80 ? 'Strong' : voiceScore >= 60 ? 'Steady' : 'Needs work'}
+        />
+        <Metric label="Trend" value={trendLabel} note={trendNote} />
+        <Metric
+          label="Open assignments"
+          value={openAssignments}
+          note={summary?.overdue_count ? `${summary.overdue_count} overdue` : 'In your queue'}
+        />
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* ── What did I do lately? ── */}
+        <Panel className="lg:col-span-3">
+          <div className="border-b border-[var(--ds-border)] px-5 py-4">
+            <SectionTitle action={<Link href="/call-library" className="text-sm text-[var(--ds-highlight)] hover:underline">All calls</Link>}>Recent calls</SectionTitle>
+          </div>
+          {recent.length === 0 ? (
+            <EmptyPanel title="No calls yet" body="Your latest scored calls will show up here." action={<Link href="/upload" className={dsButton('secondary', 'sm')}>Upload call</Link>} />
+          ) : (
+            <DataList label="Recent calls">
+              {recent.map((c) => {
+                const st = callState(c.status)
+                const score = typeof c.score_overall === 'number' ? Math.round(c.score_overall) : null
+                return (
+                  <DataRow
+                    key={c.id}
+                    href={`/calls/${encodeURIComponent(c.id)}`}
+                    title={formatCallDisplayTitle({ title: c.filename, repName: c.rep_name })}
+                    meta={formatCallDate(c.created_at)}
+                    trailing={st.kind === 'scored'
+                      ? <Badge tone={scoreTone(score)}>{score ?? '—'}</Badge>
+                      : <Badge tone={st.tone}>{st.label}</Badge>}
+                  />
+                )
+              })}
+            </DataList>
+          )}
+        </Panel>
+
+        {/* ── What was I assigned? ── */}
+        <Panel className="lg:col-span-2">
+          <div className="border-b border-[var(--ds-border)] px-5 py-4">
+            <SectionTitle action={<Link href="/assignments" className="text-sm text-[var(--ds-highlight)] hover:underline">All</Link>}>Assigned to you</SectionTitle>
+          </div>
+          {queue.length === 0 ? (
+            <EmptyPanel title="Nothing else assigned" body="Coaching tasks from your manager appear here." />
+          ) : (
+            <DataList label="Assigned coaching">
+              {queue.map((a) => (
+                <DataRow
+                  key={a.id}
+                  href="/assignments"
+                  title={a.title || 'Coaching task'}
+                  meta={a.due_at ? `Due ${formatCallDate(a.due_at)}` : undefined}
+                  trailing={isOverdue(a) ? <Badge tone="bad">Overdue</Badge> : undefined}
+                />
+              ))}
+            </DataList>
+          )}
+        </Panel>
       </div>
 
-
-
-      </Disclosure>
-
-    </PageContainer>
+      <p className="text-sm">
+        <Link href="/progress" className="text-[var(--ds-highlight)] hover:underline">View full progress</Link>
+      </p>
+    </PageShell>
   )
 }

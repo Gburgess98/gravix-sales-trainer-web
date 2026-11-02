@@ -80,7 +80,7 @@ check("loader grants 'allowed' only on r.ok", /if\s*\(\s*r\.ok\s*\)[\s\S]{0,80}s
 
 // ── 3. Failure/unknown can never broaden scope ────────────────────────────────
 console.log("\n── unknown/failed access cannot broaden scope ──");
-check("Company toggle offered only when access === 'allowed'", /disabled:\s*companyAccess\s*!==\s*["']allowed["']/.test(page));
+check("Company toggle offered only when access === 'allowed'", /\{companyAccess === "allowed" && \(\s*<Segmented/.test(page));
 check("paged scope opens to company only when access === 'allowed'", (page.match(/companyAccess === "allowed"\s*\n?\s*\?\s*callScope\s*:\s*"mine"/g) || []).length >= 2, `${(page.match(/companyAccess === "allowed"\s*\n?\s*\?\s*callScope\s*:\s*"mine"/g) || []).length} sites`);
 check("non-allowed access forces callScope back to 'mine'", /companyAccess\s*!==\s*["']allowed["'][\s\S]{0,80}setCallScope\(\s*["']mine["']\s*\)/.test(page));
 

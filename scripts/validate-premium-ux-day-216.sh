@@ -36,17 +36,17 @@ check "stage blocks carry a labelled Evidence quote block" $?
 grep -q '>Coaching implication<' "$CALL" && grep -q 'stageImplication' "$CALL"
 check "coaching implication line derived from verdict thresholds" $?
 
-grep -q 'Signal observed · Weak close' "$CALL" && grep -q 'stage.key === "close" && reviewBot.weakClose' "$CALL"
+grep -q '<Badge tone="warn">Weak close</Badge>' "$CALL" && grep -q 'stage.key === "close" && reviewBot.weakClose' "$CALL"
 check "weak_close is the only stage signal, mapped to Close from the real tag" $?
 
 grep -q 'rubricStages' "$CALL" && grep -q 'analysis_json?.stages' "$CALL"
 check "audit renders from real rubric/analysis stages (current data model)" $?
 
 # --- Where this call lost points ---
-grep -q 'Where this call lost points' "$CALL"
-check "lost-points breakdown present" $?
+grep -q 'Top coaching priorities' "$CALL"
+check "priorities breakdown present (glass pilot; was 'Where this call lost points')" $?
 
-grep -q 'priorityStages' "$CALL" && grep -q '< 70' "$CALL"
+grep -q 'coachingPriorities(' "$CALL" && grep -q '< 70' "$CALL"
 check "priorities are real below-target stages, weakest first" $?
 
 grep -q 'Practise this stage' "$CALL" && grep -q '/sparring/default?focus=' "$CALL"

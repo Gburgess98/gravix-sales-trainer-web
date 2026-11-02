@@ -57,7 +57,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [])
 
   return (
-    <div className="flex h-[calc(100dvh-var(--staging-banner-h,0px))] overflow-hidden bg-[#060609] bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.08),transparent_60%)] text-neutral-100">
+    <div className="flex h-[calc(100dvh-var(--staging-banner-h,0px))] overflow-hidden ds-app-bg text-neutral-100">
       {/* WCAG 2.4.1 — first focusable element; jumps past the sidebar to the page content. */}
       <a
         href="#main-content"

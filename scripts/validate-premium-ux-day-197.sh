@@ -29,10 +29,10 @@ check "PREMIUM_UX_AUDIT.md includes Day 197" $?
 # --- Shell alignment ---
 grep -q 'max-w-\[1400px\] px-6 py-6 lg:px-8' "$PAGE" 2>/dev/null
 check "main clamps to 1400px shell width" $?
-grep -q 'bg-\[#060609\]/90 backdrop-blur-md' "$PAGE" 2>/dev/null
-check "sticky section nav matches shell background" $?
-grep -q '"bg-indigo-500/20 text-indigo-200"' "$PAGE" 2>/dev/null
-check "active section pill is indigo (not white)" $?
+grep -q 'ds-glass rounded-\[var(--ds-radius-card)\] p-2' "$PAGE" 2>/dev/null
+check "section nav is a glass aside matching the shell (glass system v2; was sticky pill bar)" $?
+grep -q 'bg-white/\[0.08\] text-\[var(--ds-text)\]' "$PAGE" 2>/dev/null
+check "active section link is a quiet tonal fill (glass system v2; was indigo pill)" $?
 ! grep -q '"bg-neutral-100 text-neutral-900"' "$PAGE" 2>/dev/null
 check "white active pill removed" $?
 
@@ -79,7 +79,7 @@ grep -q 'className={buttonClasses("secondary", "md")}' "$PAGE" 2>/dev/null && ! 
 check "Practice-now CTA is canonical secondary (Day 46)" $?
 
 # --- Status colours stay status-only ---
-grep -q 'border-emerald-500/50 text-emerald-300' "$PAGE" 2>/dev/null
+grep -q 'border-emerald-400/60 text-emerald-200' "$PAGE" 2>/dev/null
 check "score circle keeps emerald for 80+ band" $?
 grep -q 'bg-emerald-600/10 text-emerald-300 border-emerald-500/20' "$PAGE" 2>/dev/null
 check "transcript Available chip stays emerald (status)" $?

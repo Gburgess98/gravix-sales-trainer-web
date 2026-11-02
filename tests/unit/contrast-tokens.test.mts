@@ -24,7 +24,7 @@ const token = (name: string) => {
 }
 
 // Backgrounds the app actually puts copy on: page, card (neutral-950), raised card (neutral-900).
-const SURFACES = { page: '#060609', card: '#0a0a0a', raised: '#171717' }
+const SURFACES = { page: '#070b13', card: '#0a0a0a', raised: '#171717' }
 
 test('neutral-500 text meets AA (4.5:1) on page, card and raised surfaces', () => {
   const fg = token('neutral-500')

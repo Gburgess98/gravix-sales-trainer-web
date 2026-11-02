@@ -55,8 +55,9 @@ check("library links to /calls/<id> by the row's own id", /href=\{`\/calls\/\$\{
 console.log("\n── no fabricated/placeholder detail score ──");
 // The only literal default is the Slack preview href fallback (overall ?? 80),
 // which is not the rendered header. The header must come from displayOverall.
-check("header ScorePill renders displayOverall (not a literal)", /<ScorePill\s+score=\{displayOverall\}/.test(detail));
-check("no stray 2-digit score literal wired into the header pill", !/<ScorePill\s+score=\{\s*\d{2}\s*\}/.test(detail));
+// Glass pilot: the header ScorePill became the result ring in the summary card; same rule — it renders displayOverall.
+check("result score ring renders displayOverall (not a literal)", /\{displayOverall != null \? displayOverall : "—"\}/.test(detail));
+check("no stray 2-digit score literal wired into the result ring", !/>\s*\d{2}\s*<\/div>/.test(detail.slice(detail.indexOf('id="summary"'), detail.indexOf('id="priorities"'))));
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — Day 276 call-detail consistency validator.`);
 process.exit(fail);

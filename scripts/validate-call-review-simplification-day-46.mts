@@ -103,7 +103,7 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   const out: Result[] = [];
   const t = (id: string, ok: boolean, detail?: string) => out.push({ id, ok, detail });
 
-  const mainOpen = page.indexOf('<div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6" data-review-shell>');
+  const mainOpen = page.indexOf('<div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-10 lg:py-12" data-review-shell>');
   const mainClose = page.indexOf("{/* /review-shell */}", mainOpen);
   const main = mainOpen >= 0 && mainClose > mainOpen ? page.slice(mainOpen, mainClose) : "";
   const unavailable = between(page, "function CallUnavailable", "export default function CallPage");
@@ -128,15 +128,16 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   const firstLoad = between(page, "// Treat not-found AND unusable ids", "setErr(\"Call not found or no longer available.\")");
   t("U5-first-load-classifies-missing-forbidden-invalid", ["not_found", "404", "invalid id", "400", "403", "forbidden"].every((k) => firstLoad.includes(`msg.includes("${k}")`)) && /setCallMissing\(true\)/.test(firstLoad));
   t("U7-poll-loop-classifies-not-found", /const isNotFound = msg\.includes\("not_found"\) \|\| msg\.includes\("404"\);\s*if \(isNotFound\) \{\s*if \(!cancelled\) \{\s*setCallMissing\(true\)/.test(page));
-  t("U6-workspace-header-only-after-guard", page.indexOf("<header className=\"glass space-y-3 rounded-2xl px-5 py-4\">") > guard && guard > 0);
+  t("U6-workspace-header-only-after-guard", page.indexOf("<header className=\"space-y-4\">") > guard && guard > 0);
 
   // N — destinations
-  const navIds = [...between(main, '<nav\n          aria-label="Call review sections"', "</nav>").matchAll(/\{ id: "(\w+)", label: "(\w+)" \}/g)].map((m) => m[1]);
-  t("N1-six-destinations-in-nav", navIds.join(",") === "summary,review,transcript,player,crm,coach", navIds.join(","));
-  t("N2-every-destination-has-an-anchor", ["summary", "review", "transcript", "player", "crm", "coach"].every((id) => main.includes(`id="${id}"`)));
+  const navIds = [...between(main, '<nav aria-label="Call review sections"', "</nav>").matchAll(/\{ id: "(\w+)", label: "(\w+)" \}/g)].map((m) => m[1]);
+  // Glass pilot: the sticky pill nav became a desktop aside; Player/CRM remain anchors (reachable via the c/a shortcuts and the aside's "Coaching & CRM").
+  t("N1-five-destinations-in-nav", navIds.join(",") === "summary,priorities,review,transcript,coach", navIds.join(","));
+  t("N2-every-destination-has-an-anchor", ["summary", "priorities", "review", "transcript", "player", "crm", "coach"].every((id) => main.includes(`id="${id}"`)));
   t("N3-pins-and-whisperer-anchors-kept", main.includes('id="pins"') && main.includes('id="whisperer-moments"'));
   t("N4-nav-is-labelled-with-aria-current", /aria-label="Call review sections"/.test(main) && /aria-current=\{activeSection === item\.id/.test(main));
-  t("N5-scroll-spy-ids-kept", page.includes("['summary', 'review', 'transcript', 'player', 'crm', 'coach']"));
+  t("N5-scroll-spy-ids-kept", page.includes("['summary', 'priorities', 'review', 'transcript', 'player', 'crm', 'coach']"));
   t("N7-scroll-spy-waits-for-sections-to-mount", /tries\+\+ < 20/.test(page) && /setTimeout\(attach, 250\)/.test(page) && /setActiveSection\(id\)/.test(page));
   t("N6-nav-scrolls-sections-into-view", /scrollIntoView\(\{ behavior: "smooth" \}\)/.test(between(main, "<nav", "</nav>")));
 
@@ -173,7 +174,7 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   // G — gating in the page source
   t("G1-header-plan-uses-existing-manager-gate", /isManager:\s*managerCheckDone && isManager,/.test(page));
   t("G2-manager-handlers-only-in-gated-renderer", count(page, "onClick={markCallReviewed}") === 1 && count(page, "onClick={assignCoachingFromCall}") === 1 && render.includes("onClick={markCallReviewed}") && render.includes("onClick={assignCoachingFromCall}"));
-  t("G3-stage-row-assign-drill-gated", gatedBefore(page, "<Button onClick={() => openCoach(true)}>Assign drill</Button>"));
+  t("G3-stage-row-assign-drill-gated", gatedBefore(page, 'onClick={() => openCoach(true)} className="ds-focus rounded text-[var(--ds-highlight)] hover:underline">Assign drill'));
   t("G4-quick-assign-form-gated", gatedBefore(page, "{/* Quick-assign actionable form */}", 40) || /Quick-assign actionable form \*\/\}\s*\{managerCheckDone && isManager && \(/.test(page));
   t("G5-coach-drawer-assign-form-gated", gatedBefore(page, '<div id="assign-form"'));
   t("G6-reviewed-chips-manager-gated", gatedBefore(main, '(managerReviewed || coachingAssigned) && (', 120) || /managerCheckDone && isManager && callMeta\?\.status === "scored" && \(managerReviewed \|\| coachingAssigned\)/.test(main));
@@ -217,9 +218,10 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   t("P10-practise-demoted", /className=\{buttonClasses\("secondary", "md"\)\}\s*onClick=\{\(\) => \{/.test(main) && main.includes("Practise this next"));
 
   // Responsive contract
-  t("S1-header-wraps-actions-as-a-unit", /flex flex-wrap items-start justify-between gap-x-6 gap-y-3/.test(main) && /min-w-0 flex-1 basis-\[28rem\]/.test(main) && /role="group" aria-label="Call actions" className="flex flex-wrap items-center gap-2"/.test(main));
-  t("S2-nav-scrolls-horizontally-not-the-page", /overflow-x-auto/.test(between(main, "<nav", "</nav>")));
-  t("S3-keyboard-hint-hidden-on-small", /hidden items-center[^"]*md:flex/.test(between(main, "<nav", "</nav>")));
+  t("S1-header-wraps-actions-as-a-unit", /flex flex-wrap items-start justify-between gap-x-6 gap-y-4/.test(main) && /min-w-0 flex-1 basis-\[22rem\]/.test(main) && /role="group" aria-label="Call actions" className="flex flex-wrap items-center gap-2"/.test(main));
+  // Glass pilot: below lg the sections simply stack (no sticky pill nav to overflow); the vertical summary aside is desktop-only.
+  t("S2-review-grid-stacks-below-lg", /grid gap-8 lg:grid-cols-\[minmax\(0,1fr\)_17rem\]/.test(main) && /min-w-0 space-y-6/.test(main));
+  t("S3-summary-aside-hidden-on-small", /<aside aria-label="Call summary" className="hidden lg:block">/.test(main));
   t("S4-motion-safe-drawers", count(drawers, "motion-reduce:transition-none") === 2);
   return out;
 }
@@ -280,10 +282,10 @@ const mutations: Mutation[] = [
   { name: "request-url-changed", expect: ["R1", "R2", "R3"], page: (p) => swap(p, "/api/proxy/v1/coach/notes?callId=", "/api/proxy/v1/coach/notez?callId=") },
   { name: "header-gate-removed", expect: ["G1"], page: (p) => swap(p, "isManager: managerCheckDone && isManager,", "isManager: true,") },
   { name: "quick-assign-form-ungated", expect: ["G4"], page: (p) => swap(p, /Quick-assign actionable form \*\/\}\s*\{managerCheckDone && isManager && \(/, "Quick-assign actionable form */}\n            {(") },
-  { name: "stage-row-assign-drill-ungated", expect: ["G3"], page: (p) => swap(p, /\{managerCheckDone && isManager && \(\s*<Button onClick=\{\(\) => openCoach\(true\)\}>Assign drill/, "{true && (\n<Button onClick={() => openCoach(true)}>Assign drill") },
+  { name: "stage-row-assign-drill-ungated", expect: ["G3"], page: (p) => swap(p, /\{managerCheckDone && isManager && \(\s*<button type="button" onClick=\{\(\) => openCoach\(true\)\}/, "{true && (\n<button type=\"button\" onClick={() => openCoach(true)}") },
   { name: "mark-reviewed-handler-duplicated-ungated", expect: ["G2"], page: (p) => swap(p, "No Whisperer moments linked to this call yet.", "No Whisperer moments linked to this call yet.<button onClick={markCallReviewed}>x</button>") },
   { name: "second-primary-added", expect: ["P1"], page: (p) => swap(p, "<Button onClick={openCrm}>\n                Open CRM panel", '<Button variant="primary" onClick={openCrm}>\n                Open CRM panel') },
-  { name: "old-indigo-primary-restored", expect: ["P1", "P10"], page: (p) => swap(p, 'className={buttonClasses("secondary", "md")}\n                    onClick={() => {', 'className="rounded-lg bg-indigo-600 px-4 py-2"\n                    onClick={() => {') },
+  { name: "old-indigo-primary-restored", expect: ["P1", "P10"], page: (p) => swap(p, 'className={buttonClasses("secondary", "md")}\n                  onClick={() => {', 'className="rounded-lg bg-indigo-600 px-4 py-2"\n                  onClick={() => {') },
   { name: "duplicate-next-actions-row-restored", expect: ["P5"], page: (p) => swap(p, "No Whisperer moments linked to this call yet.", "No Whisperer moments linked to this call yet.<Button onClick={openCrm}>Review CRM link</Button>") },
   { name: "shortcut-c-removed", expect: ["D2"], page: (p) => swap(p, 'if (e.key.toLowerCase() === "c") {\n        openCrm();', 'if (e.key.toLowerCase() === "x") {\n        openCrm();') },
   { name: "escape-handler-removed", expect: ["D7"], page: (p) => swap(p, 'if (e.key !== "Escape") return;', "if (false) return;") },
@@ -291,7 +293,7 @@ const mutations: Mutation[] = [
   { name: "closed-drawer-stays-focusable", expect: ["D8"], page: (p) => swap(p, '${crmOpen ? "visible pointer-events-auto" : "invisible pointer-events-none"}', '${crmOpen ? "pointer-events-auto" : "pointer-events-none"}') },
   { name: "scroll-spy-stops-retrying", expect: ["N7"], page: (p) => swap(p, "tries++ < 20", "false") },
   { name: "destination-anchor-deleted", expect: ["N2"], page: (p) => swap(p, '<section id="player">', "<section>") },
-  { name: "destination-removed-from-nav", expect: ["N1"], page: (p) => swap(p, '              { id: "transcript", label: "Transcript" },\n', "") },
+  { name: "destination-removed-from-nav", expect: ["N1"], page: (p) => swap(p, '                  { id: "transcript", label: "Transcript" },\n', "") },
   { name: "processing-state-dropped", expect: ["T1"], page: (p) => swap(p, "<span>Scoring call…</span>", "<span></span>") },
   { name: "player-removed", expect: ["T3"], page: (p) => swap(p, "<audio ref={audioRef}", "<div ref={audioRef as never}") },
   { name: "disclosure-opens-by-default", expect: ["P6"], page: (p) => swap(p, '<Disclosure title="Scoring transparency"', '<Disclosure defaultOpen title="Scoring transparency"') },
