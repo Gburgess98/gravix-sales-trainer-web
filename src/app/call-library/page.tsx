@@ -1016,6 +1016,7 @@ function CallLibraryPageInner() {
             <div className="flex items-center gap-2 text-xs text-neutral-400">
               <span>Sort by</span>
               <select
+                aria-label="Sort calls"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortBy)}
                 className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
@@ -1196,8 +1197,9 @@ function CallLibraryPageInner() {
         >
           {/* Persona + difficulty presets for the next round */}
           <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-5 py-3 text-[11px] text-neutral-400">
-            <span className="opacity-70">Preset:</span>
+            <span>Preset:</span>
             <select
+              aria-label="Opponent preset"
               value={sparPersona}
               onChange={(e) => setSparPersona(e.target.value)}
               className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"
@@ -1218,8 +1220,9 @@ function CallLibraryPageInner() {
               )}
             </select>
 
-            <span className="opacity-70 ml-2">Difficulty:</span>
+            <span className="ml-2">Difficulty:</span>
             <select
+              aria-label="Difficulty"
               value={sparDifficulty}
               onChange={(e) => setSparDifficulty(e.target.value)}
               className="rounded-full border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] outline-none focus:border-indigo-500/60"

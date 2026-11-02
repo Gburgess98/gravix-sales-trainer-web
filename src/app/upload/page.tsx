@@ -431,6 +431,7 @@ export default function UploadPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="file"
+                    aria-label="Call recording file"
                     accept="audio/*,.wav,.mp3,.m4a,.webm,.json"
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null;

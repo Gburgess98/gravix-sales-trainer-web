@@ -350,6 +350,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="block text-sm font-medium">Streak threshold</label>
                 <input
+                  aria-label="Streak threshold"
                   className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.streak_threshold}
                   onChange={(e) => setForm((s) => ({ ...s, streak_threshold: e.target.value }))}
@@ -363,6 +364,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="block text-sm font-medium">XP multiplier</label>
                 <input
+                  aria-label="XP multiplier"
                   className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.xp_multiplier}
                   onChange={(e) => setForm((s) => ({ ...s, xp_multiplier: e.target.value }))}
@@ -376,6 +378,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="block text-sm font-medium">Comeback bonus</label>
                 <input
+                  aria-label="Comeback bonus"
                   className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.comeback_bonus}
                   onChange={(e) => setForm((s) => ({ ...s, comeback_bonus: e.target.value }))}

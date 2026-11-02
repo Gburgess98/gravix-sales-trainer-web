@@ -485,6 +485,7 @@ export default function AnalyticsPage() {
             actions={
               <>
                 <select
+                  aria-label="Filter by rep"
                   className={SELECT_CLASS}
                   value={selectedRep}
                   onChange={(e) => setSelectedRep(e.target.value)}
@@ -498,6 +499,7 @@ export default function AnalyticsPage() {
                 </select>
 
                 <select
+                  aria-label="Date range"
                   className={SELECT_CLASS}
                   value={days}
                   onChange={(e) => setDays(Number(e.target.value))}

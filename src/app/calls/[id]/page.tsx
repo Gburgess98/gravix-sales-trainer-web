@@ -2622,6 +2622,7 @@ export default function CallPage() {
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
                   <label className="text-xs text-neutral-400">Assignee</label>
                   <select
+                    aria-label="Assignee"
                     value={assignee}
                     onChange={(e) => setAssignee(e.target.value)}
                     className="sm:col-span-2 w-full bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm outline-none focus:border-neutral-500"
@@ -3089,6 +3090,7 @@ export default function CallPage() {
               <div id="assign-form" className="space-y-2 mt-3">
                 <label className="block text-sm opacity-80">Assignee</label>
                 <select
+                  aria-label="Assignee"
                   className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
                   value={assigneeUserId}
                   onChange={e => setAssigneeUserId(e.target.value)}
@@ -3105,7 +3107,7 @@ export default function CallPage() {
                 </select>
 
                 <label className="block text-sm opacity-80">Drill</label>
-                <select className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                <select aria-label="Drill" className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
                   value={drillId} onChange={e => setDrillId(e.target.value)}>
                   {drills.length ? (
                     drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)

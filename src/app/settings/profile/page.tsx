@@ -156,6 +156,7 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-neutral-400">Timezone</label>
             <select
+              aria-label="Timezone"
               value={timezone}
               onChange={e => setTimezone(e.target.value)}
               className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50"

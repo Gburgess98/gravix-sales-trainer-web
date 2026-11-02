@@ -58,6 +58,13 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex h-[calc(100dvh-var(--staging-banner-h,0px))] overflow-hidden bg-[#060609] bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.08),transparent_60%)] text-neutral-100">
+      {/* WCAG 2.4.1 — first focusable element; jumps past the sidebar to the page content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-neutral-100 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-neutral-950 focus:outline-none focus:ring-2 focus:ring-brand-400"
+      >
+        Skip to content
+      </a>
       {/* useSearchParams (query-aware active nav) needs a Suspense boundary for static pages. */}
       <Suspense fallback={null}>
         <Sidebar
@@ -101,7 +108,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto overflow-x-hidden focus:outline-none">
           {children}
         </main>
       </div>

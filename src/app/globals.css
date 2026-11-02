@@ -31,6 +31,14 @@
    Retint a whole role for a white-label by repointing these vars at another
    palette — no component edits required. */
 @theme {
+  /* Staging redesign — AA text on the dark surfaces. Tailwind's neutral-500 (#737373) is 4.17:1 on
+     #0a0a0a and neutral-600 (#525252) is 2.53:1: both fail WCAG AA for normal text, and both are used for
+     real copy across the app. Lift them (still dimmer than neutral-400 #a3a3a3): 500 -> ~5.9:1,
+     600 -> ~5.3:1 on #0a0a0a, and >4.5:1 on neutral-900. Borders/hover tints that use these steps
+     simply get a touch lighter. Do not use neutral-700 or darker for text. */
+  --color-neutral-500: #8f8f8f;
+  --color-neutral-600: #828282;
+
   /* brand → indigo (action / AI) */
   --color-brand-200: var(--color-indigo-200);
   --color-brand-300: var(--color-indigo-300);
