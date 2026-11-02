@@ -757,6 +757,11 @@ function CallLibraryPageInner() {
                 Upload call
               </Link>
             )}
+            {tab === "sparring" && (
+              <Link href="/sparring" className={buttonClasses("ghost", "md", "whitespace-nowrap")}>
+                Open Sparring Arena
+              </Link>
+            )}
           </>
         }
       />
