@@ -35,10 +35,10 @@ fi
 check "/sparring resolves (index redirect exists or no bare links remain)" $?
 
 # Sparring and Calls must not both map to the exact same unqualified /call-library.
-SPARRING_HREF=$(grep -o "label: 'Sparring', href: '[^']*'" "$NAV" | sed "s/.*href: '\([^']*\)'.*/\1/")
+SPARRING_HREF=$(grep -o "label: 'Practice', href: '[^']*'" "$NAV" | sed "s/.*href: '\([^']*\)'.*/\1/")
 CALLS_HREF=$(grep -o "label: 'Calls', href: '[^']*'" "$NAV" | sed "s/.*href: '\([^']*\)'.*/\1/")
 [[ -n "$SPARRING_HREF" && "$SPARRING_HREF" != "$CALLS_HREF" ]]
-check "nav Sparring ($SPARRING_HREF) differs from Calls ($CALLS_HREF)" $?
+check "nav Practice ($SPARRING_HREF) differs from Calls ($CALLS_HREF)" $?
 
 grep -q "label: 'Upload Call'" "$NAV" 2>/dev/null
 check "Upload Call nav entry still exists" $?

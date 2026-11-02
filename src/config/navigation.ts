@@ -5,6 +5,7 @@ import {
   Users,
   Users2,
   ClipboardList,
+  ClipboardCheck,
   Swords,
   Brain,
   BarChart2,
@@ -25,6 +26,11 @@ export interface NavItem {
   href: string
   icon: LucideIcon
   roles?: NavRole[]
+  /**
+   * Staging redesign — same destination, role-appropriate wording/priority. Applied only
+   * when the viewer is a manager; visibility is still decided by `roles` alone.
+   */
+  manager?: { label?: string; secondary?: boolean }
   /**
    * Day 45 — lower-frequency destination: listed under the labelled "More" group
    * instead of its section. Visibility is still decided by `roles` alone, so
@@ -68,46 +74,37 @@ export function isShellPath(pathname: string): boolean {
 }
 
 export const navigation: NavSection[] = [
+  // Staging redesign — five labelled destinations per role. Rep: Home, Calls, Practice,
+  // Coaching. Manager: Overview, Team, Reviews, Assignments, Insights. Same hrefs and
+  // role gates as before; only wording and primary/"More" placement differ by role.
+  // (Rep "Progress" waits for an approved route.)
   {
     title: 'Workspace',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      // Day 161 — Upload Call promoted to the sidebar so managers never have to hunt for it.
-      { label: 'Upload Call', href: '/upload', icon: Upload },
-      { label: 'Calls', href: '/call-library', icon: Phone },
-      { label: 'Accounts', href: '/crm/accounts', icon: Building2 },
-      // Contacts: manager-only until a rep-facing contacts page exists
-      { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'], secondary: true },
-      // Day 214 — "Team" now means people/team management (/team, read-only MVP).
-      // The coaching-workload workspace at /crm/manager keeps its own entry as
-      // "Manager Centre" so neither destination is lost or duplicated.
+      { label: 'Home', href: '/dashboard', icon: LayoutDashboard, manager: { label: 'Overview' } },
+      { label: 'Calls', href: '/call-library', icon: Phone, manager: { secondary: true } },
+      // Day 178 — deep-link the sparring tab so Calls and Practice are distinct destinations.
+      { label: 'Practice', href: '/call-library?tab=sparring', icon: Swords, manager: { secondary: true } },
+      // Day 214 — "Team" is people/team management (/team, read-only MVP).
       { label: 'Team', href: '/team', icon: Users2, roles: ['manager'] },
+      // Review queue lives as a tab of the Command Centre; deep-linked (Day 165).
+      { label: 'Reviews', href: '/coaching?tab=review', icon: ClipboardCheck, roles: ['manager'] },
+      { label: 'Coaching', href: '/assignments', icon: ClipboardList, manager: { label: 'Assignments' } },
+      { label: 'Insights', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
+      // Lower-frequency destinations, listed under the labelled "More" group.
+      { label: 'Accounts', href: '/crm/accounts', icon: Building2, secondary: true },
+      { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'], secondary: true },
       { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'], secondary: true },
-    ],
-  },
-  {
-    title: 'Coaching',
-    items: [
-      { label: 'Assignments', href: '/assignments', icon: ClipboardList },
-      // Day 178 — deep-link the sparring tab so Sparring and Calls are distinct
-      // destinations (Calls lands on Live Calls, Sparring lands on AI Sparring).
-      { label: 'Sparring', href: '/call-library?tab=sparring', icon: Swords },
       { label: 'Command Centre', href: '/coaching', icon: Brain, secondary: true },
-    ],
-  },
-  {
-    title: 'Admin',
-    roles: ['manager'],
-    items: [
-      { label: 'Analytics', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
-      // Day 225 — Intelligence workspace, per CONTEXT_ENGINE_ROUTE_PLAN.md §2.
-      // Deliberately distinct from Analytics: /crm/analytics is "observe" (what
-      // the team is doing), /intelligence is "teach" (what Gravix knows about
-      // how you sell). Sparkles because Brain is Command Centre and BarChart2
-      // is Analytics — no duplicate labels or icons.
+      // Day 225 — Intelligence = "teach" (what Gravix knows about how you sell); Insights = "observe".
       { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'], secondary: true },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'], secondary: true },
     ],
+  },
+  {
+    // Day 161 — Upload Call stays one click away for everyone; it is a shared utility, not a fifth destination.
+    title: 'Utilities',
+    items: [{ label: 'Upload Call', href: '/upload', icon: Upload }],
   },
   {
     title: 'Account',

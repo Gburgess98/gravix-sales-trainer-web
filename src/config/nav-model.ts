@@ -27,6 +27,16 @@ export interface NavModel {
   more: NavItem[]
 }
 
+/** Apply the manager wording/priority override (visibility is untouched). */
+export function resolveNavItem(item: NavItem, isManager: boolean): NavItem {
+  if (!isManager || !item.manager) return item
+  return {
+    ...item,
+    label: item.manager.label ?? item.label,
+    secondary: item.manager.secondary ?? item.secondary,
+  }
+}
+
 export function buildNavModel(
   navigation: NavSection[],
   isManager: boolean,
@@ -36,7 +46,9 @@ export function buildNavModel(
   const more: NavItem[] = []
   for (const section of navigation) {
     if (!hasAccess(section.roles, isManager, userTier)) continue
-    const visible = section.items.filter((item) => hasAccess(item.roles, isManager, userTier))
+    const visible = section.items
+      .filter((item) => hasAccess(item.roles, isManager, userTier))
+      .map((item) => resolveNavItem(item, isManager))
     const primary = visible.filter((item) => !item.secondary)
     more.push(...visible.filter((item) => item.secondary))
     if (primary.length > 0) sections.push({ ...section, items: primary })

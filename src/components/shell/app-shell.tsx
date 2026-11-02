@@ -71,7 +71,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Main column */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <Suspense fallback={null}>
-          <Topbar onMobileMenuOpen={() => setMobileOpen(true)} />
+          <Topbar onMobileMenuOpen={() => setMobileOpen(true)} isManager={isManager} />
         </Suspense>
 
         {/* Impersonation banner — shown globally when a SuperAdmin is acting as another user */}

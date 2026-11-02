@@ -50,9 +50,13 @@ const PERSONAS: { name: string; isManager: boolean; tier?: string }[] = [
 const PINNED_HREFS = [
   "/dashboard", "/upload", "/call-library", "/crm/accounts", "/crm/manager/contacts", "/team", "/crm/manager",
   "/assignments", "/call-library?tab=sparring", "/coaching", "/crm/analytics", "/intelligence", "/admin/settings",
-  "/settings/profile", "/admin/partners", "/admin/companies", "/admin/users",
+  "/settings/profile", "/coaching?tab=review", "/admin/partners", "/admin/companies", "/admin/users",
 ].sort();
-const MUST_STAY_PRIMARY = ["/dashboard", "/upload", "/call-library", "/assignments"];
+// Staging redesign — five labelled destinations per role (+ Upload Call as a utility).
+const PRIMARY_BY_ROLE: Record<string, string[]> = {
+  rep: ["Home|/dashboard", "Calls|/call-library", "Practice|/call-library?tab=sparring", "Coaching|/assignments", "Upload Call|/upload"],
+  manager: ["Overview|/dashboard", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
+};
 
 type Mods = { nav: any; model: any };
 async function loadMods(navModelFile: string, navigationFile: string): Promise<Mods> {
@@ -70,21 +74,28 @@ function behaviourChecks(m: Mods, tag = ""): Check[] {
   const act = (href: string, pathname: string, search = "") => isNavItemActive(href, pathname, search, HREFS);
   const CALLS = "/call-library", SPAR = "/call-library?tab=sparring";
   const key = (i: any) => `${i.label}|${i.href}`;
+  const hrefKey = (i: any) => i.href;
 
   for (const p of PERSONAS) {
     const legacy: string[] = [];
     for (const s of navigation) {
       if (!oracleHasAccess(s.roles, p.isManager, p.tier)) continue;
-      for (const i of s.items) if (oracleHasAccess(i.roles, p.isManager, p.tier)) legacy.push(key(i));
+      for (const i of s.items) if (oracleHasAccess(i.roles, p.isManager, p.tier)) legacy.push(hrefKey(i));
     }
     const model = buildNavModel(navigation, p.isManager, p.tier);
-    const now = [...model.sections.flatMap((s: any) => s.items), ...model.more].map(key);
-    a(`A-visibility-identical-to-legacy:${p.name}`, JSON.stringify([...legacy].sort()) === JSON.stringify([...now].sort()), `legacy=${legacy.length} now=${now.length}`);
+    const now = [...model.sections.flatMap((s: any) => s.items), ...model.more].map(hrefKey);
+    // Visibility is compared by destination: labels/placement changed by design, who can reach what did not
+    // (the oracle applies the original role predicate to the same navigation tree).
+    const legacyPlus = legacy;
+    a(`A-visibility-identical-to-legacy:${p.name}`, JSON.stringify([...legacyPlus].sort()) === JSON.stringify([...now].sort()), `legacy=${legacy.length} now=${now.length}`);
     a(`A-no-duplicates:${p.name}`, new Set(now).size === now.length);
     a(`B-secondary-only-under-more:${p.name}`, model.sections.every((s: any) => s.items.every((i: any) => !i.secondary)) && model.more.every((i: any) => i.secondary));
     a(`B-empty-sections-dropped:${p.name}`, model.sections.every((s: any) => s.items.length > 0));
     const primaryHrefs = model.sections.flatMap((s: any) => s.items.map((i: any) => i.href));
-    a(`B-high-frequency-stay-primary:${p.name}`, MUST_STAY_PRIMARY.every((h) => primaryHrefs.includes(h)), primaryHrefs.join(","));
+    const primaryKeys = model.sections.flatMap((s: any) => s.items.map(key));
+    const want = PRIMARY_BY_ROLE[p.isManager ? "manager" : "rep"];
+    a(`B-primary-nav-matches-brief:${p.name}`, JSON.stringify(primaryKeys) === JSON.stringify(want), primaryKeys.join(","));
+    a(`B-at-most-five-destinations-plus-upload:${p.name}`, primaryKeys.filter((k: string) => !k.endsWith("|/upload")).length <= 5);
   }
   // role boundaries stated explicitly (not just oracle-equal)
   const rep = buildNavModel(navigation, false, undefined);
@@ -207,11 +218,12 @@ async function sourceMutation(name: string, file: string, find: string, repl: st
   if (!caught) failures++;
 }
 try {
+  await modelMutation("manager wording/placement override ignored", "  if (!isManager || !item.manager) return item\n", "  return item\n", "B-primary-nav-matches-brief:manager");
   await modelMutation("hasAccess lets everyone see everything", "  if (!roles || roles.length === 0) return true\n", "  return true\n", "A-visibility-identical-to-legacy:rep");
   await modelMutation("superadmin role granted to PartnerAdmin", "if (roles.includes('superadmin') && userTier === 'SuperAdmin') return true", "if (roles.includes('superadmin') && (userTier === 'SuperAdmin' || userTier === 'PartnerAdmin')) return true", "A-visibility-identical-to-legacy:partneradmin+manager");
   await modelMutation("secondary items silently dropped", "more.push(...visible.filter((item) => item.secondary))", "void 0", "A-visibility-identical-to-legacy:manager");
   await modelMutation("secondary items left in primary sections", "const primary = visible.filter((item) => !item.secondary)", "const primary = visible", "B-secondary-only-under-more:manager");
-  await modelMutation("manager-only destinations leak to reps (item role filter skipped)", "const visible = section.items.filter((item) => hasAccess(item.roles, isManager, userTier))", "const visible = section.items", "A-visibility-identical-to-legacy:rep");
+  await modelMutation("manager-only destinations leak to reps (item role filter skipped)", "const visible = section.items\n      .filter((item) => hasAccess(item.roles, isManager, userTier))\n      .map(", "const visible = section.items\n      .map(", "A-visibility-identical-to-legacy:rep");
   await modelMutation("active state ignores the query (Sparring never/always matches by path alone)", "if (query) return queryMatches(query, current)", "if (query) return true", "D-calls-only-on-plain-call-library");
   await modelMutation("Calls no longer yields to the Sparring tab (both active)", "return otherQuery !== '' && otherPath === path && queryMatches(otherQuery, current)", "return false", "D-calls-and-sparring-never-both-active");
   await modelMutation("query-link activates on any route sharing the query", "  if (!pathMatches) return false\n", "", "D-query-link-needs-its-route");

@@ -5,21 +5,22 @@ import { Menu, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useSession } from '@/lib/useSession'
 import { navigation } from '@/config/navigation'
-import { collectNavHrefs, isNavItemActive, type NavSearch } from '@/config/nav-model'
+import { collectNavHrefs, isNavItemActive, resolveNavItem, type NavSearch } from '@/config/nav-model'
 
 const NAV_HREFS = collectNavHrefs(navigation)
 
 interface TopbarProps {
+  isManager?: boolean
   onMobileMenuOpen: () => void
 }
 
-function getBreadcrumb(pathname: string, search: NavSearch): string {
+function getBreadcrumb(pathname: string, search: NavSearch, isManager: boolean): string {
   // Walk nav sections to find a matching label. Query-aware (Day 45) so the title
   // agrees with the sidebar: /call-library → Calls, /call-library?tab=sparring → Sparring.
   for (const section of navigation) {
     for (const item of section.items) {
       if (isNavItemActive(item.href, pathname, search, NAV_HREFS)) {
-        return item.label
+        return resolveNavItem(item, isManager).label
       }
     }
   }
@@ -33,11 +34,11 @@ function getBreadcrumb(pathname: string, search: NavSearch): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-export function Topbar({ onMobileMenuOpen }: TopbarProps) {
+export function Topbar({ onMobileMenuOpen, isManager = false }: TopbarProps) {
   const pathname = usePathname() ?? ''
   const { session } = useSession()
   const searchParams = useSearchParams()
-  const breadcrumb = getBreadcrumb(pathname, searchParams)
+  const breadcrumb = getBreadcrumb(pathname, searchParams, isManager)
 
   const logout = async () => {
     try {

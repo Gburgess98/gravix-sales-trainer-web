@@ -221,7 +221,7 @@ grep -q "'/intelligence'," "$NAV"
 check "/intelligence added to SHELL_PATHS" $?
 
 # --- Existing nav/routes untouched -----------------------------------------
-grep -q "{ label: 'Analytics', href: '/crm/analytics', icon: BarChart2, roles: \['manager'\] }" "$NAV"
+grep -q "{ label: 'Insights', href: '/crm/analytics', icon: BarChart2, roles: \['manager'\] }" "$NAV"
 check "Analytics entry unchanged (observe vs teach split preserved)" $?
 
 grep -q "{ label: 'Settings', href: '/admin/settings', icon: Settings, roles: \['manager'\] }" "$NAV"
