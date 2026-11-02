@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
 import ErrorBox from "@/components/ErrorBox";
+import { buttonClasses } from "@/components/ui/button";
 import { useToast } from "@/components/Toast";
 import { proxyFetch } from "@/lib/api";
 
@@ -1539,8 +1540,8 @@ export default function SparringSessionPage() {
 
   return (
     <div className="px-4 py-6 w-full max-w-7xl mx-auto">
-      {/* Top header + back buttons */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Top header + back buttons — glass summary band; the conversation and feedback below stay opaque. */}
+      <div className="glass flex items-center justify-between gap-3 rounded-2xl px-5 py-4 mb-4">
         <div>
           <button
             type="button"
@@ -1549,20 +1550,21 @@ export default function SparringSessionPage() {
           >
             ← Back
           </button>
-          <h1 className="text-xl font-medium text-neutral-50">{title}</h1>
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">Practice</p>
+          <h1 className="text-xl font-semibold tracking-tight text-neutral-50">{title}</h1>
         </div>
 
         {launchedFromAssignments ? (
           <Link
             href="/assignments"
-            className="text-xs rounded border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-emerald-200 hover:bg-emerald-500/15 transition-all duration-150 active:scale-[0.98]"
+            className={buttonClasses("ghost", "sm", "shrink-0")}
           >
             Back to Assignments
           </Link>
         ) : (
           <Link
             href="/call-library"
-            className="text-xs rounded border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:bg-neutral-900 transition-all duration-150 active:scale-[0.98]"
+            className={buttonClasses("ghost", "sm", "shrink-0")}
           >
             Back to Call Library
           </Link>
@@ -1595,14 +1597,7 @@ export default function SparringSessionPage() {
                 <div className="text-xs text-neutral-500">
                   {new Date(session.created_at).toLocaleString()}
                 </div>
-                {session.rep_id && (
-                  <div className="text-xs text-neutral-500 mt-1">
-                    Rep ID:{" "}
-                    <span className="font-mono text-[11px] text-neutral-400">
-                      {session.rep_id}
-                    </span>
-                  </div>
-                )}
+                {/* Raw rep UUID no longer shown as a label (PREMIUM_UX_AUDIT §38). */}
                 {/* Post-action summary card: render after Top summary card */}
                 {isScored && postAction ? (
                   <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
@@ -1992,7 +1987,7 @@ export default function SparringSessionPage() {
                       onClick={handleScoreClick}
                       disabled={scoringBusy || isScored}
                       className={
-                        "inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black disabled:opacity-60 transition-all duration-150 active:scale-[0.98]" +
+                        "inline-flex items-center gap-1 rounded-full border border-brand-500 bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60 transition-all duration-150 active:scale-[0.98]" +
                         (timerFinished && !isScored ? " animate-pulse" : "")
                       }
                     >
@@ -2117,6 +2112,282 @@ export default function SparringSessionPage() {
               )}
             </div>
           )}
+
+          {/* Staging redesign: the conversation is the first surface; diagnostics follow it. */}
+          {/* Live sparring conversation */}
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col gap-0.5">
+                <h2 className="text-sm font-medium text-neutral-100">
+                  Live sparring conversation
+                </h2>
+                {ended && (
+                  <p className="text-[10px] text-neutral-400">
+                    Session ended — buyer hung up. Restart drill (new session) to start a fresh round.
+                  </p>
+                )}
+              </div>
+              <span className="text-[11px] rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+                {modeLabel ? `${modeLabel} mode` : "Practice mode"}
+              </span>
+            </div>
+
+            {chatError && (
+              <div className="mb-2">
+                <ErrorBox msg={chatError} />
+              </div>
+            )}
+
+            <div
+              ref={scrollRef}
+              className={
+                (turns.length >= 2
+                  ? "h-[70vh] max-h-[720px]"
+                  : "h-[42vh] max-h-[420px]") +
+                " overflow-auto space-y-3 pr-1 mb-3 border border-neutral-900 rounded-md bg-neutral-950/60 px-3 py-2 transition-[height,max-height] duration-300"
+              }
+            >
+              {turns.length === 0 ? (
+                <p className="text-xs text-neutral-500">
+                  No turns yet. Start by sending your first line to the buyer.
+                </p>
+              ) : (
+                turns.map((t) => (
+                  <div
+                    key={t.id}
+                    id={`turn-${t.id}`}
+                    className={`max-w-[75%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${t.role === "user"
+                      ? "ml-auto bg-emerald-600/20 border border-emerald-500/40"
+                      : "mr-auto bg-neutral-900 border border-neutral-700"
+                      }`}
+                  >
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                      {t.role === "user" ? "You" : "Buyer"}
+                    </div>
+                    <div className="text-neutral-100 whitespace-pre-wrap">
+                      {t.text}
+                    </div>
+                    {t.role === "assistant" &&
+                      Array.isArray(whispersByTurnId[t.id]) &&
+                      whispersByTurnId[t.id].length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {whispersByTurnId[t.id].slice(0, 2).map((w, idx) => (
+                            <div
+                              key={`${t.id}-whisper-${idx}`}
+                              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200"
+                            >
+                              <div className="mb-1 flex items-center gap-2">
+                                <span className={tagBadgeClasses(w.tag)}>{w.tag}</span>
+                                <span className="opacity-80">🧠</span>
+                                <span className="text-neutral-200">Coaching</span>
+                              </div>
+                              <div className="text-emerald-100">{w.text}</div>
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const line = buildSuggestedRepLine(t.text, w);
+                                    setInput(line);
+                                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                                  }}
+                                  className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.98]"
+                                >
+                                  Insert suggested line
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const line = buildSuggestedRepLine(t.text, w);
+                                    setInput(line.length > 110 ? line.slice(0, 110).trim() + "…" : line);
+                                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                                  }}
+                                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] font-medium text-neutral-200 hover:bg-neutral-800 transition-all duration-150 active:scale-[0.98]"
+                                >
+                                  Insert shorter
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    {t.role === "user" && t.micro && (
+                      <div className="mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] text-neutral-300">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-neutral-100">
+                            Micro {formatScore((t.micro as any).turn_score)}/100
+                          </span>
+                          {(t.micro as any).micro_breakdown && (
+                            <span className="text-neutral-400">
+                              O:{formatScore((t.micro as any).micro_breakdown?.opener)} D:{formatScore((t.micro as any).micro_breakdown?.discovery)} P:{formatScore((t.micro as any).micro_breakdown?.pitch)} Ob:{formatScore((t.micro as any).micro_breakdown?.objections)} C:{formatScore((t.micro as any).micro_breakdown?.close)}
+                            </span>
+                          )}
+                          {(() => {
+                            const prev = prevRepMicroScore(turns, t.id);
+                            const cur = typeof t.micro?.turn_score === "number" ? t.micro.turn_score : null;
+                            if (prev == null || cur == null) return null;
+                            const d = Math.round(cur - prev);
+                            const dir = d > 0 ? "up" : d < 0 ? "down" : "flat";
+                            const label = d > 0 ? `↑ +${d}` : d < 0 ? `↓ ${d}` : "→ 0";
+                            return (
+                              <span className={microPillClasses(dir)} title="Delta vs previous rep turn">
+                                {label}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        {(t.micro as any).coach_note && (
+                          <div className="mt-1 text-neutral-400">
+                            {(t.micro as any).coach_note}
+                          </div>
+                        )}
+                        {/* --- Streak / XP meta (only show on latest rep micro turn) --- */}
+                        {session?.meta && lastRepMicroTurnId === t.id && (
+                          <div className="mt-2 flex flex-wrap gap-2 text-[9px] text-neutral-300">
+                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
+                              Streak <b>{session.meta.streak ?? 0}</b>
+                            </span>
+                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
+                              Best <b>{session.meta.best_streak ?? 0}</b>
+                            </span>
+                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
+                              x<b>
+                                {typeof session.meta.xp_multiplier === "number"
+                                  ? session.meta.xp_multiplier.toFixed(1)
+                                  : "1.0"}
+                              </b>
+                            </span>
+                            {session.meta.comeback_pending && (
+                              <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                                Comeback armed
+                              </span>
+                            )}
+                            {(session.meta.xp_bonus_pending ?? 0) > 0 && (
+                              <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+                                +{session.meta.xp_bonus_pending} XP queued
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {session?.meta && lastRepMicroTurnId === t.id && (
+                          () => {
+                            const threshold = typeof session.meta.streak_threshold === "number" ? session.meta.streak_threshold : 75;
+                            const raw = typeof (session.meta as any).last_turn_score_raw === "number" ? (session.meta as any).last_turn_score_raw : null;
+                            const last = typeof session.meta.last_turn_score === "number" ? session.meta.last_turn_score : null;
+                            const lastUsed = last ?? raw;
+                            if (lastUsed == null) return null;
+
+                            if (lastUsed < threshold) {
+                              return (
+                                <div className="mt-2 text-[10px] text-neutral-400">
+                                  Streak needs <span className="font-semibold">{threshold}+</span>. Last turn was <span className="font-semibold">{Math.round(lastUsed)}</span>. Try a clearer next-step close.
+                                </div>
+                              );
+                            }
+                            return null;
+                          }
+                        )()}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[10px] text-neutral-500">
+                      {new Date(t.created_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      onSend();
+                    }
+                  }}
+                  placeholder={
+                    ended
+                      ? "Session ended — score this run or replay to start again."
+                      : isScored
+                        ? "Round is scored — hit Replay to run it again."
+                        : "Type your next line to the buyer…"
+                  }
+                  disabled={composerDisabled}
+                  className="flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs outline-none focus:border-emerald-500 disabled:opacity-40"
+                />
+                <button
+                  type="button"
+                  onClick={onSend}
+                  disabled={composerDisabled || !input.trim()}
+                  className="rounded-md border border-emerald-500 bg-emerald-600 px-3 py-2 text-xs font-medium text-black disabled:opacity-40 transition-all duration-150 active:scale-[0.98]"
+                >
+                  {sending ? "Sending…" : "Send"}
+                </button>
+              </div>
+
+              {isScored && (
+                <p className="text-[10px] text-neutral-400">
+                  This round has been scored. Use{" "}
+                  <span className="font-semibold">Restart drill (new session)</span> to start a fresh round.
+                </p>
+              )}
+
+              {ended && !isScored && (
+                <p className="text-[10px] text-neutral-400">
+                  Buyer hung up on this round. Use{" "}
+                  <span className="font-semibold">Restart drill (new session)</span> to start a new attempt.
+                </p>
+              )}
+
+              <div
+                className={
+                  "mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-[11px] text-neutral-200 min-h-[92px] transition-opacity duration-300 " +
+                  (whispererLoading ? "opacity-90" : "opacity-100")
+                }
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="font-medium text-neutral-100">
+                    Whisperer suggestions
+                  </span>
+                  {whispererLoading && (
+                    <span className="text-[10px] text-neutral-400">
+                      Analysing…
+                    </span>
+                  )}
+                </div>
+
+                {whispererError && (
+                  <div className="mb-1 text-[10px] text-red-400">
+                    {whispererError}
+                  </div>
+                )}
+
+                <div className="transition-all duration-300 ease-out">
+                  {!whispererLoading && !whispererError && whispererHits.length === 0 && (
+                    <p className="text-[10px] text-neutral-500">
+                      Coaching appears inline under the latest buyer message.
+                    </p>
+                  )}
+
+                  {whispererHits.length > 0 && (
+                    <ul className="space-y-1 animate-[fadeIn_200ms_ease-out]">
+                      {whispererHits.slice(0, 3).map((hit, idx) => (
+                        <li key={`${hit.type}-${idx}`} className="text-[10px] text-neutral-200">
+                          <span className="mr-1 opacity-70">•</span>
+                          {hit.suggestion.text}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2512,281 +2783,6 @@ export default function SparringSessionPage() {
               </div>
             </div>
           )}
-
-          {/* Live sparring conversation */}
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex flex-col gap-0.5">
-                <h2 className="text-sm font-medium text-neutral-100">
-                  Live sparring conversation
-                </h2>
-                {ended && (
-                  <p className="text-[10px] text-neutral-400">
-                    Session ended — buyer hung up. Restart drill (new session) to start a fresh round.
-                  </p>
-                )}
-              </div>
-              <span className="text-[11px] rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
-                {modeLabel ? `${modeLabel} mode` : "Practice mode"}
-              </span>
-            </div>
-
-            {chatError && (
-              <div className="mb-2">
-                <ErrorBox msg={chatError} />
-              </div>
-            )}
-
-            <div
-              ref={scrollRef}
-              className={
-                (turns.length >= 2
-                  ? "h-[70vh] max-h-[720px]"
-                  : "h-[42vh] max-h-[420px]") +
-                " overflow-auto space-y-3 pr-1 mb-3 border border-neutral-900 rounded-md bg-neutral-950/60 px-3 py-2 transition-[height,max-height] duration-300"
-              }
-            >
-              {turns.length === 0 ? (
-                <p className="text-xs text-neutral-500">
-                  No turns yet. Start by sending your first line to the buyer.
-                </p>
-              ) : (
-                turns.map((t) => (
-                  <div
-                    key={t.id}
-                    id={`turn-${t.id}`}
-                    className={`max-w-[75%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${t.role === "user"
-                      ? "ml-auto bg-emerald-600/20 border border-emerald-500/40"
-                      : "mr-auto bg-neutral-900 border border-neutral-700"
-                      }`}
-                  >
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                      {t.role === "user" ? "You" : "Buyer"}
-                    </div>
-                    <div className="text-neutral-100 whitespace-pre-wrap">
-                      {t.text}
-                    </div>
-                    {t.role === "assistant" &&
-                      Array.isArray(whispersByTurnId[t.id]) &&
-                      whispersByTurnId[t.id].length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {whispersByTurnId[t.id].slice(0, 2).map((w, idx) => (
-                            <div
-                              key={`${t.id}-whisper-${idx}`}
-                              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200"
-                            >
-                              <div className="mb-1 flex items-center gap-2">
-                                <span className={tagBadgeClasses(w.tag)}>{w.tag}</span>
-                                <span className="opacity-80">🧠</span>
-                                <span className="text-neutral-200">Coaching</span>
-                              </div>
-                              <div className="text-emerald-100">{w.text}</div>
-
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const line = buildSuggestedRepLine(t.text, w);
-                                    setInput(line);
-                                    window.setTimeout(() => inputRef.current?.focus(), 0);
-                                  }}
-                                  className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.98]"
-                                >
-                                  Insert suggested line
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const line = buildSuggestedRepLine(t.text, w);
-                                    setInput(line.length > 110 ? line.slice(0, 110).trim() + "…" : line);
-                                    window.setTimeout(() => inputRef.current?.focus(), 0);
-                                  }}
-                                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] font-medium text-neutral-200 hover:bg-neutral-800 transition-all duration-150 active:scale-[0.98]"
-                                >
-                                  Insert shorter
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    {t.role === "user" && t.micro && (
-                      <div className="mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] text-neutral-300">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-neutral-100">
-                            Micro {formatScore((t.micro as any).turn_score)}/100
-                          </span>
-                          {(t.micro as any).micro_breakdown && (
-                            <span className="text-neutral-400">
-                              O:{formatScore((t.micro as any).micro_breakdown?.opener)} D:{formatScore((t.micro as any).micro_breakdown?.discovery)} P:{formatScore((t.micro as any).micro_breakdown?.pitch)} Ob:{formatScore((t.micro as any).micro_breakdown?.objections)} C:{formatScore((t.micro as any).micro_breakdown?.close)}
-                            </span>
-                          )}
-                          {(() => {
-                            const prev = prevRepMicroScore(turns, t.id);
-                            const cur = typeof t.micro?.turn_score === "number" ? t.micro.turn_score : null;
-                            if (prev == null || cur == null) return null;
-                            const d = Math.round(cur - prev);
-                            const dir = d > 0 ? "up" : d < 0 ? "down" : "flat";
-                            const label = d > 0 ? `↑ +${d}` : d < 0 ? `↓ ${d}` : "→ 0";
-                            return (
-                              <span className={microPillClasses(dir)} title="Delta vs previous rep turn">
-                                {label}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        {(t.micro as any).coach_note && (
-                          <div className="mt-1 text-neutral-400">
-                            {(t.micro as any).coach_note}
-                          </div>
-                        )}
-                        {/* --- Streak / XP meta (only show on latest rep micro turn) --- */}
-                        {session?.meta && lastRepMicroTurnId === t.id && (
-                          <div className="mt-2 flex flex-wrap gap-2 text-[9px] text-neutral-300">
-                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
-                              Streak <b>{session.meta.streak ?? 0}</b>
-                            </span>
-                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
-                              Best <b>{session.meta.best_streak ?? 0}</b>
-                            </span>
-                            <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5">
-                              x<b>
-                                {typeof session.meta.xp_multiplier === "number"
-                                  ? session.meta.xp_multiplier.toFixed(1)
-                                  : "1.0"}
-                              </b>
-                            </span>
-                            {session.meta.comeback_pending && (
-                              <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-amber-300">
-                                Comeback armed
-                              </span>
-                            )}
-                            {(session.meta.xp_bonus_pending ?? 0) > 0 && (
-                              <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
-                                +{session.meta.xp_bonus_pending} XP queued
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {session?.meta && lastRepMicroTurnId === t.id && (
-                          () => {
-                            const threshold = typeof session.meta.streak_threshold === "number" ? session.meta.streak_threshold : 75;
-                            const raw = typeof (session.meta as any).last_turn_score_raw === "number" ? (session.meta as any).last_turn_score_raw : null;
-                            const last = typeof session.meta.last_turn_score === "number" ? session.meta.last_turn_score : null;
-                            const lastUsed = last ?? raw;
-                            if (lastUsed == null) return null;
-
-                            if (lastUsed < threshold) {
-                              return (
-                                <div className="mt-2 text-[10px] text-neutral-400">
-                                  Streak needs <span className="font-semibold">{threshold}+</span>. Last turn was <span className="font-semibold">{Math.round(lastUsed)}</span>. Try a clearer next-step close.
-                                </div>
-                              );
-                            }
-                            return null;
-                          }
-                        )()}
-                      </div>
-                    )}
-                    <div className="mt-1 text-[10px] text-neutral-500">
-                      {new Date(t.created_at).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      onSend();
-                    }
-                  }}
-                  placeholder={
-                    ended
-                      ? "Session ended — score this run or replay to start again."
-                      : isScored
-                        ? "Round is scored — hit Replay to run it again."
-                        : "Type your next line to the buyer…"
-                  }
-                  disabled={composerDisabled}
-                  className="flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs outline-none focus:border-emerald-500 disabled:opacity-40"
-                />
-                <button
-                  type="button"
-                  onClick={onSend}
-                  disabled={composerDisabled || !input.trim()}
-                  className="rounded-md border border-emerald-500 bg-emerald-600 px-3 py-2 text-xs font-medium text-black disabled:opacity-40 transition-all duration-150 active:scale-[0.98]"
-                >
-                  {sending ? "Sending…" : "Send"}
-                </button>
-              </div>
-
-              {isScored && (
-                <p className="text-[10px] text-neutral-400">
-                  This round has been scored. Use{" "}
-                  <span className="font-semibold">Restart drill (new session)</span> to start a fresh round.
-                </p>
-              )}
-
-              {ended && !isScored && (
-                <p className="text-[10px] text-neutral-400">
-                  Buyer hung up on this round. Use{" "}
-                  <span className="font-semibold">Restart drill (new session)</span> to start a new attempt.
-                </p>
-              )}
-
-              <div
-                className={
-                  "mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-[11px] text-neutral-200 min-h-[92px] transition-opacity duration-300 " +
-                  (whispererLoading ? "opacity-90" : "opacity-100")
-                }
-              >
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="font-medium text-neutral-100">
-                    Whisperer suggestions
-                  </span>
-                  {whispererLoading && (
-                    <span className="text-[10px] text-neutral-400">
-                      Analysing…
-                    </span>
-                  )}
-                </div>
-
-                {whispererError && (
-                  <div className="mb-1 text-[10px] text-red-400">
-                    {whispererError}
-                  </div>
-                )}
-
-                <div className="transition-all duration-300 ease-out">
-                  {!whispererLoading && !whispererError && whispererHits.length === 0 && (
-                    <p className="text-[10px] text-neutral-500">
-                      Coaching appears inline under the latest buyer message.
-                    </p>
-                  )}
-
-                  {whispererHits.length > 0 && (
-                    <ul className="space-y-1 animate-[fadeIn_200ms_ease-out]">
-                      {whispererHits.slice(0, 3).map((hit, idx) => (
-                        <li key={`${hit.type}-${idx}`} className="text-[10px] text-neutral-200">
-                          <span className="mr-1 opacity-70">•</span>
-                          {hit.suggestion.text}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Score breakdown */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
