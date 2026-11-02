@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { PageContainer } from '@/components/layout/page-container'
@@ -1002,19 +1003,24 @@ function generateManagerBriefing(
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function CoachingPage() {
+function CoachingPageInner() {
   const [tab, setTab] = useState<CoachingTab>('overview')
   const [repFilter, setRepFilter] = useState<RepFilter>('all')
 
   // Day 165 — allow deep-linking to a tab (e.g. /coaching?tab=review from the
   // upload success screen) so managers land straight on the Review Queue.
+  // Follows the URL (not just first mount) so the sidebar "Reviews" link and
+  // browser back/forward switch tabs when already on this page.
+  const urlTab = useSearchParams()?.get('tab') ?? null
+  const urlTabSeen = useRef(false)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const wanted = (params.get('tab') || window.location.hash.replace('#', '')) as CoachingTab
+    const wanted = (urlTab || window.location.hash.replace('#', '')) as CoachingTab
     const valid: CoachingTab[] = ['overview', 'interventions', 'assignments', 'replay', 'review']
     if (valid.includes(wanted)) setTab(wanted)
-  }, [])
+    else if (urlTabSeen.current) setTab('overview')
+    urlTabSeen.current = true
+  }, [urlTab])
 
   const [reps, setReps] = useState<RepRisk[]>([])
   const [headline, setHeadline] = useState<Headline | null>(null)
@@ -4079,5 +4085,14 @@ export default function CoachingPage() {
         </div>
       )}
     </PageContainer>
+  )
+}
+
+// useSearchParams needs a Suspense boundary (same pattern as /call-library).
+export default function CoachingPage() {
+  return (
+    <Suspense fallback={null}>
+      <CoachingPageInner />
+    </Suspense>
   )
 }
