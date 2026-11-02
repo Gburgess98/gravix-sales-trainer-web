@@ -254,15 +254,16 @@ export default function UploadPage() {
       {/* Header — shared PageHeader for shell consistency; the max-w-5xl wrapper
           keeps the two-column form/guidance layout centred. */}
       <PageHeader
+        glass
         title="Upload a sales call"
         subtitle="Link the recording to the right client, rep and review queue."
       />
 
       {/* Two-column on desktop: form on the left, calm guidance on the right so the
           page uses the available width instead of floating in the centre. */}
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Left column — form / success */}
-        <div className="lg:col-span-2">
+        <div className="min-w-0 lg:col-span-2">
       {/* Success state */}
       {uploadStage === "done" && result?.ok ? (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-3">
@@ -319,7 +320,7 @@ export default function UploadPage() {
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-5">
             {/* Group — call ownership */}
             <div className="space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Call ownership</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Call ownership</div>
               <div className="grid gap-4 md:grid-cols-2">
                 {/* Account / Company */}
                 <label className="space-y-1.5">
@@ -386,7 +387,7 @@ export default function UploadPage() {
 
             {/* Group — call context */}
             <div className="space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Call context</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Call context</div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-neutral-200">Call type</span>
@@ -417,7 +418,7 @@ export default function UploadPage() {
 
             {/* Group — recording */}
             <div className="space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Recording</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Recording</div>
               <div
                 className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 px-4 py-3 text-sm"
                 onDragOver={(e) => e.preventDefault()}
@@ -522,7 +523,7 @@ export default function UploadPage() {
         {/* Right column — calm guidance, uses the desktop width instead of empty space */}
         <aside className="space-y-4">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">What happens next</h2>
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">What happens next</h2>
             <ol className="mt-3 space-y-2.5">
               {[
                 "We upload the recording",
@@ -538,7 +539,7 @@ export default function UploadPage() {
           </div>
 
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Need a new client?</h2>
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Need a new client?</h2>
             <Link
               href="/crm/accounts"
               target="_blank"
