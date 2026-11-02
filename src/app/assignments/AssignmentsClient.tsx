@@ -807,6 +807,7 @@ export default function AssignmentsClient() {
   return (
     <PageContainer>
       <PageHeader
+        glass
         title="My Assignments"
         subtitle="Your coaching queue — drills, call reviews and follow-ups from your manager."
         actions={
@@ -883,6 +884,7 @@ export default function AssignmentsClient() {
 
       {!loading && (
         <SectionCard
+          glass
           className="mt-6"
           eyebrow="Today"
           title="Next Best Action"
@@ -1067,26 +1069,29 @@ export default function AssignmentsClient() {
 
       {!loading && (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <StatCard label="Open" value={momentum.openCount} size="sm" />
+          <StatCard glass label="Open" value={momentum.openCount} size="sm" />
           <StatCard
+            glass
             label="Overdue"
             value={momentum.overdueCount}
             variant={momentum.overdueCount > 0 ? "danger" : "default"}
             size="sm"
           />
           <StatCard
+            glass
             label="Due today"
             value={momentum.dueTodayCount}
             variant={momentum.dueTodayCount > 0 ? "warning" : "default"}
             size="sm"
           />
           <StatCard
+            glass
             label="Completed (7d)"
             value={momentum.completed7d}
             subtext={momentum.completedTodayCount > 0 ? `+${momentum.completedTodayCount} today` : undefined}
             size="sm"
           />
-          <StatCard label="Completion rate (7d)" value={`${momentum.completionRate7d}%`} size="sm" />
+          <StatCard glass label="Completion rate (7d)" value={`${momentum.completionRate7d}%`} size="sm" />
         </div>
       )}
 

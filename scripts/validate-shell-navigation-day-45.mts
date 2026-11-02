@@ -50,12 +50,12 @@ const PERSONAS: { name: string; isManager: boolean; tier?: string }[] = [
 const PINNED_HREFS = [
   "/dashboard", "/upload", "/call-library", "/crm/accounts", "/crm/manager/contacts", "/team", "/crm/manager",
   "/assignments", "/call-library?tab=sparring", "/coaching", "/crm/analytics", "/intelligence", "/admin/settings",
-  "/settings/profile", "/coaching?tab=review", "/admin/partners", "/admin/companies", "/admin/users",
+  "/settings/profile", "/coaching?tab=review", "/coaching?tab=assignments", "/admin/partners", "/admin/companies", "/admin/users",
 ].sort();
 // Staging redesign — five labelled destinations per role (+ Upload Call as a utility).
 const PRIMARY_BY_ROLE: Record<string, string[]> = {
   rep: ["Home|/dashboard", "Calls|/call-library", "Practice|/call-library?tab=sparring", "Coaching|/assignments", "Upload Call|/upload"],
-  manager: ["Overview|/coaching", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
+  manager: ["Overview|/coaching", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/coaching?tab=assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
 };
 
 type Mods = { nav: any; model: any };
@@ -161,7 +161,7 @@ function sourceChecks(f: Files, tag = ""): Check[] {
   a("E-library-one-primary-action", (lib.match(/buttonClasses\("primary"/g) || []).length === 1);
   a("E-library-tab-follows-the-url", /useSearchParams\(\)\?\.get\("tab"\)/.test(lib) && /\[urlTab\]/.test(lib) && /onChange=\{handleTabChange\}/.test(lib) && /history\.replaceState/.test(lib));
   a("E-library-search-params-behind-suspense", /<Suspense fallback=\{null\}>\s*<CallLibraryPageInner \/>/.test(lib));
-  a("E-library-sparring-distinct-heading", /tab === "sparring" \? "AI Sparring" : "Calls"/.test(lib));
+  a("E-library-sparring-distinct-heading", /tab === "sparring" \? "Practice" : "Calls"/.test(lib));
   a("E-library-filters-behind-disclosure-with-active-count", /activeFilterCount/.test(lib) && /<details className="group rounded-lg border border-neutral-800 bg-neutral-950">/.test(lib));
   // no new network surface: fetch call counts equal the committed pre-Day-45 baseline
   const BASE = "f5598a5";

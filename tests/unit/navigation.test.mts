@@ -47,7 +47,7 @@ test('manager primary nav is Overview, Team, Reviews, Assignments, Insights (+ U
     'Overview|/coaching',
     'Team|/team',
     'Reviews|/coaching?tab=review',
-    'Assignments|/assignments',
+    'Assignments|/coaching?tab=assignments',
     'Insights|/crm/analytics',
     'Upload Call|/upload',
   ])
@@ -59,6 +59,7 @@ test('manager sees Calls and Practice under More, not primary', () => {
   assert.ok(more.includes('Calls|/call-library'))
   assert.ok(more.includes('Practice|/call-library?tab=sparring'))
   assert.ok(more.includes('My Dashboard|/dashboard'), 'rep dashboard stays reachable for managers')
+  assert.ok(more.includes('My Assignments|/assignments'), 'own assignment queue stays reachable for managers')
 })
 
 test('never more than five destinations plus Upload Call, for any persona', () => {
@@ -69,7 +70,7 @@ test('never more than five destinations plus Upload Call, for any persona', () =
 })
 
 test('rep and partneradmin-non-manager never see manager-only destinations', () => {
-  const managerOnly = ['/team', '/coaching?tab=review', '/crm/analytics', '/crm/manager', '/crm/manager/contacts', '/intelligence', '/admin/settings']
+  const managerOnly = ['/team', '/coaching?tab=review', '/coaching?tab=assignments', '/crm/analytics', '/crm/manager', '/crm/manager/contacts', '/intelligence', '/admin/settings']
   for (const p of [PERSONAS[0], PERSONAS[2]]) {
     const hrefs = all(p.isManager, p.tier).map((i) => i.href)
     for (const h of managerOnly) assert.ok(!hrefs.includes(h), `${p.name} sees ${h}`)
@@ -144,6 +145,7 @@ test('active state: exactly one destination is active on each nav URL', () => {
     ['/call-library', 'tab=sparring', '/call-library?tab=sparring'],
     ['/call-library', 'tab=upload', '/call-library'],
     ['/coaching', 'tab=review', '/coaching?tab=review'],
+    ['/coaching', 'tab=assignments', '/coaching?tab=assignments'],
     ['/coaching', '', '/coaching'],
     ['/coaching', 'tab=overview', '/coaching'],
     ['/assignments', '', '/assignments'],

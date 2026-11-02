@@ -736,7 +736,7 @@ function CallLibraryPageInner() {
           though they share a route; one primary action (Upload call), search secondary. */}
       <PageHeader
         glass
-        title={tab === "sparring" ? "AI Sparring" : "Calls"}
+        title={tab === "sparring" ? "Practice" : "Calls"}
         subtitle={
           tab === "sparring"
             ? "Practise objection handling against AI buyers and review your sessions."
@@ -765,7 +765,7 @@ function CallLibraryPageInner() {
       <WorkspaceTabs<Tab>
         tabs={[
           { id: "live", label: "Live Calls" },
-          { id: "sparring", label: "AI Sparring" },
+          { id: "sparring", label: "Practice" },
           { id: "upload", label: "Call Uploads" },
         ]}
         active={tab}

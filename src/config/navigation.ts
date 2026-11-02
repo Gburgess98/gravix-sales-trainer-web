@@ -94,7 +94,10 @@ export const navigation: NavSection[] = [
       { label: 'Team', href: '/team', icon: Users2, roles: ['manager'] },
       // Review queue lives as a tab of the Command Centre; deep-linked (Day 165).
       { label: 'Reviews', href: '/coaching?tab=review', icon: ClipboardCheck, roles: ['manager'] },
-      { label: 'Coaching', href: '/assignments', icon: ClipboardList, manager: { label: 'Assignments' } },
+      // Manager "Assignments" is the team view (Command Centre assignments tab); /assignments is the
+      // viewer's OWN queue, so it stays reachable for managers as "My Assignments" under More.
+      { label: 'Assignments', href: '/coaching?tab=assignments', icon: ClipboardList, roles: ['manager'] },
+      { label: 'Coaching', href: '/assignments', icon: ClipboardList, manager: { label: 'My Assignments', secondary: true } },
       { label: 'Insights', href: '/crm/analytics', icon: BarChart2, roles: ['manager'] },
       // Lower-frequency destinations, listed under the labelled "More" group.
       { label: 'Accounts', href: '/crm/accounts', icon: Building2, secondary: true },
