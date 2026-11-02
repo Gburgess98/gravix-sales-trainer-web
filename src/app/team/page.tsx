@@ -169,6 +169,7 @@ export default function TeamPage() {
   return (
     <PageContainer>
       <PageHeader
+        glass
         title="Team"
         subtitle="Members, seats and coaching scope across your team"
       />
@@ -176,11 +177,13 @@ export default function TeamPage() {
       {/* SEAT SUMMARY */}
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
+          glass
           label="Team members"
           value={loaded && !loadError ? members.length : "—"}
           subtext="Active in your company"
         />
         <StatCard
+          glass
           label="Seats allocated"
           value={loaded && !loadError ? seatValue(seats?.allocated) : "—"}
           subtext={
@@ -190,6 +193,7 @@ export default function TeamPage() {
           }
         />
         <StatCard
+          glass
           label="Seats available"
           value={loaded && !loadError ? seatValue(seats?.available) : "—"}
           variant={overAllocated ? "warning" : "default"}
@@ -200,6 +204,7 @@ export default function TeamPage() {
           }
         />
         <StatCard
+          glass
           label="Scope setup"
           value={loaded && !loadError ? (needsSetupCount ? needsSetupCount : "All set") : "—"}
           variant={needsSetupCount ? "warning" : "default"}
@@ -239,7 +244,7 @@ export default function TeamPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-800 text-left text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                <tr className="border-b border-neutral-800 text-left text-[11px] uppercase tracking-[0.12em] text-neutral-400">
                   <th className="px-5 py-3 font-medium">Member</th>
                   <th className="px-5 py-3 font-medium">Role</th>
                   <th className="px-5 py-3 font-medium">Office</th>
@@ -264,7 +269,7 @@ export default function TeamPage() {
                               {memberLabel(member)}
                             </div>
                             {member.email && (
-                              <div className="truncate text-xs text-neutral-500">
+                              <div className="truncate text-xs text-neutral-400">
                                 {member.email}
                               </div>
                             )}

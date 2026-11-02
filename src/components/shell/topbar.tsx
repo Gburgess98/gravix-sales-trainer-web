@@ -5,7 +5,7 @@ import { Menu, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useSession } from '@/lib/useSession'
 import { navigation } from '@/config/navigation'
-import { collectNavHrefs, isNavItemActive, resolveNavItem, type NavSearch } from '@/config/nav-model'
+import { buildNavModel, collectNavHrefs, isNavItemActive, type NavSearch } from '@/config/nav-model'
 
 const NAV_HREFS = collectNavHrefs(navigation)
 
@@ -17,12 +17,11 @@ interface TopbarProps {
 function getBreadcrumb(pathname: string, search: NavSearch, isManager: boolean): string {
   // Walk nav sections to find a matching label. Query-aware (Day 45) so the title
   // agrees with the sidebar: /call-library → Calls, /call-library?tab=sparring → Sparring.
-  for (const section of navigation) {
-    for (const item of section.items) {
-      if (isNavItemActive(item.href, pathname, search, NAV_HREFS)) {
-        return resolveNavItem(item, isManager).label
-      }
-    }
+  // Role-aware: only items this viewer can see, with their role wording.
+  const model = buildNavModel(navigation, isManager)
+  const visible = [...model.sections.flatMap((section) => section.items), ...model.more]
+  for (const item of visible) {
+    if (isNavItemActive(item.href, pathname, search, NAV_HREFS)) return item.label
   }
   // Fallback: capitalise the last human path segment (skip UUID-like ids so
   // detail pages never show a raw identifier in the breadcrumb).

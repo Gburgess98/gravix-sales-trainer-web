@@ -29,8 +29,10 @@ export interface NavItem {
   /**
    * Staging redesign — same destination, role-appropriate wording/priority. Applied only
    * when the viewer is a manager; visibility is still decided by `roles` alone.
+   * `hidden` is only for an item whose destination a manager already reaches under another label
+   * (Command Centre = manager Overview) — never to remove a destination.
    */
-  manager?: { label?: string; secondary?: boolean }
+  manager?: { label?: string; secondary?: boolean; hidden?: boolean }
   /**
    * Day 45 — lower-frequency destination: listed under the labelled "More" group
    * instead of its section. Visibility is still decided by `roles` alone, so
@@ -81,7 +83,10 @@ export const navigation: NavSection[] = [
   {
     title: 'Workspace',
     items: [
-      { label: 'Home', href: '/dashboard', icon: LayoutDashboard, manager: { label: 'Overview' } },
+      // Manager Overview is the Command Centre's Overview tab (team health, reps needing attention,
+      // calls to review, open coaching). The rep dashboard stays reachable as "My Dashboard" under More.
+      { label: 'Overview', href: '/coaching', icon: LayoutDashboard, roles: ['manager'] },
+      { label: 'Home', href: '/dashboard', icon: LayoutDashboard, manager: { label: 'My Dashboard', secondary: true } },
       { label: 'Calls', href: '/call-library', icon: Phone, manager: { secondary: true } },
       // Day 178 — deep-link the sparring tab so Calls and Practice are distinct destinations.
       { label: 'Practice', href: '/call-library?tab=sparring', icon: Swords, manager: { secondary: true } },
@@ -95,7 +100,7 @@ export const navigation: NavSection[] = [
       { label: 'Accounts', href: '/crm/accounts', icon: Building2, secondary: true },
       { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'], secondary: true },
       { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'], secondary: true },
-      { label: 'Command Centre', href: '/coaching', icon: Brain, secondary: true },
+      { label: 'Command Centre', href: '/coaching', icon: Brain, secondary: true, manager: { hidden: true } },
       // Day 225 — Intelligence = "teach" (what Gravix knows about how you sell); Insights = "observe".
       { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'], secondary: true },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'], secondary: true },

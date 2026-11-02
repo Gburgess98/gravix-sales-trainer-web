@@ -44,7 +44,7 @@ test('rep primary nav is Home, Calls, Practice, Coaching (+ Upload Call utility)
 
 test('manager primary nav is Overview, Team, Reviews, Assignments, Insights (+ Upload Call)', () => {
   assert.deepEqual(primary(true), [
-    'Overview|/dashboard',
+    'Overview|/coaching',
     'Team|/team',
     'Reviews|/coaching?tab=review',
     'Assignments|/assignments',
@@ -58,6 +58,7 @@ test('manager sees Calls and Practice under More, not primary', () => {
   const more = keys(m.more)
   assert.ok(more.includes('Calls|/call-library'))
   assert.ok(more.includes('Practice|/call-library?tab=sparring'))
+  assert.ok(more.includes('My Dashboard|/dashboard'), 'rep dashboard stays reachable for managers')
 })
 
 test('never more than five destinations plus Upload Call, for any persona', () => {
@@ -97,13 +98,21 @@ test('manager override changes wording/placement only, never visibility', () => 
   assert.equal(resolveNavItem(calls, true).secondary, true)
   assert.equal(resolveNavItem(calls, true).label, 'Calls')
   const home = navigation.flatMap((s) => s.items).find((i) => i.href === '/dashboard')!
-  assert.equal(resolveNavItem(home, true).label, 'Overview')
+  assert.equal(resolveNavItem(home, true).label, 'My Dashboard')
   assert.equal(resolveNavItem(home, false).label, 'Home')
-  // same set of hrefs for a manager before/after override
+  // same SET of destinations for a manager before/after override (hidden only de-dupes /coaching)
   assert.deepEqual(
-    all(true).map((i) => i.href).sort(),
-    navigation.flatMap((s) => s.items).filter((i) => hasAccess(i.roles, true)).map((i) => i.href).sort(),
+    [...new Set(all(true).map((i) => i.href))].sort(),
+    [...new Set(navigation.flatMap((s) => s.items).filter((i) => hasAccess(i.roles, true)).map((i) => i.href))].sort(),
   )
+})
+
+test('/coaching: manager sees Overview, rep sees Command Centre (never both, never lost)', () => {
+  const m = all(true).filter((i) => i.href === '/coaching').map((i) => i.label)
+  const r = all(false).filter((i) => i.href === '/coaching').map((i) => i.label)
+  assert.deepEqual(m, ['Overview'])
+  assert.deepEqual(r, ['Command Centre'])
+  assert.ok(!all(false).some((i) => i.label === 'Overview'))
 })
 
 test('hasAccess role matrix', () => {

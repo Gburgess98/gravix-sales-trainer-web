@@ -48,6 +48,7 @@ export function buildNavModel(
     if (!hasAccess(section.roles, isManager, userTier)) continue
     const visible = section.items
       .filter((item) => hasAccess(item.roles, isManager, userTier))
+      .filter((item) => !(isManager && item.manager?.hidden))
       .map((item) => resolveNavItem(item, isManager))
     const primary = visible.filter((item) => !item.secondary)
     more.push(...visible.filter((item) => item.secondary))

@@ -55,7 +55,7 @@ const PINNED_HREFS = [
 // Staging redesign — five labelled destinations per role (+ Upload Call as a utility).
 const PRIMARY_BY_ROLE: Record<string, string[]> = {
   rep: ["Home|/dashboard", "Calls|/call-library", "Practice|/call-library?tab=sparring", "Coaching|/assignments", "Upload Call|/upload"],
-  manager: ["Overview|/dashboard", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
+  manager: ["Overview|/coaching", "Team|/team", "Reviews|/coaching?tab=review", "Assignments|/assignments", "Insights|/crm/analytics", "Upload Call|/upload"],
 };
 
 type Mods = { nav: any; model: any };
@@ -87,7 +87,7 @@ function behaviourChecks(m: Mods, tag = ""): Check[] {
     // Visibility is compared by destination: labels/placement changed by design, who can reach what did not
     // (the oracle applies the original role predicate to the same navigation tree).
     const legacyPlus = legacy;
-    a(`A-visibility-identical-to-legacy:${p.name}`, JSON.stringify([...legacyPlus].sort()) === JSON.stringify([...now].sort()), `legacy=${legacy.length} now=${now.length}`);
+    a(`A-visibility-identical-to-legacy:${p.name}`, JSON.stringify([...new Set(legacyPlus)].sort()) === JSON.stringify([...new Set(now)].sort()), `legacy=${legacy.length} now=${now.length}`);
     a(`A-no-duplicates:${p.name}`, new Set(now).size === now.length);
     a(`B-secondary-only-under-more:${p.name}`, model.sections.every((s: any) => s.items.every((i: any) => !i.secondary)) && model.more.every((i: any) => i.secondary));
     a(`B-empty-sections-dropped:${p.name}`, model.sections.every((s: any) => s.items.length > 0));
@@ -108,7 +108,7 @@ function behaviourChecks(m: Mods, tag = ""): Check[] {
   const paAll = [...pa.sections.flatMap((s: any) => s.items), ...pa.more].map((i: any) => i.href);
   a("A-partneradmin-not-superadmin-never-sees-partners", !paAll.includes("/admin/partners") && paAll.includes("/admin/companies"));
   a("A-hasAccess-superadmin-needs-superadmin-tier", hasAccess(["superadmin"], true, "PartnerAdmin") === false && hasAccess(["superadmin"], false, "SuperAdmin") === true);
-  a("C-destination-set-pinned", JSON.stringify([...navigation.flatMap((s: any) => s.items.map((i: any) => i.href))].sort()) === JSON.stringify(PINNED_HREFS));
+  a("C-destination-set-pinned", JSON.stringify([...new Set<string>(navigation.flatMap((s: any) => s.items.map((i: any) => i.href)))].sort()) === JSON.stringify(PINNED_HREFS));
   // Day 45 fix — Calls and Sparring share one route and are told apart by ?tab=
   a("D-calls-only-on-plain-call-library", act(CALLS, "/call-library") === true && act(SPAR, "/call-library") === false);
   a("D-sparring-only-on-tab-sparring", act(SPAR, "/call-library", "tab=sparring") === true && act(CALLS, "/call-library", "tab=sparring") === false);
@@ -223,7 +223,7 @@ try {
   await modelMutation("superadmin role granted to PartnerAdmin", "if (roles.includes('superadmin') && userTier === 'SuperAdmin') return true", "if (roles.includes('superadmin') && (userTier === 'SuperAdmin' || userTier === 'PartnerAdmin')) return true", "A-visibility-identical-to-legacy:partneradmin+manager");
   await modelMutation("secondary items silently dropped", "more.push(...visible.filter((item) => item.secondary))", "void 0", "A-visibility-identical-to-legacy:manager");
   await modelMutation("secondary items left in primary sections", "const primary = visible.filter((item) => !item.secondary)", "const primary = visible", "B-secondary-only-under-more:manager");
-  await modelMutation("manager-only destinations leak to reps (item role filter skipped)", "const visible = section.items\n      .filter((item) => hasAccess(item.roles, isManager, userTier))\n      .map(", "const visible = section.items\n      .map(", "A-visibility-identical-to-legacy:rep");
+  await modelMutation("manager-only destinations leak to reps (item role filter skipped)", "const visible = section.items\n      .filter((item) => hasAccess(item.roles, isManager, userTier))\n      .filter(", "const visible = section.items\n      .filter(", "A-visibility-identical-to-legacy:rep");
   await modelMutation("active state ignores the query (Sparring never/always matches by path alone)", "if (query) return queryMatches(query, current)", "if (query) return true", "D-calls-only-on-plain-call-library");
   await modelMutation("Calls no longer yields to the Sparring tab (both active)", "return otherQuery !== '' && otherPath === path && queryMatches(otherQuery, current)", "return false", "D-calls-and-sparring-never-both-active");
   await modelMutation("query-link activates on any route sharing the query", "  if (!pathMatches) return false\n", "", "D-query-link-needs-its-route");
