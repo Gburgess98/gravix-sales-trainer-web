@@ -209,7 +209,7 @@ function renderTranscriptText(meta: any): string | null {
  */
 function CallUnavailable() {
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8">
       <Link
         href="/call-library"
         className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
@@ -234,7 +234,7 @@ function CallUnavailable() {
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -1642,7 +1642,7 @@ export default function CallPage() {
 
   return (
     <AuthGate>
-      <main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6">
+      <div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6" data-review-shell>
         <header className="glass space-y-3 rounded-2xl px-5 py-4">
           <Link
             href="/call-library"
@@ -2766,7 +2766,7 @@ export default function CallPage() {
                 : err}
           </div>
         )}
-      </main>
+      </div>{/* /review-shell */}
 
       {/* === CRM DRAWER === */}
       <div

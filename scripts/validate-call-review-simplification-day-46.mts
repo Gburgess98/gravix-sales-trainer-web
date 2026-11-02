@@ -103,8 +103,8 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   const out: Result[] = [];
   const t = (id: string, ok: boolean, detail?: string) => out.push({ id, ok, detail });
 
-  const mainOpen = page.indexOf('<main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6"');
-  const mainClose = page.indexOf("</main>", mainOpen);
+  const mainOpen = page.indexOf('<div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6" data-review-shell>');
+  const mainClose = page.indexOf("{/* /review-shell */}", mainOpen);
   const main = mainOpen >= 0 && mainClose > mainOpen ? page.slice(mainOpen, mainClose) : "";
   const unavailable = between(page, "function CallUnavailable", "export default function CallPage");
   const guard = page.search(/if\s*\(\s*callMissing\s*\)\s*\{/);

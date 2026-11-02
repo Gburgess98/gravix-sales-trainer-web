@@ -57,8 +57,9 @@ function slice(from: string, to: string): string {
 // ── 1. callMissing gates the render before the review shell ───────────────────
 console.log("── missing call gates the review shell ──");
 const guardIdx = page.search(/if\s*\(\s*callMissing\s*\)\s*\{/);
-// The full review shell's <main> is the wide-max-width container inside AuthGate.
-const shellIdx = page.indexOf('<main className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6"');
+// The full review shell is the wide-max-width container inside AuthGate. It is a <div>, not a <main>:
+// the app shell already provides the single main landmark (nested mains fail WCAG best-practice).
+const shellIdx = page.indexOf('<div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8 space-y-6" data-review-shell>');
 check("early `if (callMissing)` guard exists", guardIdx >= 0);
 check("review shell <main> exists", shellIdx >= 0);
 check(
