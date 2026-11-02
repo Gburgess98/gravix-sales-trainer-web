@@ -9,6 +9,8 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  /* `clip` (not just hidden): the oversized floor grid must never become a scroll container that focus can shift sideways. */
+  overflow: clip;
   border-radius: 1.25rem;
   border: 1px solid rgb(var(--cyan) / 0.18);
   background:
@@ -73,7 +75,8 @@
   margin-left: -9rem;
   transform: translate3d(calc(var(--off) * 15rem), 0, calc(var(--abs) * -12rem))
     rotateY(calc(var(--off) * -28deg)) scale(calc(1.1 - var(--abs) * 0.2));
-  opacity: calc(1 - var(--abs) * 0.4);
+  /* Neighbours 0.8, outer cards 0.6: dimmed but measured >= 4.5:1 for name and role text on the stage background. */
+  opacity: calc(1 - var(--abs) * 0.2);
   transition:
     transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
     opacity 0.45s ease;

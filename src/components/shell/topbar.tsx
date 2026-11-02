@@ -23,6 +23,9 @@ function getBreadcrumb(pathname: string, search: NavSearch, isManager: boolean):
   for (const item of visible) {
     if (isNavItemActive(item.href, pathname, search, NAV_HREFS)) return item.label
   }
+  // Routes that are not sidebar destinations but deserve a real title (otherwise the URL's last segment is used).
+  const PAGE_TITLES: Record<string, string> = { '/sparring': 'Sparring Arena', '/sparring/personas/new': 'Create persona' }
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
   // Fallback: capitalise the last human path segment (skip UUID-like ids so
   // detail pages never show a raw identifier in the breadcrumb).
   const UUIDISH = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i

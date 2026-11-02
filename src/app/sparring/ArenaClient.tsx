@@ -1,8 +1,8 @@
 'use client'
 
-// Sparring Arena (staging prototype). Replaces the redirect stub at /sparring with an opponent-selection screen.
-// Backend, API contracts and the live session page (/sparring/[id]) are unchanged: this only calls existing
-// endpoints and starts a session with the same body as SparringStartButton. See docs/sparring-arena/AUDIT.md.
+// Sparring Arena (staging prototype). Backend, API contracts and the live session page are unchanged: this only calls
+// existing endpoints and starts a session through the same start path as SparringStartButton.
+// See docs/sparring-arena/AUDIT.md and PRIVATE_PERSONAS_API.md.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
@@ -14,10 +14,8 @@ import { buttonClasses } from '@/components/ui/button'
 import styles from '@/components/arena/arena.module.css'
 import { PersonaCarousel, DifficultyPips, type CarouselLayout } from '@/components/arena/PersonaCarousel'
 import { MissionBriefing } from '@/components/arena/MissionBriefing'
-import { ProvenanceChip } from '@/components/arena/ProvenanceChip'
 import {
   DEMO_STATS,
-  buildStartBody,
   isManagerTier,
   normaliseDifficulty,
   personalBest,
@@ -29,13 +27,33 @@ import {
   type ApiSession,
   type ArenaMode,
   type Difficulty,
+  type PersonaPresentation,
 } from '@/lib/sparring-arena'
+import {
+  MAX_ACTIVE_PRIVATE,
+  STATUS_LABEL,
+  canArchive,
+  canEdit,
+  duplicate,
+  lengthOf,
+  myPersonas,
+  readStore,
+  startPlanFor,
+  styleOf,
+  toApiPersona,
+  transition,
+  writeStore,
+  type LibraryPersona,
+  type Viewer,
+} from '@/lib/persona-library'
+import { startSparringSession } from '@/lib/sparring-start'
 
-type TabId = 'all' | 'assigned' | 'team' | 'recent'
+type TabId = 'all' | 'mine' | 'assigned' | 'team' | 'recent'
 type Assignment = { id: string; title?: string | null; type?: string | null; status?: string | null; target_id?: string | null }
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'all', label: 'All Personas' },
+  { id: 'mine', label: 'My Personas' },
   { id: 'assigned', label: 'Assigned to Me' },
   { id: 'team', label: 'Team Challenges' },
   { id: 'recent', label: 'Recent Sessions' },
@@ -67,6 +85,23 @@ async function getJson(path: string) {
   }
 }
 
+const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div>
+    <dt className="text-[11px] uppercase tracking-wider text-slate-300">{label}</dt>
+    <dd className="mt-0.5 text-sm text-slate-50">{children}</dd>
+  </div>
+)
+
+type BriefingState = {
+  persona: ApiPersona
+  /** Built-in engine id actually sent to the API. */
+  engineId: string
+  assignmentId?: string | null
+  presentation?: PersonaPresentation
+  initialMode?: ArenaMode
+  initialDifficulty?: Difficulty
+}
+
 export default function ArenaClient() {
   const router = useRouter()
   const layout = useLayout()
@@ -74,18 +109,27 @@ export default function ArenaClient() {
   const [personas, setPersonas] = useState<ApiPersona[]>([])
   const [sessions, setSessions] = useState<ApiSession[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [me, setMe] = useState<{ id: string | null; tier: string | null }>({ id: null, tier: null })
+  const [me, setMe] = useState<{ id: string | null; tier: string | null; companyId: string | null }>({ id: null, tier: null, companyId: null })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [boards, setBoards] = useState<Record<string, ApiLeaderboard | null>>({})
   const [active, setActive] = useState(0)
-  const [briefing, setBriefing] = useState<{ persona: ApiPersona; assignmentId?: string | null } | null>(null)
+  const [briefing, setBriefing] = useState<BriefingState | null>(null)
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
   const [demo, setDemo] = useState(false)
+  const [mine, setMine] = useState<LibraryPersona[]>([])
+  const [showArchived, setShowArchived] = useState(false)
   const opener = useRef<HTMLElement | null>(null)
 
   const isManager = isManagerTier(me.tier)
+  const viewer: Viewer | null = me.id ? { id: me.id, tier: me.tier, companyId: me.companyId } : null
+
+  // deep link: /sparring?tab=mine (used by the persona wizard's "Return to library")
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t === 'mine' || t === 'assigned' || t === 'team' || t === 'recent') setTab(t)
+  }, [])
 
   // ── load (all existing endpoints, read only) ──
   useEffect(() => {
@@ -102,7 +146,7 @@ export default function ArenaClient() {
       else setPersonas(p.personas)
       // /v1/reps/me answers { ok, me } or the same fields at top level (the API has two handlers on that path)
       const m = meJson?.me ?? meJson
-      setMe({ id: m?.id ?? null, tier: m?.tier ?? null })
+      setMe({ id: m?.id ?? null, tier: m?.tier ?? null, companyId: m?.company_id ?? null })
       setSessions(Array.isArray(s?.sessions) ? s.sessions : [])
       const items: Assignment[] = a?.assignments ?? a?.items ?? []
       setAssignments(items.filter((x) => x.type === 'sparring' && x.status !== 'completed'))
@@ -113,9 +157,12 @@ export default function ArenaClient() {
     }
   }, [])
 
+  useEffect(() => {
+    if (me.id) setMine(readStore(me.id))
+  }, [me.id])
+
   const selected = personas[active] ?? null
 
-  // leaderboard for one persona, fetched lazily and cached
   const loadBoard = useCallback(
     async (id: string) => {
       if (id in boards) return
@@ -126,18 +173,15 @@ export default function ArenaClient() {
     [boards],
   )
   useEffect(() => {
-    if (selected && tab === 'all') void loadBoard(selected.id)
-  }, [selected, tab, loadBoard])
-  useEffect(() => {
     if (tab !== 'team') return
     personas.forEach((p) => void loadBoard(p.id))
   }, [tab, personas, loadBoard])
 
   // ── challenge → briefing → existing start flow ──
-  function openBriefing(persona: ApiPersona, assignmentId?: string | null) {
+  function openBriefing(next: BriefingState) {
     opener.current = document.activeElement as HTMLElement | null
     setStartError(null)
-    setBriefing({ persona, assignmentId })
+    setBriefing(next)
   }
   const closeBriefing = useCallback(() => {
     setBriefing(null)
@@ -149,37 +193,58 @@ export default function ArenaClient() {
     setStarting(true)
     setStartError(null)
     try {
-      const res = await proxyFetch('/api/proxy/v1/sparring/sessions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          buildStartBody({
-            personaId: briefing.persona.id,
-            difficulty: opts.difficulty,
-            mode: opts.mode,
-            assignmentId: briefing.assignmentId,
-          }),
-        ),
-        cache: 'no-store',
+      const id = await startSparringSession({
+        personaId: briefing.engineId,
+        difficulty: opts.difficulty,
+        mode: opts.mode,
+        assignmentId: briefing.assignmentId,
       })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok || !json || json.ok === false || !json.session?.id) {
-        throw new Error(json?.error || 'Failed to start sparring session.')
-      }
-      router.push(`/sparring/${encodeURIComponent(json.session.id)}`) // live session page: calm, no arena effects
+      router.push(`/sparring/${encodeURIComponent(id)}`) // live session page: calm, no arena effects
     } catch (e: unknown) {
       setStartError(e instanceof Error ? e.message : 'Failed to start sparring session.')
       setStarting(false)
     }
   }
 
+  // ── "My Personas" actions (prototype store, this browser only) ──
+  function saveMine(next: LibraryPersona[]) {
+    if (!me.id) return
+    writeStore(me.id, next)
+    setMine(next)
+  }
+  function onDuplicate(p: LibraryPersona) {
+    if (!viewer) return
+    if (mine.filter((x) => x.status !== 'archived').length >= MAX_ACTIVE_PRIVATE) return
+    const copy = duplicate(p, viewer, crypto.randomUUID())
+    if (copy) saveMine([copy, ...mine])
+  }
+  function onArchive(p: LibraryPersona, action: 'archive' | 'restore') {
+    if (!viewer) return
+    const r = transition(p, action, viewer)
+    if (r.ok) saveMine(mine.map((x) => (x.id === p.id ? r.persona : x)))
+  }
+  function practise(p: LibraryPersona) {
+    const plan = startPlanFor(p)
+    openBriefing({
+      persona: toApiPersona(p),
+      engineId: plan.personaId,
+      initialDifficulty: plan.difficulty,
+      initialMode: plan.mode,
+      presentation: {
+        role: p.jobRole,
+        context: [p.industry, p.context].filter(Boolean).join(' · ') || 'Your own scenario',
+        objectionStyle: styleOf(p.objectionStyle).label,
+        estMinutes: lengthOf(p.lengthPref).minutes,
+        objective: styleOf(p.objectionStyle).objective,
+      },
+    })
+  }
+
   // ── derived stats for the selected persona ──
   const record = useMemo(() => (selected ? teamRecord(sessions, selected.id, isManager) : null), [sessions, selected, isManager])
-  const mine = useMemo(() => (selected ? personalBest(sessions, me.id, selected.id) : null), [sessions, selected, me.id])
-  const board = selected ? summariseLeaderboard(boards[selected.id] ?? null, isManager) : null
-  const boardPending = selected ? !(selected.id in boards) || boards[selected.id] === null : false
-
+  const best = useMemo(() => (selected ? personalBest(sessions, me.id, selected.id) : null), [sessions, selected, me.id])
   const personaById = useMemo(() => new Map(personas.map((p) => [p.id, p])), [personas])
+  const myList = viewer ? myPersonas(mine, viewer, showArchived) : []
   const labelId = 'arena-title'
 
   return (
@@ -196,9 +261,7 @@ export default function ArenaClient() {
               <h1 id={labelId} className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
                 Choose your opponent
               </h1>
-              <p className="mt-1 max-w-xl text-sm text-slate-200">
-                Pick a buyer, read the briefing, then step in. Nothing starts until you press Begin.
-              </p>
+              <p className="mt-1 max-w-xl text-sm text-slate-200">Pick a buyer, read the briefing, then step in.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -209,6 +272,9 @@ export default function ArenaClient() {
               >
                 {demo ? 'Hide demo data' : 'Preview with demo data'}
               </button>
+              <Link href="/sparring/personas/new" className={buttonClasses('ghost', 'md')}>
+                Create Persona
+              </Link>
               {isManager && (
                 <Link href="/admin/personas" className={buttonClasses('ghost', 'md')}>
                   Persona Setup
@@ -219,7 +285,7 @@ export default function ArenaClient() {
 
           {demo && (
             <p role="status" className="mt-3 rounded-lg border border-amber-400/60 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
-              <strong>DEMO DATA.</strong> The numbers marked DEMO are sample values for design review. They are not real results and are not saved.
+              <strong>DEMO DATA.</strong> The figures shown are samples for design review, not real results.
             </p>
           )}
 
@@ -270,89 +336,153 @@ export default function ArenaClient() {
                 personas={personas}
                 active={active}
                 onActiveChange={setActive}
-                onChallenge={() => selected && openBriefing(selected)}
+                onChallenge={() => selected && openBriefing({ persona: selected, engineId: selected.id })}
                 layout={layout}
                 labelId={labelId}
               />
 
-              {selected && record && mine && board && (
-                <section aria-label={`${selected.label} details`} className="mx-auto mt-6 grid max-w-4xl gap-4 rounded-2xl border border-cyan-400/25 bg-[#070d1f] p-5 md:grid-cols-2">
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">{selected.label}</h2>
-                    <p className="mt-0.5 text-sm text-slate-200">{selected.description}</p>
-                    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                      {(() => {
-                        const p = presentationFor(selected)
-                        return (
-                          <>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Role</dt><dd className="text-slate-50">{p.role}</dd></div>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Context</dt><dd className="text-slate-50">{p.context}</dd></div>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Objection style</dt><dd className="text-slate-50">{p.objectionStyle}</dd></div>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Est. length</dt><dd className="text-slate-50">{p.estMinutes[0]}–{p.estMinutes[1]} min</dd></div>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Difficulty</dt><dd><DifficultyPips difficulty={selected.difficulty_default} /></dd></div>
-                            <div><dt className="text-[11px] uppercase tracking-wider text-slate-300">Traits</dt><dd className="text-slate-50">{selected.traits?.join(', ') || '—'}</dd></div>
-                          </>
-                        )
-                      })()}
-                    </dl>
-                    <p className="mt-3 text-[11px] text-slate-300">
-                      Role, context, objection style and length are <ProvenanceChip kind="placeholder" /> copy until the API provides them.
-                    </p>
+              {selected && record && best && (
+                <section aria-label={`${selected.label} briefing`} className="mx-auto mt-5 max-w-3xl rounded-2xl border border-cyan-400/25 bg-[#070d1f] p-5">
+                  {/* 1. who the opponent is */}
+                  <h2 className="text-lg font-semibold text-white">{selected.label}</h2>
+                  <p className="mt-1 line-clamp-2 text-sm text-slate-200">{selected.description}</p>
+
+                  {/* 2. what makes them challenging */}
+                  {(() => {
+                    const p = presentationFor(selected)
+                    return (
+                      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+                        <Fact label="Role">{p.role}</Fact>
+                        <Fact label="Difficulty"><DifficultyPips difficulty={selected.difficulty_default} /></Fact>
+                        <Fact label="Objection style">{p.objectionStyle}</Fact>
+                        <Fact label="Est. length">{p.estMinutes[0]}–{p.estMinutes[1]} min</Fact>
+                      </dl>
+                    )
+                  })()}
+
+                  {/* 3. the record or objective */}
+                  <div className="mt-4 rounded-xl border border-cyan-400/20 bg-[#050a18] px-4 py-3">
+                    {demo ? (
+                      <>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-200">Demo data</p>
+                        <p className="mt-0.5 text-sm text-slate-50">Team record {DEMO_STATS.teamRecordXp.toLocaleString()} XP. Can you beat it?</p>
+                        <p className="text-xs text-slate-300">
+                          {DEMO_STATS.repsAttempted} reps attempted · {DEMO_STATS.repsDefeated} defeated · your best {DEMO_STATS.yourBestXp.toLocaleString()} XP
+                        </p>
+                      </>
+                    ) : isManager && record.value !== null ? (
+                      <>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Team record</p>
+                        <p className="mt-0.5 text-sm text-slate-50"><strong className="text-xl text-white">{record.value}</strong>/100. Can you beat it?</p>
+                      </>
+                    ) : best.best !== null ? (
+                      <>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Your best</p>
+                        <p className="mt-0.5 text-sm text-slate-50">
+                          <strong className="text-xl text-white">{best.best}</strong>/100
+                          <span className="ml-2 text-xs text-slate-300">{best.attempts} run{best.attempts === 1 ? '' : 's'}</span>
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Your record</p>
+                        <p className="mt-0.5 text-sm text-slate-100">No result yet. Your first run sets the bar.</p>
+                      </>
+                    )}
                   </div>
 
-                  <div className="flex flex-col">
-                    <h3 className="text-sm font-semibold text-white">The challenge</h3>
-                    {demo ? (
-                      <ul className="mt-2 space-y-1.5 text-sm text-slate-50">
-                        <li>Team record: {DEMO_STATS.teamRecordXp.toLocaleString()} XP. Can you beat it? <ProvenanceChip kind="demo" /></li>
-                        <li>{DEMO_STATS.repsAttempted} reps attempted · {DEMO_STATS.repsDefeated} defeated this persona <ProvenanceChip kind="demo" /></li>
-                        <li>Your best: {DEMO_STATS.yourBestXp.toLocaleString()} XP <ProvenanceChip kind="demo" /></li>
-                      </ul>
-                    ) : (
-                      <ul className="mt-2 space-y-2 text-sm text-slate-50">
-                        <li className="flex flex-wrap items-center gap-2">
-                          <span>
-                            Team record:{' '}
-                            {record.value !== null ? <strong>{record.value}/100</strong> : <span className="text-slate-300">{record.provenance === 'unavailable' ? 'not available for your role' : 'no scored sessions yet'}</span>}
-                          </span>
-                          <ProvenanceChip kind={record.provenance} />
-                        </li>
-                        <li className="flex flex-wrap items-center gap-2">
-                          <span>
-                            {boardPending
-                              ? 'Loading attempts…'
-                              : board.attempts.value === null
-                                ? 'Attempts: not available'
-                                : `${board.attempts.value} attempt${board.attempts.value === 1 ? '' : 's'} ${board.scope === 'team' ? 'by your team' : 'by you'} · ${board.defeated.value ?? 0} scored 80+`}
-                          </span>
-                          {!boardPending && <ProvenanceChip kind={board.attempts.provenance} />}
-                        </li>
-                        <li className="flex flex-wrap items-center gap-2">
-                          <span>
-                            Your best:{' '}
-                            {mine.best !== null ? <strong>{mine.best}/100</strong> : <span className="text-slate-300">{mine.attempts > 0 ? 'no scored attempts yet' : 'no attempts yet'}</span>}
-                            {mine.attempts > 0 && <span className="text-slate-300"> ({mine.attempts} attempt{mine.attempts === 1 ? '' : 's'})</span>}
-                          </span>
-                          <ProvenanceChip kind="derived" />
-                        </li>
-                      </ul>
-                    )}
-                    {!demo && !isManager && (
-                      <p className="mt-2 text-[11px] text-slate-300">
-                        Team records and attempts by other reps are only visible to managers today, so nothing is estimated here.
-                      </p>
-                    )}
-                    <div className="mt-auto pt-5">
-                      <button
-                        type="button"
-                        onClick={() => openBriefing(selected)}
-                        className={clsx(buttonClasses('primary', 'md'), 'w-full sm:w-auto')}
-                      >
-                        Challenge Persona
-                      </button>
-                    </div>
-                  </div>
+                  {/* 4. start the challenge */}
+                  <button
+                    type="button"
+                    onClick={() => openBriefing({ persona: selected, engineId: selected.id })}
+                    className={clsx(buttonClasses('primary', 'md'), 'mt-4 w-full justify-center py-3 text-base sm:w-auto sm:px-10')}
+                  >
+                    Challenge Persona
+                  </button>
+
+                  <details className="mt-3 text-sm text-slate-100">
+                    <summary className="cursor-pointer text-cyan-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+                      View full briefing
+                    </summary>
+                    {(() => {
+                      const p = presentationFor(selected)
+                      return (
+                        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <Fact label="Context">{p.context}</Fact>
+                          <Fact label="Traits">{selected.traits?.join(', ') || '—'}</Fact>
+                          <Fact label="Objective">{p.objective}</Fact>
+                          <Fact label="To defeat them">Finish with 80/100 or higher.</Fact>
+                        </dl>
+                      )
+                    })()}
+                  </details>
                 </section>
+              )}
+            </div>
+          )}
+
+          {/* ───── My Personas ───── */}
+          {!loading && !loadError && tab === 'mine' && (
+            <div role="tabpanel" id="arena-panel-mine" aria-labelledby="arena-tab-mine" className="mx-auto max-w-4xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">My Personas</h2>
+                  <p className="text-sm text-slate-200">Your own practice scenarios. Only you can see and use them.</p>
+                </div>
+                <Link href="/sparring/personas/new" className={buttonClasses('primary', 'md')}>Create Persona</Link>
+              </div>
+              <p className="mt-3 rounded-lg border border-violet-400/40 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
+                Prototype: personas are saved on this device only. Sharing with your team needs the persona service.
+              </p>
+
+              {myList.length === 0 ? (
+                <div className="mt-6 rounded-xl border border-cyan-400/20 bg-[#070d1f] p-8 text-center">
+                  <p className="text-sm text-slate-100">You haven&apos;t created a persona yet.</p>
+                  <p className="mt-1 text-xs text-slate-300">Describe the buyer you are about to meet and practise the call first.</p>
+                  <Link href="/sparring/personas/new" className={clsx(buttonClasses('primary', 'md'), 'mt-4')}>Create your first persona</Link>
+                </div>
+              ) : (
+                <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {myList.map((p) => (
+                    <li key={p.id} className="flex flex-col rounded-xl border border-cyan-400/25 bg-[#070d1f] p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-semibold text-white">{p.name}</h3>
+                          <p className="truncate text-xs text-slate-200">{[p.jobRole, p.industry].filter(Boolean).join(' · ')}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-cyan-400/40 px-2 py-0.5 text-[11px] text-cyan-100">{STATUS_LABEL[p.status]}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-200">
+                        <DifficultyPips difficulty={p.difficulty} />
+                        <span>{styleOf(p.objectionStyle).label}</span>
+                        <span>~{lengthOf(p.lengthPref).minutes[0]}–{lengthOf(p.lengthPref).minutes[1]} min</span>
+                      </div>
+                      {p.reviewOutcome === 'rejected' && <p className="mt-2 text-xs text-amber-200">A manager asked for changes. It is still yours and still private.</p>}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {p.status !== 'archived' && (
+                          <button type="button" className={buttonClasses('primary', 'sm')} onClick={() => practise(p)}>Practise</button>
+                        )}
+                        {viewer && canEdit(p, viewer) && (
+                          <Link href={`/sparring/personas/new?edit=${encodeURIComponent(p.id)}`} className={buttonClasses('ghost', 'sm')}>Edit</Link>
+                        )}
+                        {p.status !== 'archived' && (
+                          <button type="button" className={buttonClasses('ghost', 'sm')} onClick={() => onDuplicate(p)}>Duplicate</button>
+                        )}
+                        {viewer && canArchive(p, viewer) && (
+                          <button type="button" className={buttonClasses('ghost', 'sm')} onClick={() => onArchive(p, 'archive')}>Archive</button>
+                        )}
+                        {p.status === 'archived' && (
+                          <button type="button" className={buttonClasses('ghost', 'sm')} onClick={() => onArchive(p, 'restore')}>Restore</button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {mine.some((p) => p.status === 'archived') && (
+                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)} className="mt-4 text-xs text-cyan-100 underline">
+                  {showArchived ? 'Hide archived' : 'Show archived'}
+                </button>
               )}
             </div>
           )}
@@ -377,7 +507,7 @@ export default function ArenaClient() {
                         <button
                           type="button"
                           disabled={!persona}
-                          onClick={() => persona && openBriefing(persona, a.id)}
+                          onClick={() => persona && openBriefing({ persona, engineId: persona.id, assignmentId: a.id })}
                           className={buttonClasses('ghost', 'md')}
                         >
                           Open briefing
@@ -393,12 +523,7 @@ export default function ArenaClient() {
           {/* ───── Team Challenges ───── */}
           {!loading && !loadError && tab === 'team' && (
             <div role="tabpanel" id="arena-panel-team" aria-labelledby="arena-tab-team" className="mx-auto max-w-4xl">
-              <p className="mb-3 text-sm text-slate-200">
-                {isManager
-                  ? 'Results per persona across your team. These are real session totals.'
-                  : 'You see your own results per persona. Team-wide results are visible to managers today.'}{' '}
-                Challenge targets and deadlines do not exist yet <ProvenanceChip kind="unavailable" />
-              </p>
+              <p className="mb-3 text-sm text-slate-200">{isManager ? 'Results per persona across your team.' : 'Your results per persona.'}</p>
               <div className="overflow-x-auto rounded-xl border border-cyan-400/25 bg-[#070d1f]">
                 <table className="w-full text-left text-sm">
                   <caption className="sr-only">Persona results</caption>
@@ -413,13 +538,13 @@ export default function ArenaClient() {
                   <tbody>
                     {personas.map((p) => {
                       const b = summariseLeaderboard(boards[p.id] ?? null, isManager)
-                      const best = isManager ? teamRecord(sessions, p.id, true).value : personalBest(sessions, me.id, p.id).best
+                      const top = isManager ? teamRecord(sessions, p.id, true).value : personalBest(sessions, me.id, p.id).best
                       return (
                         <tr key={p.id} className="border-b border-slate-800 last:border-0">
                           <th scope="row" className="px-4 py-3 font-medium text-white">{p.label}</th>
                           <td className="px-4 py-3 text-right tabular-nums text-slate-50">{b.attempts.value ?? '—'}</td>
                           <td className="px-4 py-3 text-right tabular-nums text-slate-50">{b.defeated.value ?? '—'}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-50">{best ?? '—'}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-50">{top ?? '—'}</td>
                         </tr>
                       )
                     })}
@@ -464,7 +589,9 @@ export default function ArenaClient() {
       {briefing && (
         <MissionBriefing
           persona={briefing.persona}
-          initialDifficulty={normaliseDifficulty(briefing.persona.difficulty_default)}
+          initialDifficulty={briefing.initialDifficulty ?? normaliseDifficulty(briefing.persona.difficulty_default)}
+          initialMode={briefing.initialMode}
+          presentation={briefing.presentation}
           assignmentId={briefing.assignmentId}
           busy={starting}
           error={startError}

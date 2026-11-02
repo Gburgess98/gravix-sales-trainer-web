@@ -112,3 +112,29 @@ Branch `claude/sparring-arena`. Screenshots: `docs/sparring-arena/screenshots/`.
 - The live session page still shows XP chips above the conversation (follow-up: hide).
 - A first hard navigation after switching viewport emulation sent the dev server to `/login` once; a reload worked (same dev-server artefact seen earlier; not reproduced on hosted staging).
 - Mocked data exists only behind the "Preview with demo data" toggle (off by default, every value stamped DEMO).
+
+## 10. Follow-up verification (simplified panel, private personas prototype, XP chips, contrast)
+
+Local staging, **manager and rep**. Screenshots: `docs/sparring-arena/screenshots/followup-*`.
+Private personas are **prototype-only** (browser storage); the real feature needs the API in `PRIVATE_PERSONAS_API.md`.
+
+| Check | Manager | Rep |
+|---|---|---|
+| Panel: single column, 4 facts, one record block, one primary button, disclosure; none of Live/Derived/Placeholder/API wording | pass (341 px desktop, 432 px mobile) | pass |
+| Record block: team record only for managers when it exists; reps see "Your best" (verified with a real scored round: "0/100, 1 run"); otherwise a calm empty state | pass | pass, no team wording |
+| Persona Setup link | visible | absent |
+| Create Persona wizard (4 steps, validation, focus, keyboard, three finish actions) | pass | pass |
+| Start practising on a private persona: server records the mapped engine + difficulty + mode | `cfo` / hard / time_trial 120 s | `procurement` / normal / standard |
+| My Personas: Practise, Edit (pre-filled), Duplicate, Archive, Restore; other users' personas never visible | pass | pass (manager's persona not visible) |
+| "Submit for team approval" | disabled + explanation | disabled + explanation |
+| Session page: no XP / projected XP / micro-trend / streak chips while active; they appear after scoring | pass | pass (appear after scoring) |
+| Ghost cards: lowest text contrast across all cards (measured, canvas colour conversion) | 5.49:1 (outer), 9.04 (neighbours) | same component |
+| axe (WCAG 2 A/AA + best-practice) | 0 violations in 12 states | 0 violations in 3 states |
+
+Fixed during verification: arena box scrolled sideways on focus (`overflow: clip`); rapid trait toggles used a stale list;
+topbar title "New"; screen-reader reading "Quickabout…"; mixed spelling in trait list.
+
+Caveats: prototype personas live in `localStorage` keyed by user id, so on a shared browser they persist on-device (other
+users cannot read them through the app, but they are not secure storage). Practice runs on the closest built-in engine;
+name/role/industry/context do not change the buyer until the API supports custom personas. Manager approve/reject UI is not
+built (no queue exists).

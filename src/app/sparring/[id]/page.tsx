@@ -1881,7 +1881,8 @@ export default function SparringSessionPage() {
                     </span>
                   )}
 
-                  {typeof session.xp_awarded === "number" && (
+                  {/* Live scores stay hidden while the conversation is active; they appear once the round is scored. */}
+                  {isScored && typeof session.xp_awarded === "number" && (
                     <span
                       className={
                         "rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-neutral-100" +
@@ -1893,7 +1894,7 @@ export default function SparringSessionPage() {
                     </span>
                   )}
 
-                  {projectedXpLabel(session) && (
+                  {isScored && projectedXpLabel(session) && (
                     <span className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-[10px] text-neutral-300">
                       {projectedXpLabel(session)}
                     </span>
@@ -1914,7 +1915,7 @@ export default function SparringSessionPage() {
 
                 {/* Duration + Turns */}
                 <div className="flex items-center gap-3 text-[11px] text-neutral-400">
-                  {getLastNRepMicroScores(turns, 5).length > 0 && (
+                  {isScored && getLastNRepMicroScores(turns, 5).length > 0 && (
                     <div className="mt-1 w-full">
                       <div className="flex items-center justify-end gap-2 text-[10px] text-neutral-400">
                         <span className="opacity-70">Micro trend</span>

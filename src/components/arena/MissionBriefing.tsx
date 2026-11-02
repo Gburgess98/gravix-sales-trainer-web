@@ -6,7 +6,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { buttonClasses } from '@/components/ui/button'
-import { ProvenanceChip } from './ProvenanceChip'
 import { DifficultyPips } from './PersonaCarousel'
 import {
   DIFFICULTY_META,
@@ -14,6 +13,7 @@ import {
   normaliseDifficulty,
   presentationFor,
   type ApiPersona,
+  type PersonaPresentation,
   type ArenaMode,
   type Difficulty,
   type MicState,
@@ -37,15 +37,18 @@ interface Props {
   persona: ApiPersona
   initialDifficulty: Difficulty
   assignmentId?: string | null
+  /** Override the facts shown (used for a rep's own persona, whose details are not in the built-in list). */
+  presentation?: PersonaPresentation
+  initialMode?: ArenaMode
   busy: boolean
   error: string | null
   onCancel: () => void
   onBegin: (opts: { mode: ArenaMode; difficulty: Difficulty }) => void
 }
 
-export function MissionBriefing({ persona, initialDifficulty, assignmentId, busy, error, onCancel, onBegin }: Props) {
-  const p = presentationFor(persona)
-  const [mode, setMode] = useState<ArenaMode>('standard')
+export function MissionBriefing({ persona, initialDifficulty, assignmentId, presentation, initialMode = 'standard', busy, error, onCancel, onBegin }: Props) {
+  const p = presentation ?? presentationFor(persona)
+  const [mode, setMode] = useState<ArenaMode>(initialMode)
   const [difficulty, setDifficulty] = useState<Difficulty>(initialDifficulty)
   const [mic, setMic] = useState<MicState>('unknown')
   const headingRef = useRef<HTMLHeadingElement | null>(null)
@@ -114,7 +117,7 @@ export function MissionBriefing({ persona, initialDifficulty, assignmentId, busy
 
         <dl className="mt-5 grid gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-[11px] uppercase tracking-wider text-slate-300">Objective <ProvenanceChip kind="placeholder" /></dt>
+            <dt className="text-[11px] uppercase tracking-wider text-slate-300">Objective</dt>
             <dd className="mt-1 text-sm text-slate-100">{p.objective}</dd>
           </div>
           <div>
