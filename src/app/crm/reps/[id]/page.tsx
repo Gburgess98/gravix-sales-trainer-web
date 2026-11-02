@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import { fetchJsonWithRetry } from "@/lib/fetchJsonwithretry";
+import { proxyFetch } from "@/lib/api";
+import { resolveRepName, NEUTRAL_MEMBER_LABEL } from "@/lib/team-identity";
 import { StatCard } from "@/components/ui/stat-card";
 import { RiskBadge, ScorePill } from "@/components/ui/status-badge";
 
@@ -53,6 +55,9 @@ type RepOpenAction = {
 export default function RepProfilePage() {
   const { id: repId } = useParams() as { id: string };
   const [tab, setTab] = useState<RepTab>("overview");
+  // Display identity comes from the authenticated roster (GET /v1/team/members), matched on the route id.
+  // null = still resolving: the heading shows a skeleton, never the id. The id stays internal for API calls.
+  const [repName, setRepName] = useState<string | null>(null);
 
   const [data, setData] = useState<RepSummaryResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -236,6 +241,22 @@ export default function RepProfilePage() {
     return () => { alive = false; };
   }, [repId, loadOpenActions]);
 
+  useEffect(() => {
+    if (!repId) return;
+    let alive = true;
+    setRepName(null);
+    (async () => {
+      try {
+        const res = await proxyFetch("/v1/team/members", { cache: "no-store" });
+        const json = res.ok ? await res.json() : null;
+        if (alive) setRepName(resolveRepName(Array.isArray(json?.items) ? json.items : [], repId));
+      } catch {
+        if (alive) setRepName(NEUTRAL_MEMBER_LABEL);
+      }
+    })();
+    return () => { alive = false; };
+  }, [repId]);
+
   const riskBand = String(intelligence?.risk_summary?.risk_band ?? "");
   const overdueCount = Number(intelligence?.actions?.overdue ?? 0);
   const openCount = Number(intelligence?.actions?.open ?? 0);
@@ -246,13 +267,15 @@ export default function RepProfilePage() {
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="min-w-0">
           <Link
-            href="/crm/overview"
+            href="/team"
             className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
           >
-            ← CRM
+            ← Team
           </Link>
-          <h1 className="mt-0.5 text-xl font-semibold text-white">
-            {data?.userId ?? repId ?? "Rep"}
+          <h1 className="mt-0.5 text-xl font-semibold text-white" aria-busy={repName === null}>
+            {repName ?? (
+              <span role="status" aria-label="Loading rep" className="mt-1 block h-6 w-44 animate-pulse rounded bg-white/[0.08] motion-reduce:animate-none" />
+            )}
           </h1>
           <p className="mt-0.5 text-xs text-neutral-500">90-day performance snapshot</p>
         </div>

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 import Link from "next/link";
 import { PageShell, PageHead, GlassCard, Panel, Badge, Segmented, SearchInput, EmptyPanel, ErrorPanel, LoadingRows } from "@/components/ds";
+import { memberLabel, memberInitials } from "@/lib/team-identity";
 import { RAG_META, ragFromScore, repRag, trendBetween, type Rag } from "@/lib/manager-model";
 
 /* ----------------------------- Types ----------------------------- */
@@ -44,29 +45,6 @@ type SeatSummary = {
 // Never surface a raw UUID as a member label (PREMIUM_UX_AUDIT §38). The API
 // name falls back to the id for identity-less rows, so guard here too:
 // name > email local part > neutral "Team member". Full ids stay internal.
-
-const UUID_LIKE_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function memberLabel(member: TeamMember): string {
-  const name = member.name?.trim();
-  if (name && !UUID_LIKE_RE.test(name) && !name.includes("@")) return name;
-
-  const email = (name?.includes("@") ? name : member.email ?? "").trim();
-  const local = email.includes("@") ? email.split("@")[0]?.trim() : "";
-  if (local && !UUID_LIKE_RE.test(local)) return local;
-
-  return "Team member";
-}
-
-function memberInitials(member: TeamMember): string {
-  const label = memberLabel(member);
-  if (label === "Team member") return "TM";
-  const parts = label.split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const second = parts.length > 1 ? parts[parts.length - 1][0] : parts[0]?.[1] ?? "";
-  return `${first}${second}`.toUpperCase() || "TM";
-}
 
 const ROLE_LABELS: Record<string, string> = {
   SalesRep: "Sales rep",

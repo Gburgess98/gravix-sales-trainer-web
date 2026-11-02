@@ -7,6 +7,7 @@ import { proxyFetch } from "@/lib/api";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Button, buttonClasses } from "@/components/ui/button";
+import { memberLabel } from "@/lib/team-identity";
 
 type Rep = {
   id: string;
@@ -1692,7 +1693,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
                           <div className="text-xs text-neutral-500">
                             {helpStreak2Plus.slice(0, 3).map((r) => (
                               <span key={r.rep_id} className="mr-3">
-                                {r.name || r.rep_id}: {r.days}d
+                                {memberLabel({ name: r.name })}: {r.days}d
                               </span>
                             ))}
                           </div>

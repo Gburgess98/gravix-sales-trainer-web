@@ -60,8 +60,8 @@ if grep -q 'disabled' "$PAGE"; then false; else true; fi
 check "no disabled placeholder controls" $?
 
 # --- Labels never raw UUIDs ---
-grep -q 'UUID_LIKE_RE' "$PAGE"
-check "member labels are UUID-guarded" $?
+grep -q 'memberLabel' "$PAGE" && grep -q '@/lib/team-identity' "$PAGE" && grep -q 'UUID_LIKE_RE' "$WEB_ROOT/src/lib/team-identity.ts"
+check "member labels are UUID-guarded (shared resolver src/lib/team-identity.ts)" $?
 
 grep -q '"Team member"' "$PAGE"
 check "neutral fallback label for identity-less members" $?

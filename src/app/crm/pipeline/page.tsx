@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
+import { NEUTRAL_MEMBER_LABEL } from "@/lib/team-identity";
 import { supabase } from "@/lib/supabaseClient"
 
 
@@ -1850,7 +1851,7 @@ return (
             <div className="text-xs uppercase tracking-wide text-neutral-500">Manager snapshot</div>
             <div className="mt-1 text-sm text-neutral-200">
               {repId.trim()
-                ? `Showing: ${reps.find((r) => r.id === repId)?.name ?? repId.slice(0, 8)}`
+                ? `Showing: ${reps.find((r) => r.id === repId)?.name ?? NEUTRAL_MEMBER_LABEL}`
                 : "Showing: all reps"}
             </div>
           </div>
