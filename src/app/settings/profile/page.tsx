@@ -86,6 +86,7 @@ export default function ProfilePage() {
   return (
     <PageContainer className="mx-auto w-full max-w-2xl">
       <PageHeader
+        glass
         title="My Profile"
         subtitle="Update your display name, phone number and timezone."
       />
@@ -100,22 +101,22 @@ export default function ProfilePage() {
       <form onSubmit={handleSave} className="flex flex-col gap-5">
         {/* Read-only info */}
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-5 py-4 flex flex-col gap-3">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Account</p>
+          <p className="text-[11px] uppercase tracking-[0.12em] text-neutral-400">Account</p>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-neutral-500 text-xs mb-0.5">Email</p>
+              <p className="text-neutral-400 text-xs mb-0.5">Email</p>
               <p className="text-white">{profile?.email ?? '—'}</p>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs mb-0.5">Tier</p>
+              <p className="text-neutral-400 text-xs mb-0.5">Tier</p>
               <p className="text-white">{profile?.tier ?? '—'}</p>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs mb-0.5">Company</p>
+              <p className="text-neutral-400 text-xs mb-0.5">Company</p>
               <p className="text-white">{profile?.company_name ?? '—'}</p>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs mb-0.5">Job Title</p>
+              <p className="text-neutral-400 text-xs mb-0.5">Job Title</p>
               <p className="text-white">{profile?.job_title ?? '—'}</p>
             </div>
           </div>
@@ -123,7 +124,7 @@ export default function ProfilePage() {
 
         {/* Editable fields */}
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-5 py-4 flex flex-col gap-4">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Editable</p>
+          <p className="text-[11px] uppercase tracking-[0.12em] text-neutral-400">Editable</p>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-neutral-400">Display Name</label>
@@ -132,7 +133,7 @@ export default function ProfilePage() {
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               maxLength={120}
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-500"
               placeholder="Your display name"
             />
           </div>
@@ -147,7 +148,7 @@ export default function ProfilePage() {
               onChange={e => setPhone(e.target.value)}
               maxLength={30}
               required
-              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-600"
+              className="rounded-xl border border-neutral-800 bg-black/40 px-4 py-2 text-sm text-white outline-none focus:border-brand-500/50 placeholder:text-neutral-500"
               placeholder="+44 7700 900000"
             />
           </div>
@@ -170,7 +171,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-xl border border-brand-500/20 bg-brand-600/20 px-5 py-2 text-sm font-semibold text-brand-200 hover:bg-brand-600/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save Profile'}
           </button>

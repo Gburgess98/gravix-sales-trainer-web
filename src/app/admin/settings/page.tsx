@@ -10,6 +10,8 @@ import {
   proxyPatch,
   AdminConfig,
 } from "@/lib/api";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 
 type OrgSettingsResp = {
   ok?: boolean;
@@ -242,20 +244,21 @@ export default function AdminSettingsPage() {
   );
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-semibold">Admin Settings</h1>
-      <p className="text-sm text-muted-foreground mt-1">
-        Configure streak threshold, XP multiplier, and comeback bonus (applies immediately).
-      </p>
+    <PageContainer className="mx-auto w-full max-w-2xl">
+      <PageHeader
+        glass
+        title="Settings"
+        subtitle="Configure streak threshold, XP multiplier, and comeback bonus (applies immediately)."
+      />
 
       {loading ? (
         <div className="mt-6 text-sm">Loading…</div>
       ) : (
         <div className="mt-6 space-y-4">
-          <div className="rounded border p-4 space-y-3">
+          <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 space-y-3">
             <div>
               <h2 className="text-sm font-semibold">Company Call Visibility</h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-neutral-400">
                 Control who can access company-wide calls.
               </p>
             </div>
@@ -275,24 +278,24 @@ export default function AdminSettingsPage() {
                       onClick={() => updateVisibility(opt)}
                       className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         visibility === opt
-                          ? "bg-black text-white"
-                          : "bg-gray-200"
+                          ? "bg-brand-600 text-white"
+                          : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
                       }`}
                     >
                       {opt}
                     </button>
                   ))}
                   {visSaving && (
-                    <span className="text-xs text-muted-foreground">Saving…</span>
+                    <span className="text-xs text-neutral-400">Saving…</span>
                   )}
                 </div>
                 {visibility === "unknown" && !visErr && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-neutral-400">
                     Current visibility couldn’t be confirmed.
                   </p>
                 )}
                 {visErr && (
-                  <p className="text-xs text-red-600">{visErr}</p>
+                  <p className="text-xs text-danger-300">{visErr}</p>
                 )}
               </>
             ) : (
@@ -307,15 +310,15 @@ export default function AdminSettingsPage() {
                     {visibility === "unknown" ? "—" : visibility}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-400">
                   Only a manager can change company call visibility.
                 </p>
                 {visibility === "unknown" && !visErr && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-neutral-400">
                     Current visibility couldn’t be confirmed.
                   </p>
                 )}
-                {visErr && <p className="text-xs text-red-600">{visErr}</p>}
+                {visErr && <p className="text-xs text-danger-300">{visErr}</p>}
               </div>
             )}
           </div>
@@ -332,27 +335,27 @@ export default function AdminSettingsPage() {
 
           {isManager === true ? (
             configLoading ? (
-              <div className="rounded border p-4 text-sm">Loading scoring settings…</div>
+              <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 text-sm">Loading scoring settings…</div>
             ) : configErr ? (
               // Config-data failure is section-scoped: friendly copy, and the
               // policy control above keeps its authority.
               <div className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm space-y-1">
                 <p>{configErr}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-400">
                   Company call visibility above is unaffected.
                 </p>
               </div>
             ) : (
-            <div className="rounded border p-4 space-y-3">
+            <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 space-y-3">
               <div>
                 <label className="block text-sm font-medium">Streak threshold</label>
                 <input
-                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.streak_threshold}
                   onChange={(e) => setForm((s) => ({ ...s, streak_threshold: e.target.value }))}
                   inputMode="numeric"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-neutral-400 mt-1">
                   When the rep hits this streak, multipliers start stepping up.
                 </p>
               </div>
@@ -360,12 +363,12 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="block text-sm font-medium">XP multiplier</label>
                 <input
-                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.xp_multiplier}
                   onChange={(e) => setForm((s) => ({ ...s, xp_multiplier: e.target.value }))}
                   inputMode="decimal"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-neutral-400 mt-1">
                   Global multiplier applied to XP (sparring + call scoring).
                 </p>
               </div>
@@ -373,19 +376,19 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="block text-sm font-medium">Comeback bonus</label>
                 <input
-                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
                   value={form.comeback_bonus}
                   onChange={(e) => setForm((s) => ({ ...s, comeback_bonus: e.target.value }))}
                   inputMode="numeric"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-neutral-400 mt-1">
                   Bonus XP awarded when they “come back” after a streak break.
                 </p>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
                 <button
-                  className="rounded bg-black text-white px-4 py-2 text-sm disabled:opacity-50"
+                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
                   onClick={onSave}
                   disabled={!dirty || saving}
                 >
@@ -393,7 +396,7 @@ export default function AdminSettingsPage() {
                 </button>
 
                 {raw?.updated_at && (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-neutral-400">
                     Last updated: {new Date(raw.updated_at).toLocaleString()}
                   </span>
                 )}
@@ -408,12 +411,12 @@ export default function AdminSettingsPage() {
           )}
 
           {isManager === true && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-neutral-400">
               Tip: set multiplier to <span className="font-mono">1</span> to instantly disable boosts without redeploying.
             </div>
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
