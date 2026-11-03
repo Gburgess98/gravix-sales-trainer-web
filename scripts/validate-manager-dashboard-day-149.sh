@@ -45,8 +45,8 @@ grep -q "Price objection sparring" "$COACHING" 2>/dev/null
 check "/coaching includes a drill label (\"Price objection sparring\")" $?
 
 # Manager empty-states.
-grep -q "No calls waiting for review." "$COACHING" 2>/dev/null
-check "/coaching includes empty-state \"No calls waiting for review.\"" $?
+grep -q "Nothing is waiting for review." "$WEB_ROOT/src/components/manager/reviews-panel.tsx" 2>/dev/null
+check "review queue (glass ReviewsPanel) has its empty state" $?
 
 grep -q "No reps need urgent coaching." "$COACHING" 2>/dev/null
 check "/coaching includes empty-state \"No reps need urgent coaching.\"" $?

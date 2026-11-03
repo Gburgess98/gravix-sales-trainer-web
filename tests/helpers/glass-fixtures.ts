@@ -88,3 +88,19 @@ export async function mockManagerApi(page: Page, opts: { empty?: boolean } = {})
     return route.fulfill(json({ ok: true, items: [], assignments: [], calls: [] }))
   })
 }
+
+// GET /v1/manager/review-queue — shape of the live endpoint. The last item has no resolvable rep:
+// the API sends "Unknown rep" and a bare UUID as repId, which must never reach the screen.
+export const ORPHAN_REP_ID = '278be53c-0528-4b67-b114-a4e815ba8be6'
+export const REVIEW_QUEUE = {
+  ok: true,
+  windowDays: 30,
+  reviewHistoryAvailable: true,
+  count: 4,
+  items: [
+    { callId: 'c1', repId: 'r1', repName: 'Alex Johnson', title: 'Acme discovery call', overallScore: 48, weakestSkill: 'Objection handling', createdAt: daysAgo(0), reasons: ['Score below 70', 'Objection handling below 50'] },
+    { callId: 'c3', repId: 'r1', repName: 'Alex Johnson', title: 'Northwind follow-up', overallScore: 57, weakestSkill: 'Discovery', createdAt: daysAgo(5), reasons: ['Score below 70'] },
+    { callId: 'c2', repId: 'r2', repName: 'Sam Rivera', title: 'TechFlow demo', overallScore: 63, weakestSkill: 'Closing', createdAt: daysAgo(1), reasons: ['Closing below 50'] },
+    { callId: 'c9', repId: ORPHAN_REP_ID, repName: 'Unknown rep', title: 'Orbit renewal', overallScore: 66, weakestSkill: 'Unknown', createdAt: daysAgo(9), reasons: ['Flagged for manager review'] },
+  ],
+}

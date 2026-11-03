@@ -148,3 +148,20 @@ Both screens deliberately reuse the provisional system, so the same notes apply:
 
 **Mocked** (fake local session, mocked `/api/proxy`, Supabase hosts/sockets blocked): `tests/e2e/glass-assignments-insights.spec.ts` (16 checks: desktop + mobile, summary/list/filters/search, keyboard Details, two-step complete + 403 message, loading/empty/error, Insights sections/disclosure/range filter/empty/error, back/forward), plus the earlier manager and rep-identity specs (33 total), plus the Playwright plugin tools on a production build. **Real data:** none — nothing here was run against hosted staging or production.
 
+
+## 15. Reviews (`/coaching?tab=review`)
+
+Only the Review Queue tab body changed (`ReviewsPanel`, `reviews-model.ts`); the call-review screen, API calls and handlers (`GET /v1/manager/review-queue`, `POST /v1/calls/:id/manager-review`, the Assign coaching modal) are unchanged. `markReviewed` now returns success/failure so the panel can react; behaviour is otherwise identical.
+
+| Before | After |
+|---|---|
+| One list titled "Calls Awaiting Manager Review"; rep names straight from the API ("Unknown rep"); reason chips; three equal-weight buttons | Summary (waiting, waiting 3+ days, score below 55, reviewed in 30 days) → search + score band / rep / age / sort → one queue. **Review call** is the only primary button; Mark reviewed and Assign coaching are quiet |
+| Names from the API | Roster name > API name (never "Unknown rep") > "Team member"; UUIDs never shown, including while the roster loads |
+| No reviewed view | Separate **Recently reviewed** panel: the 30-day count from the command centre, plus calls marked reviewed in this view ("Reviewed just now") |
+| Raw error text | Loading rows, compact empty line, no-match with clear, full error with retry, partial error (queue works, totals show "—") |
+
+**Honest limits.** The API has no due dates, SLAs, customer names or reviewed-call list. So: *age* is derived from the call date and "Waiting 3+ days" is a labelled heuristic, not an overdue state; the call title is the filename/title as stored; "Recently reviewed" cannot list earlier reviews (count only). The queue is capped at 25 lowest-scoring calls and says so. The Review Queue tab badge and Overview summary are unchanged.
+
+**Debt.** Same provisional identity as §13; the `Manager Command Centre` header and tab strip above are legacy-styled; rows wrap to three stacked lines on mobile; Overview's collapsed legacy "Detailed queues" still has an older review list. A reviewed-call list needs an API addition (out of scope). `tsconfig` gained `allowImportingTsExtensions` (noEmit already on) so a model can import another with `.ts` and still run under `node --test`.
+
+**Verification.** *Mocked:* `tests/e2e/glass-reviews.spec.ts` (16 checks: desktop + 375px, summary/rows/no UUIDs, filters/search/sort, empty/loading/full+partial error, open call → back → forward, keyboard Enter, mark reviewed + focus, assign modal, UUID-flash observer), 94 unit tests, plus Playwright plugin tools on a production build. *Real data:* none.
