@@ -46,29 +46,29 @@ grep -q '"validate-premium-ux-day-205c"' "$PKG" 2>/dev/null
 check "package.json has validate-premium-ux-day-205c script" $?
 
 # --- /crm/analytics: Intelligence Cockpit composition ---
-grep -q 'Gravix Intelligence' "$ANALYTICS" 2>/dev/null
-check "analytics: intelligence hero band present" $?
-grep -q 'radial-gradient' "$ANALYTICS" 2>/dev/null
-check "analytics: hero uses layered radial glow" $?
-grep -q 'This range at a glance' "$ANALYTICS" 2>/dev/null
-check "analytics: derived signals band present" $?
-grep -q 'scoreDelta' "$ANALYTICS" 2>/dev/null
-check "analytics: featured KPI trend delta derived from trend" $?
+grep -q 'Score performance' "$ANALYTICS" 2>/dev/null
+check "analytics: lead score-performance card present (glass redesign)" $?
+! grep -q 'radial-gradient' "$ANALYTICS" 2>/dev/null
+check "analytics: decorative radial glow retired (glass redesign)" $?
+grep -q 'Exports, definitions and next steps' "$ANALYTICS" 2>/dev/null
+check "analytics: definitions disclosure present (glass redesign)" $?
+grep -q 'summariseScores' "$ANALYTICS" 2>/dev/null && grep -q 'second half vs first half' "$ANALYTICS" 2>/dev/null
+check "analytics: trend delta derived from the trend and labelled" $?
 grep -q 'AreaChart' "$ANALYTICS" 2>/dev/null
 check "analytics: score chart upgraded to gradient area" $?
 grep -q 'Range high' "$ANALYTICS" 2>/dev/null
 check "analytics: score reading rail present" $?
 grep -q 'function repLabel' "$ANALYTICS" 2>/dev/null
 check "analytics: rep labels humanised (no raw UUID display)" $?
-grep -q 'rep_label' "$ANALYTICS" 2>/dev/null
-check "analytics: rep chart axis uses humanised label" $?
-grep -q 'maxBarSize' "$ANALYTICS" 2>/dev/null
-check "analytics: bars capped (no slab bars on sparse data)" $?
+grep -q 'repBars(repActivity, (r) => repLabel(r, repDirectory))' "$ANALYTICS" 2>/dev/null
+check "analytics: rep rows use the humanised label" $?
+grep -q 'reps.slice(0, 5)' "$ANALYTICS" 2>/dev/null
+check "analytics: rep list capped at 5 with disclosure for the rest" $?
 grep -q 'nextActions' "$ANALYTICS" 2>/dev/null
 check "analytics: next actions are described cards" $?
 # Signals are deterministic reads, not fake AI output
-grep -q 'Read automatically from the figures' "$ANALYTICS" 2>/dev/null
-check "analytics: signals band labelled as derived, not AI" $?
+grep -q 'average of daily review scores' "$ANALYTICS" 2>/dev/null && grep -q 'not weighted by call volume' "$ANALYTICS" 2>/dev/null
+check "analytics: figures labelled as derived, not AI" $?
 
 # --- /crm/overview: trust pass ---
 ! grep -qE '🟡|🕑|🥇|🥈|🥉|💤' "$OVERVIEW" 2>/dev/null

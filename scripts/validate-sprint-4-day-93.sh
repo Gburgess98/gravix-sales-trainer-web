@@ -38,8 +38,8 @@ check "WEB assignment filters include Open/Overdue/Completed/All" $?
 grep -q "Assigned via review" "$COACHING" 2>/dev/null
 check "WEB shows 'Assigned via review' origin label" $?
 
-grep -q 'href={`/calls/${sourceCallId}`}' "$COACHING" 2>/dev/null
-check "WEB assignments tab links source call via /calls/" $?
+grep -q 'href={`/calls/${encodeURIComponent(ev.callId)}`}' "$WEB_ROOT/src/components/manager/assignments-panel.tsx" 2>/dev/null
+check "WEB assignments tab links source call via /calls/ (glass AssignmentsPanel)" $?
 
 grep -q 'href={`/calls/${a.sourceCallId}`}' "$COACHING" 2>/dev/null
 check "WEB Open Coaching card links source call via /calls/" $?

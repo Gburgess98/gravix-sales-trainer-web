@@ -38,28 +38,28 @@ grep -q '"validate-premium-ux-day-205b"' "$PKG" 2>/dev/null
 check "package.json has validate-premium-ux-day-205b script" $?
 
 # --- /crm/analytics: shell-system adoption ---
-grep -q 'PageContainer' "$ANALYTICS" 2>/dev/null
-check "analytics uses PageContainer" $?
-grep -q 'PageHeader' "$ANALYTICS" 2>/dev/null
-check "analytics uses PageHeader" $?
-grep -q 'SectionCard' "$ANALYTICS" 2>/dev/null
-check "analytics uses SectionCard" $?
-grep -q 'StatCard' "$ANALYTICS" 2>/dev/null
-check "analytics uses StatCard" $?
-grep -q 'EmptyState' "$ANALYTICS" 2>/dev/null
-check "analytics uses EmptyState" $?
-grep -q 'buttonClasses' "$ANALYTICS" 2>/dev/null
-check "analytics uses Button/buttonClasses" $?
+grep -q 'PageShell' "$ANALYTICS" 2>/dev/null
+check "analytics uses PageShell (glass system)" $?
+grep -q 'PageHead' "$ANALYTICS" 2>/dev/null
+check "analytics uses PageHead (glass system)" $?
+grep -q 'GlassCard' "$ANALYTICS" 2>/dev/null && grep -q 'PanelHeader' "$ANALYTICS" 2>/dev/null
+check "analytics uses GlassCard/Panel (glass system)" $?
+grep -q 'summariseScores' "$ANALYTICS" 2>/dev/null
+check "analytics figures derive via src/lib/insights-model (no StatCard grid)" $?
+grep -q 'EmptyPanel' "$ANALYTICS" 2>/dev/null
+check "analytics uses EmptyPanel" $?
+grep -q 'dsButton' "$ANALYTICS" 2>/dev/null
+check "analytics uses dsButton" $?
 
 # --- Palette: brand ramp only, violet retired ---
 ! grep -qi '8b5cf6' "$ANALYTICS" 2>/dev/null
 check "analytics: violet #8b5cf6 bar retired" $?
 ! grep -qiE 'fuchsia|purple|pink-' "$ANALYTICS" 2>/dev/null
 check "analytics: no fuchsia/purple/pink classes" $?
-grep -q '818cf8' "$ANALYTICS" 2>/dev/null
-check "analytics: line stroke on brand-400 hex" $?
-grep -q '6366f1' "$ANALYTICS" 2>/dev/null
-check "analytics: bar fill on brand-500 hex" $?
+grep -q '60a5fa' "$ANALYTICS" 2>/dev/null
+check "analytics: line stroke on the glass-system blue hex" $?
+grep -q 'bg-\[var(--ds-primary)\]' "$ANALYTICS" 2>/dev/null
+check "analytics: bars use the primary token (CSS bars, not a second chart)" $?
 
 # --- States: loading / empty / error ---
 grep -q 'loadError' "$ANALYTICS" 2>/dev/null
@@ -88,10 +88,10 @@ grep -q 'async function exportPNG' "$ANALYTICS" 2>/dev/null
 check "analytics: exportPNG preserved" $?
 grep -q 'score-performance-card' "$ANALYTICS" 2>/dev/null
 check "analytics: score PNG export element id preserved" $?
-grep -q 'conversion-by-stage-card' "$ANALYTICS" 2>/dev/null
-check "analytics: conversion PNG export element id preserved" $?
-grep -q 'activity-by-rep-card' "$ANALYTICS" 2>/dev/null
-check "analytics: rep-activity PNG export element id preserved" $?
+grep -q 'conversion-by-stage.csv' "$ANALYTICS" 2>/dev/null
+check "analytics: stage transitions keep a CSV export (PNG export retired with the duplicate chart)" $?
+grep -q 'activity-by-rep.csv' "$ANALYTICS" 2>/dev/null
+check "analytics: coaching-by-rep keeps a CSV export (PNG export retired with the duplicate chart)" $?
 grep -q 'setSelectedRep' "$ANALYTICS" 2>/dev/null
 check "analytics: rep filter preserved" $?
 grep -q 'setDays' "$ANALYTICS" 2>/dev/null
@@ -100,8 +100,8 @@ check "analytics: range filter preserved" $?
 # --- Next actions: real routes only ---
 grep -q '/coaching?tab=review' "$ANALYTICS" 2>/dev/null
 check "analytics: next-action links to review queue" $?
-grep -q '"/admin/assignments"' "$ANALYTICS" 2>/dev/null
-check "analytics: next-action links to assignments admin" $?
+grep -q '/coaching?tab=assignments' "$ANALYTICS" 2>/dev/null
+check "analytics: next-action links to the Assignments tab" $?
 grep -q '"/crm/manager"' "$ANALYTICS" 2>/dev/null
 check "analytics: next-action links to team workspace" $?
 

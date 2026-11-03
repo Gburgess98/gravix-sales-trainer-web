@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { PageContainer } from '@/components/layout/page-container'
 import { ManagerOverviewSummary } from '@/components/manager/overview-summary'
+import { AssignmentsPanel } from '@/components/manager/assignments-panel'
+import { resolveRepName, memberLabel, NEUTRAL_MEMBER_LABEL } from '@/lib/team-identity'
 import { PageHeader } from '@/components/layout/page-header'
 import { proxyFetch } from '@/lib/api'
 import { StatCard } from '@/components/ui/stat-card'
@@ -1036,6 +1038,9 @@ function CoachingPageInner() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('open')
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  // Rep names for the Assignments list come from the authenticated roster; ids are never shown as names.
+  const [roster, setRoster] = useState<Array<{ id: string; name?: string | null; email?: string | null }>>([])
 
   const [calls, setCalls] = useState<CallItem[]>([])
   const [replayLoading, setReplayLoading] = useState(false)
@@ -1229,13 +1234,23 @@ function CoachingPageInner() {
 
   const loadAssignments = useCallback(async () => {
     setAssignmentsLoading(true)
+    setAssignmentsError(null)
     try {
       // Day 93: manager-scoped list (hierarchy-filtered) instead of the
       // requester's own assignments — this tab is a manager tracking view.
       const res = await proxyFetch('/v1/assignments/manager?limit=100', { cache: 'no-store' })
       const data = await res.json()
+      if (!res.ok || data?.ok === false) setAssignmentsError('Assignments are unavailable right now. Your data has not changed.')
       setAssignments(data.items ?? data.assignments ?? [])
-    } catch { setAssignments([]) } finally { setAssignmentsLoading(false) }
+    } catch { setAssignments([]); setAssignmentsError('Assignments are unavailable right now. Your data has not changed.') } finally { setAssignmentsLoading(false) }
+  }, [])
+
+  const loadRoster = useCallback(async () => {
+    try {
+      const res = await proxyFetch('/v1/team/members', { cache: 'no-store' })
+      const json = res.ok ? await res.json() : null
+      setRoster(Array.isArray(json?.items) ? json.items : [])
+    } catch { setRoster([]) }
   }, [])
 
   const loadReplay = useCallback(async () => {
@@ -1482,6 +1497,31 @@ function CoachingPageInner() {
     }
   }, [markingCompleteId, loadOverview, loadAssignments])
 
+  // Manager Assignments list — "Mark complete" reuses the same manager-scoped PATCH as above (status only,
+  // no proof metadata); the API enforces ownership, so a non-owner gets a clear error rather than a silent no-op.
+  const [completingAssignmentId, setCompletingAssignmentId] = useState<string | null>(null)
+  const completeAssignment = useCallback(async (assignmentId: string) => {
+    setCompletingAssignmentId(assignmentId)
+    try {
+      const res = await proxyFetch(`/v1/assignments/manager/${encodeURIComponent(assignmentId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data?.ok) {
+        loadOverview()
+        loadAssignments()
+        return { ok: true, text: 'Assignment marked complete.' }
+      }
+      return { ok: false, text: res.status === 403 ? 'Only the manager who created this assignment can complete it.' : 'Could not mark this assignment complete.' }
+    } catch {
+      return { ok: false, text: 'Could not mark this assignment complete.' }
+    } finally {
+      setCompletingAssignmentId(null)
+    }
+  }, [loadOverview, loadAssignments])
+
   const loadRecentSparring = useCallback(async () => {
     setSparringLoading(true)
     setSparringError(null)
@@ -1692,6 +1732,10 @@ function CoachingPageInner() {
     if (tab === 'replay' && calls.length === 0) loadReplay()
     if (tab === 'review' && !reviewQueueLoaded) loadReviewQueue()
   }, [tab, assignments.length, calls.length, reviewQueueLoaded, loadAssignments, loadReplay, loadReviewQueue])
+
+  useEffect(() => {
+    if (tab === 'assignments' && roster.length === 0) loadRoster()
+  }, [tab, roster.length, loadRoster])
 
   const filteredAssignments = assignments.filter((a) => {
     if (assignmentFilter === 'open') return a.status === 'open' || a.status === 'assigned'
@@ -3616,91 +3660,19 @@ function CoachingPageInner() {
 
       {/* ── ASSIGNMENTS ── */}
       {tab === 'assignments' && (
-        <div className="space-y-4">
-          <FilterBar
-            options={ASSIGNMENT_FILTERS}
-            value={assignmentFilter}
-            onChange={setAssignmentFilter}
-            count={assignmentsLoading ? undefined : filteredAssignments.length}
-            countLabel="assignments"
-          />
-          {assignmentsLoading && <LoadingText text="Loading assignments…" />}
-          {!assignmentsLoading && filteredAssignments.length === 0 && (
-            <div className="rounded-xl border border-neutral-800 px-4 py-5 text-sm text-neutral-400">
-              {ASSIGNMENT_EMPTY_COPY[assignmentFilter]}
-            </div>
-          )}
-          {!assignmentsLoading && filteredAssignments.length > 0 && (
-            <div className="rounded-xl border border-neutral-800 overflow-hidden">
-              <div className="divide-y divide-neutral-800/60">
-                {filteredAssignments.map((a) => {
-                  const isCompleted = a.status === 'completed'
-                  const isOverdue = !isCompleted && a.due_at && new Date(a.due_at) < new Date()
-                  const priority = assignmentPriorityOf(a)
-                  const originLabel = assignmentOriginLabel(a)
-                  const sourceCallId = assignmentSourceCallIdOf(a)
-                  const due = dueLabelOf(a)
-                  const notes = String(a.meta?.coaching_notes || '').trim()
-                  const repName = (a.rep_id && repNameById.get(String(a.rep_id))) || null
-                  return (
-                    <div key={a.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-white truncate">{a.title || 'Untitled assignment'}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${
-                            isCompleted
-                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                              : isOverdue
-                                ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                                : 'border-neutral-700 bg-neutral-900 text-neutral-300'
-                          }`}>
-                            {isCompleted ? 'Completed' : isOverdue ? 'Overdue' : 'Open'}
-                          </span>
-                          {!isCompleted && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide font-semibold shrink-0 ${PRIORITY_BADGE_CLS[priority]}`}>
-                              {priority}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 flex-wrap">
-                          {repName && <span className="text-neutral-300">{repName}</span>}
-                          <span>{String(a.type || 'assignment').replace('_', ' ')}</span>
-                          {originLabel && <span>{originLabel}</span>}
-                          {due && <span className={due.cls}>{due.text}</span>}
-                        </div>
-                        {notes && (
-                          <div className="mt-1 text-xs text-neutral-500 truncate max-w-xl" title={notes}>
-                            {notes}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {sourceCallId && (
-                          <Link href={`/calls/${sourceCallId}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors">
-                            From call →
-                          </Link>
-                        )}
-                        {a.rep_id && (
-                          <Link href={`/crm/reps/${a.rep_id}`} className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors">
-                            Rep →
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2 pt-1">
-            <Link href="/admin/assignments" className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 transition-colors">
-              Full Assignment Manager →
-            </Link>
-            <button type="button" onClick={loadAssignments} className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-900 transition-colors">
-              Refresh
-            </button>
-          </div>
-        </div>
+        <AssignmentsPanel
+          items={assignments}
+          loading={assignmentsLoading}
+          error={assignmentsError}
+          onRetry={loadAssignments}
+          repName={(id) => {
+            const key = String(id ?? '')
+            const fromRoster = resolveRepName(roster, key)
+            return fromRoster !== NEUTRAL_MEMBER_LABEL ? fromRoster : memberLabel({ name: repNameById.get(key) })
+          }}
+          onComplete={completeAssignment}
+          completingId={completingAssignmentId}
+        />
       )}
 
       {/* ── REPLAY QUEUE ── */}

@@ -51,14 +51,14 @@ grep -q 'setRepDirectory({})' "$ANALYTICS"
 check "directory fetch is fail-soft (falls back to empty directory)" $?
 
 # --- Chart + call sites ---
-grep -q 'XAxis dataKey="rep_label"' "$ANALYTICS"
-check "Activity by rep x-axis (and tooltip label) keyed off rep_label" $?
+grep -q 'repBars(repActivity, (r) => repLabel(r, repDirectory))' "$ANALYTICS"
+check "Coaching-by-rep rows are keyed off the humanised label (glass redesign)" $?
 
 if grep -q 'XAxis dataKey="rep_id"\|XAxis dataKey="rep_name"' "$ANALYTICS"; then false; else true; fi
 check "no chart axis keyed off raw rep_id/rep_name" $?
 
-[[ "$(grep -c 'repLabel(' "$ANALYTICS")" == "5" ]]
-check "repLabel defined once + all four call sites present" $?
+[[ "$(grep -c 'repLabel(' "$ANALYTICS")" == "4" ]]
+check "repLabel defined once + all three call sites present" $?
 
 if grep -n 'repLabel([a-zA-Z]*)\s*[,}]' "$ANALYTICS" | grep -v repDirectory >/dev/null; then false; else true; fi
 check "every repLabel call site passes the directory" $?
@@ -67,7 +67,7 @@ check "every repLabel call site passes the directory" $?
 if grep -q 'exportCSV("activity-by-rep.csv", repActivity)' "$ANALYTICS"; then false; else true; fi
 check "activity-by-rep CSV no longer exports raw repActivity rows" $?
 
-grep -q 'rep: r.rep_label' "$ANALYTICS"
+grep -q 'rep: r.label' "$ANALYTICS"
 check "activity-by-rep CSV exports the human rep label" $?
 
 # --- Internal id preserved for state/queries ---

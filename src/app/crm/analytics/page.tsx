@@ -5,17 +5,11 @@ import Link from "next/link";
 import html2canvas from "html2canvas";
 import { proxyFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabaseClient";
-import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
-import { SectionCard } from "@/components/ui/section-card";
-import { StatCard } from "@/components/ui/stat-card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { PageShell, PageHead, GlassCard, Panel, PanelHeader, Badge, Segmented, EmptyPanel, ErrorPanel, dsButton, dsField } from "@/components/ds";
+import { summariseScores, completionRate, stageBars, repBars } from "@/lib/insights-model";
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -41,19 +35,15 @@ type RepOption = {
 
 /* ------------------------- Chart styling ------------------------- */
 // Recharts writes these as SVG presentation attributes, so CSS variables
-// can't be used here — hex values mirror the brand (indigo) token palette.
-const CHART_LINE = "#818cf8"; // brand-400
-const CHART_BAR = "#6366f1"; // brand-500
-const CHART_GRID = "#1f1f22";
-const CHART_TICK = { fill: "#9ca3af", fontSize: 12 };
+// can't be used here — hex values mirror the glass-system tokens (blue primary).
+const CHART_LINE = "#60a5fa";
+const CHART_GRID = "rgba(148,163,184,0.14)";
+const CHART_TICK = { fill: "#8b97ab", fontSize: 12 };
 const CHART_TOOLTIP = {
-  background: "#0a0a0a",
-  border: "1px solid #333",
-  borderRadius: "8px"
+  background: "#0d1422",
+  border: "1px solid rgba(148,163,184,0.26)",
+  borderRadius: "10px"
 };
-
-const SELECT_CLASS =
-  "rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 shadow-md shadow-black/20 focus:border-brand-500/50 focus:outline-none";
 
 // Display-only label — never surface a raw UUID (Day 213A). The analytics API
 // has historically echoed the rep_id back as rep_name (its auth.users name
@@ -108,6 +98,9 @@ export default function AnalyticsPage() {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
+  // Coaching impact comes from the existing manager command-centre (team-wide; it has no per-rep filter).
+  const [impact, setImpact] = useState<{ completedAssignments: number; skillsImproving: number; skillsDeclining: number; summary: string } | null>(null);
+
   const [days, setDays] = useState(30);
   const [selectedRep, setSelectedRep] = useState<string>("all");
 
@@ -146,6 +139,9 @@ export default function AnalyticsPage() {
         { cache: "no-store" }
       );
       const repJson = await rep.json();
+
+      // A failed analytics response is an error state, not "no data".
+      if (!conv.ok || !score.ok || !rep.ok) throw new Error("analytics_failed");
 
       const stagesObj = convJson?.stages ?? {};
       const stageRows: StageConversion[] = Object.entries(stagesObj).map(([stage, count]) => ({
@@ -262,6 +258,21 @@ export default function AnalyticsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    setImpact(null);
+    (async () => {
+      try {
+        const res = await proxyFetch(`/v1/manager/command-centre?days=${days}`, { cache: "no-store" });
+        const json = res.ok ? await res.json() : null;
+        if (alive && json?.ok && json.coachingImpact) setImpact(json.coachingImpact);
+      } catch {
+        if (alive) setImpact(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [days]);
+
   function exportCSV(filename: string, rows: Array<Record<string, any>>) {
     if (!rows.length) return;
     const headers = Object.keys(rows[0]);
@@ -353,543 +364,285 @@ export default function AnalyticsPage() {
     link.click();
   }
 
-  /* -------------------------- KPI Values -------------------------- */
+  /* ------------------------ Derived figures -----------------------
+     Arithmetic over the three analytics responses (see src/lib/insights-model.ts);
+     nothing here is fetched or invented. */
 
+  const scores = summariseScores(scoreTrend);
   const totalActivities = repActivity.reduce((a, r) => a + r.activities_created, 0);
   const completedActivities = repActivity.reduce((a, r) => a + r.activities_completed, 0);
-
-  const avgScore = scoreTrend.length
-    ? Math.round(scoreTrend.reduce((a, s) => a + s.avg_score, 0) / scoreTrend.length)
-    : 0;
-
+  const rate = completionRate(totalActivities, completedActivities);
   const conversionTotal = conversion.reduce((a, c) => a + c.count, 0);
+  const stages = stageBars(conversion);
+  const reps = repBars(repActivity, (r) => repLabel(r, repDirectory));
+  const repChartData = reps; // human labels only — raw ids never reach exports (Day 213A)
 
   const rangeLabel = `last ${days} days`;
-
-  /* ----------------------- Derived reads --------------------------
-     Deterministic reads of the figures already on this page — no extra
-     fetches, no invented data. Everything below is arithmetic over the
-     three analytics responses. */
-
-  // Score direction: first half vs second half of the trend in range.
-  let scoreDelta: number | null = null;
-  if (scoreTrend.length >= 4) {
-    const mid = Math.floor(scoreTrend.length / 2);
-    const avgOf = (rows: ScorePoint[]) =>
-      rows.reduce((a, s) => a + s.avg_score, 0) / rows.length;
-    scoreDelta = Math.round(avgOf(scoreTrend.slice(mid)) - avgOf(scoreTrend.slice(0, mid)));
-  }
-
-  const latestScore = scoreTrend.length ? scoreTrend[scoreTrend.length - 1] : null;
-  const bestScore = scoreTrend.length
-    ? scoreTrend.reduce((a, b) => (b.avg_score > a.avg_score ? b : a))
-    : null;
-  const lowScore = scoreTrend.length
-    ? scoreTrend.reduce((a, b) => (b.avg_score < a.avg_score ? b : a))
-    : null;
-
-  const completionRate = totalActivities
-    ? Math.round((completedActivities / totalActivities) * 100)
-    : null;
-
-  const topRep = repActivity.length
-    ? repActivity.reduce((a, b) => (b.activities_created > a.activities_created ? b : a))
-    : null;
-
-  const busiestStage = conversion.length
-    ? conversion.reduce((a, b) => (b.count > a.count ? b : a))
-    : null;
-
-  const signals: Array<{ title: string; detail: string }> = [];
-  if (scoreDelta !== null) {
-    signals.push({
-      title:
-        scoreDelta > 0
-          ? `Scores trending up ${scoreDelta} pts`
-          : scoreDelta < 0
-            ? `Scores trending down ${Math.abs(scoreDelta)} pts`
-            : "Scores holding steady",
-      detail: `Second half of the range vs the first · ${rangeLabel}`,
-    });
-  }
-  if (topRep) {
-    signals.push({
-      title: `Most coached: ${repLabel(topRep, repDirectory)}`,
-      detail: `${topRep.activities_created} tasks created · ${topRep.activities_completed} completed`,
-    });
-  }
-  if (completionRate !== null) {
-    signals.push({
-      title: `${completionRate}% task completion`,
-      detail: `${completedActivities} of ${totalActivities} coaching tasks closed out`,
-    });
-  }
-  if (busiestStage) {
-    signals.push({
-      title: `Most movement: ${busiestStage.stage}`,
-      detail: `${busiestStage.count} stage transitions in range`,
-    });
-  }
-
   const scopeLabel =
     selectedRep === "all"
       ? "All reps"
-      : repLabel(
-          repOptions.find((r) => r.rep_id === selectedRep) ?? { rep_id: selectedRep },
-          repDirectory
-        );
-
-  const repChartData = repActivity.map((r) => ({ ...r, rep_label: repLabel(r, repDirectory) }));
+      : repLabel(repOptions.find((r) => r.rep_id === selectedRep) ?? { rep_id: selectedRep }, repDirectory);
 
   const nextActions = [
-    {
-      href: "/coaching?tab=review",
-      title: "Open review queue",
-      detail: "Score waiting calls and keep feedback moving.",
-    },
-    {
-      href: "/admin/assignments",
-      title: "Manage assignments",
-      detail: "Turn weak areas into targeted coaching work.",
-    },
-    {
-      href: "/crm/manager",
-      title: "Team workspace",
-      detail: "Reps, accounts and pipeline in one place.",
-    },
+    { href: "/coaching?tab=review", title: "Open review queue" },
+    { href: "/coaching?tab=assignments", title: "Review assignments" },
+    { href: "/crm/manager", title: "Team workspace" },
   ];
+
+  const skeleton = <div className="h-[260px] animate-pulse rounded-lg bg-white/[0.05] motion-reduce:animate-none" role="status" aria-label="Loading" />;
 
   /* ---------------------------- Render ---------------------------- */
 
   return (
-    <PageContainer>
-      {/* INTELLIGENCE HERO */}
+    <PageShell>
+      <PageHead
+        title="Insights"
+        subtitle="Team performance, coaching follow-through and pipeline movement. Updates as calls are scored."
+      />
 
-      <div className="glass relative overflow-hidden rounded-2xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_130%_at_85%_-30%,rgba(99,102,241,0.18),transparent_60%)]"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_80%_at_0%_110%,rgba(99,102,241,0.07),transparent_55%)]"
-        />
-        <div className="relative px-6 py-5">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-brand-300">
-            Gravix Intelligence
-          </div>
-          <PageHeader
-            className="mt-1.5"
-            title="Insights"
-            subtitle="Curated performance signals across your sales organisation"
-            actions={
-              <>
-                <select
-                  aria-label="Filter by rep"
-                  className={SELECT_CLASS}
-                  value={selectedRep}
-                  onChange={(e) => setSelectedRep(e.target.value)}
-                >
-                  <option value="all">All reps</option>
-                  {repOptions.map((rep) => (
-                    <option key={rep.rep_id} value={rep.rep_id}>
-                      {repLabel(rep, repDirectory)}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  aria-label="Date range"
-                  className={SELECT_CLASS}
-                  value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                >
-                  <option value={7}>Last 7 days</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={90}>Last 90 days</option>
-                </select>
-              </>
-            }
+      <GlassCard as="div" className="!p-3 sm:!p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <select
+            aria-label="Filter by rep"
+            className={`${dsField} md:max-w-xs`}
+            value={selectedRep}
+            onChange={(e) => setSelectedRep(e.target.value)}
+          >
+            <option value="all">All reps</option>
+            {repOptions.map((rep) => (
+              <option key={rep.rep_id} value={rep.rep_id}>
+                {repLabel(rep, repDirectory)}
+              </option>
+            ))}
+          </select>
+          <Segmented
+            label="Date range"
+            value={String(days) as "7" | "30" | "90"}
+            onChange={(v) => setDays(Number(v))}
+            options={[
+              { value: "7", label: "7 days" },
+              { value: "30", label: "30 days" },
+              { value: "90", label: "90 days" },
+            ]}
           />
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-950/80 px-2.5 py-1 text-[11px] text-neutral-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-success-400" />
-              Live — refreshes as calls are scored
-            </span>
-            <span className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-950/80 px-2.5 py-1 text-[11px] text-neutral-400">
-              {scopeLabel} · {rangeLabel}
-            </span>
-          </div>
         </div>
-      </div>
+      </GlassCard>
 
       {loadError && (
-        <SectionCard variant="danger" padded>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium text-danger-200">Analytics could not be loaded</div>
-              <p className="mt-0.5 text-xs text-neutral-400">
-                Check your connection, then retry. Any cached figures below may be out of date.
-              </p>
-            </div>
-            <Button variant="ghost" onClick={() => void load()}>
-              Retry
-            </Button>
-          </div>
-        </SectionCard>
+        <Panel>
+          <ErrorPanel
+            title="Analytics could not be loaded"
+            body={scoreTrend.length || conversion.length || repActivity.length ? "Figures below may be out of date. Check your connection, then retry." : "Check your connection, then retry."}
+            onRetry={() => void load()}
+          />
+        </Panel>
       )}
 
-      {/* KPI STRIP */}
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <div className="glass relative col-span-2 overflow-hidden rounded-xl bg-gradient-to-br from-brand-500/15 to-transparent px-5 py-4">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_120%_at_100%_-20%,rgba(99,102,241,0.12),transparent_60%)]"
-          />
-          <div className="relative">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-brand-300">
-              Avg call score
-            </div>
-            <div className="mt-1 flex flex-wrap items-baseline gap-3">
-              <span className="text-4xl font-semibold tabular-nums text-white">
-                {scoreTrend.length ? avgScore : "—"}
-              </span>
-              {scoreDelta !== null && (
-                <span
-                  className={
-                    scoreDelta > 0
-                      ? "inline-flex items-center gap-1 rounded-full border border-success-500/20 bg-success-500/10 px-2 py-0.5 text-[11px] font-medium text-success-300"
-                      : scoreDelta < 0
-                        ? "inline-flex items-center gap-1 rounded-full border border-warning-500/20 bg-warning-500/10 px-2 py-0.5 text-[11px] font-medium text-warning-300"
-                        : "inline-flex items-center gap-1 rounded-full border border-neutral-800 px-2 py-0.5 text-[11px] font-medium text-neutral-400"
-                  }
-                >
-                  {scoreDelta > 0 ? "▲" : scoreDelta < 0 ? "▼" : "→"}{" "}
-                  {Math.abs(scoreDelta)} pts across range
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-[11px] text-neutral-400">
-              Average review score · {rangeLabel}
-            </div>
+      {/* PERFORMANCE — the one chart */}
+      <GlassCard>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--ds-text)]">Score performance</h2>
+            <p className="mt-0.5 text-sm text-[var(--ds-text-3)]">{scopeLabel} · {rangeLabel}</p>
           </div>
-        </div>
-
-        <StatCard
-          glass
-          label="Activities created"
-          value={totalActivities}
-          subtext="Coaching tasks generated"
-        />
-        <StatCard
-          glass
-          label="Tasks completed"
-          value={completedActivities}
-          subtext={completionRate !== null ? `${completionRate}% completion rate` : "Completed coaching actions"}
-        />
-        <StatCard
-          glass
-          label="Pipeline events"
-          value={conversionTotal}
-          subtext="Stage transitions"
-        />
-      </div>
-
-      {/* SIGNALS — derived from the figures above, no extra fetches */}
-
-      <SectionCard
-        variant="ai"
-        glass
-        eyebrow="Signals"
-        title="This range at a glance"
-        subtitle="Read automatically from the figures in this range"
-        padded
-      >
-        {signals.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {signals.map((s) => (
-              <div
-                key={s.title}
-                className="flex gap-2.5 rounded-lg border border-brand-500/10 bg-neutral-950/60 px-3.5 py-3"
-              >
-                <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-neutral-200">{s.title}</div>
-                  <div className="mt-0.5 text-[11px] text-neutral-400">{s.detail}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-neutral-500">
-            Signals appear as calls are reviewed and coaching activity lands in this range.
-          </p>
-        )}
-      </SectionCard>
-
-      {/* HERO — SCORE PERFORMANCE */}
-
-      <SectionCard
-        variant="ai"
-        eyebrow="Intelligence"
-        title="Score performance"
-        subtitle={`Average call review score per day · ${rangeLabel}`}
-        actions={
-          <>
-            <Button variant="ghost" onClick={() => exportCSV("score_trend.csv", scoreTrend)}>
-              Export CSV
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => void exportPNG("score-performance-card", "score-performance.png")}
-            >
-              Export PNG
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row">
-          <div id="score-performance-card" className="min-w-0 flex-1">
-            {scoreTrend.length ? (
-              <ResponsiveContainer width="100%" height={340}>
-                <AreaChart data={scoreTrend} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="score-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CHART_LINE} stopOpacity={0.26} />
-                      <stop offset="100%" stopColor={CHART_LINE} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={CHART_GRID} vertical={false} />
-                  <XAxis
-                    dataKey="day"
-                    tick={CHART_TICK}
-                    axisLine={false}
-                    tickLine={false}
-                    tickMargin={8}
-                  />
-                  <YAxis domain={[0, 100]} tick={CHART_TICK} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={CHART_TOOLTIP} cursor={{ stroke: "#333" }} />
-                  <Area
-                    type="monotone"
-                    dataKey="avg_score"
-                    name="Avg score"
-                    stroke={CHART_LINE}
-                    strokeWidth={2.5}
-                    fill="url(#score-fill)"
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : loaded ? (
-              <div className="flex h-[340px] items-center justify-center">
-                <EmptyState
-                  message="No reviewed calls in this range"
-                  sub="Score trend builds as calls are uploaded and reviewed."
-                  action={{ label: "Upload a call", href: "/upload" }}
-                />
-              </div>
-            ) : (
-              <div className="h-[340px] animate-pulse rounded-lg bg-neutral-900/60" />
-            )}
-          </div>
-
-          {latestScore && bestScore && lowScore && (
-            <div className="flex shrink-0 gap-3 lg:w-44 lg:flex-col">
-              <div className="flex-1 rounded-lg border border-brand-500/10 bg-neutral-950/60 px-3.5 py-3 lg:flex-none">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Latest</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
-                  {Math.round(latestScore.avg_score)}
-                </div>
-                <div className="text-[10px] text-neutral-600">{latestScore.day}</div>
-              </div>
-              <div className="flex-1 rounded-lg border border-brand-500/10 bg-neutral-950/60 px-3.5 py-3 lg:flex-none">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Range high</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
-                  {Math.round(bestScore.avg_score)}
-                </div>
-                <div className="text-[10px] text-neutral-600">{bestScore.day}</div>
-              </div>
-              <div className="flex-1 rounded-lg border border-brand-500/10 bg-neutral-950/60 px-3.5 py-3 lg:flex-none">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Range low</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-white">
-                  {Math.round(lowScore.avg_score)}
-                </div>
-                <div className="text-[10px] text-neutral-600">{lowScore.day}</div>
-              </div>
+          {scores && (
+            <div className="flex gap-2">
+              <button type="button" className={dsButton("quiet", "sm")} onClick={() => exportCSV("score_trend.csv", scoreTrend)}>Export CSV</button>
+              <button type="button" className={dsButton("quiet", "sm")} onClick={() => void exportPNG("score-performance-card", "score-performance.png")}>Export PNG</button>
             </div>
           )}
         </div>
-      </SectionCard>
 
-      {/* SECONDARY GRID */}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SectionCard
-          title="Conversion by stage"
-          subtitle={`Pipeline stage transitions · ${rangeLabel}`}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => exportCSV("conversion-by-stage.csv", conversion)}>
-                Export CSV
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => void exportPNG("conversion-by-stage-card", "conversion-by-stage.png")}
-              >
-                Export PNG
-              </Button>
-            </>
-          }
-        >
-          <div id="conversion-by-stage-card" className="px-5 py-4">
-            {conversion.length ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={conversion} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="conversion-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CHART_BAR} stopOpacity={0.9} />
-                      <stop offset="100%" stopColor={CHART_BAR} stopOpacity={0.3} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={CHART_GRID} vertical={false} />
-                  <XAxis dataKey="stage" tick={CHART_TICK} axisLine={false} tickLine={false} tickMargin={8} />
-                  <YAxis tick={CHART_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={CHART_TOOLTIP} cursor={{ fill: "rgba(99,102,241,0.06)" }} />
-                  <Bar
-                    dataKey="count"
-                    name="Transitions"
-                    fill="url(#conversion-fill)"
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={48}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : loaded ? (
-              <div className="relative h-[260px]">
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-6 bottom-2 flex h-32 items-end gap-4"
-                >
-                  {[42, 68, 34, 56, 26, 48].map((h, i) => (
-                    <div
-                      key={i}
-                      className="w-full rounded-t border border-neutral-800/60 bg-neutral-900/30"
-                      style={{ height: `${h}%` }}
-                    />
-                  ))}
-                </div>
-                <div className="relative flex h-full items-center justify-center">
-                  <EmptyState
-                    message="No stage transitions in this range"
-                    sub="As deals move between pipeline stages, conversion builds here automatically."
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="h-[260px] animate-pulse rounded-lg bg-neutral-900/60" />
+        {scores && (
+          <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="text-5xl font-semibold tabular-nums tracking-tight text-[var(--ds-text)]">{scores.average}</span>
+            <span className="text-sm text-[var(--ds-text-3)]">average of daily review scores</span>
+            {scores.delta !== null && (
+              <Badge tone={scores.delta > 0 ? "good" : scores.delta < 0 ? "warn" : "neutral"}>
+                {scores.delta > 0 ? "▲" : scores.delta < 0 ? "▼" : "–"} {Math.abs(scores.delta)} pts, second half vs first half of range
+              </Badge>
             )}
           </div>
-        </SectionCard>
+        )}
 
-        <SectionCard
-          title="Activity by rep"
-          subtitle={`Coaching activities created per rep · ${rangeLabel}`}
-          actions={
-            <>
-              <Button
-                variant="ghost"
-                onClick={() =>
-                  // Day 213A — export human labels, not raw ids.
-                  exportCSV(
-                    "activity-by-rep.csv",
-                    repChartData.map((r) => ({
-                      rep: r.rep_label,
-                      activities_created: r.activities_created,
-                      activities_completed: r.activities_completed,
-                    }))
-                  )
-                }
-              >
-                Export CSV
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => void exportPNG("activity-by-rep-card", "activity-by-rep.png")}
-              >
-                Export PNG
-              </Button>
-            </>
-          }
-        >
-          <div id="activity-by-rep-card" className="px-5 py-4">
-            {repActivity.length ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={repChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="rep-activity-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CHART_BAR} stopOpacity={0.9} />
-                      <stop offset="100%" stopColor={CHART_BAR} stopOpacity={0.3} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={CHART_GRID} vertical={false} />
-                  <XAxis dataKey="rep_label" tick={CHART_TICK} axisLine={false} tickLine={false} tickMargin={8} />
-                  <YAxis tick={CHART_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={CHART_TOOLTIP} cursor={{ fill: "rgba(99,102,241,0.06)" }} />
-                  <Bar
-                    dataKey="activities_created"
-                    name="Created"
-                    fill="url(#rep-activity-fill)"
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={48}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : loaded ? (
-              <div className="flex h-[260px] items-center justify-center">
-                <EmptyState
-                  message="No rep activity in this range"
-                  sub="Activity appears as coaching tasks are created for reps."
-                />
+        <div id="score-performance-card" className="mt-5 min-w-0">
+          {scores ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={scoreTrend} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="score-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART_LINE} stopOpacity={0.26} />
+                    <stop offset="100%" stopColor={CHART_LINE} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={CHART_GRID} vertical={false} />
+                <XAxis dataKey="day" tick={CHART_TICK} axisLine={false} tickLine={false} tickMargin={8} minTickGap={24} />
+                <YAxis domain={[0, 100]} tick={CHART_TICK} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={CHART_TOOLTIP} cursor={{ stroke: "rgba(148,163,184,0.3)" }} />
+                <Area type="monotone" dataKey="avg_score" name="Avg score" stroke={CHART_LINE} strokeWidth={2.5} fill="url(#score-fill)" dot={false} activeDot={{ r: 4 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : loaded ? (
+            <EmptyPanel
+              title="No reviewed calls in this range"
+              body="The score trend builds as calls are uploaded and reviewed."
+              action={<Link href="/upload" className={dsButton("primary", "md")}>Upload a call</Link>}
+            />
+          ) : (
+            skeleton
+          )}
+        </div>
+
+        {scores && (
+          <dl className="mt-4 grid grid-cols-3 gap-x-4 border-t border-[var(--ds-border)] pt-4 text-sm">
+            {[
+              ["Latest", scores.latest],
+              ["Range high", scores.high],
+              ["Range low", scores.low],
+            ].map(([label, point]) => (
+              <div key={String(label)}>
+                <dt className="text-xs text-[var(--ds-text-3)]">{String(label)}</dt>
+                <dd className="mt-0.5">
+                  <span className="block text-lg font-semibold tabular-nums text-[var(--ds-text)]">{Math.round((point as { avg_score: number }).avg_score)}</span>
+                  <span className="block text-xs text-[var(--ds-text-3)]">{(point as { day: string }).day}</span>
+                </dd>
               </div>
-            ) : (
-              <div className="h-[260px] animate-pulse rounded-lg bg-neutral-900/60" />
-            )}
-          </div>
-        </SectionCard>
+            ))}
+          </dl>
+        )}
+      </GlassCard>
+
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+        {/* COACHING */}
+        <Panel>
+          <PanelHeader title="Coaching follow-through" meta={rangeLabel} />
+          {!loaded ? (
+            <div className="p-5">{skeleton}</div>
+          ) : repActivity.length === 0 && !impact ? (
+            <EmptyPanel title="No coaching activity in this range" body="Activity appears as coaching tasks are created for reps." />
+          ) : (
+            <div className="px-5 py-5 sm:px-6">
+              {rate !== null ? (
+                <>
+                  <p className="text-3xl font-semibold tabular-nums text-[var(--ds-text)]">{rate}%</p>
+                  <p className="mt-1 text-sm text-[var(--ds-text-2)]">{completedActivities} of {totalActivities} coaching tasks completed</p>
+                  <p className="mt-0.5 text-xs text-[var(--ds-text-3)]">Counts CRM coaching tasks created in range that are marked done.</p>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--ds-text-3)]">No coaching tasks were created in this range.</p>
+              )}
+
+              {impact && (
+                <div className="mt-4 rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-white/[0.02] px-4 py-3">
+                  <p className="text-sm text-[var(--ds-text)]">{impact.summary}</p>
+                  <p className="mt-1 text-xs text-[var(--ds-text-3)]">Team-wide, last {days} days. Ignores the rep filter.</p>
+                </div>
+              )}
+
+              {reps.length > 0 && (
+                <>
+                  <h3 className="mt-6 text-sm font-medium text-[var(--ds-text)]">By rep</h3>
+                  <ul aria-label="Coaching tasks by rep" className="mt-2 space-y-3">
+                    {reps.slice(0, 5).map((r) => (
+                      <li key={r.rep_id}>
+                        <div className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="truncate text-[var(--ds-text)]">{r.label}</span>
+                          <span className="shrink-0 tabular-nums text-xs text-[var(--ds-text-3)]">{r.completed}/{r.created} done</span>
+                        </div>
+                        <div aria-hidden className="mt-1 h-1.5 rounded-full bg-white/[0.07]">
+                          <div className="h-full rounded-full bg-[var(--ds-primary)]" style={{ width: `${r.pct}%` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {reps.length > 5 && (
+                    <details className="mt-3">
+                      <summary className="ds-focus cursor-pointer rounded text-sm text-[var(--ds-text-2)] hover:text-[var(--ds-text)]">Show {reps.length - 5} more reps</summary>
+                      <ul aria-label="More coaching tasks by rep" className="mt-3 space-y-3">
+                        {reps.slice(5).map((r) => (
+                          <li key={r.rep_id}>
+                            <div className="flex items-baseline justify-between gap-3 text-sm">
+                              <span className="truncate text-[var(--ds-text)]">{r.label}</span>
+                              <span className="shrink-0 tabular-nums text-xs text-[var(--ds-text-3)]">{r.completed}/{r.created} done</span>
+                            </div>
+                            <div aria-hidden className="mt-1 h-1.5 rounded-full bg-white/[0.07]">
+                              <div className="h-full rounded-full bg-[var(--ds-primary)]" style={{ width: `${r.pct}%` }} />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </Panel>
+
+        {/* PIPELINE */}
+        <Panel>
+          <PanelHeader title="Pipeline movement" meta={rangeLabel} />
+          {!loaded ? (
+            <div className="p-5">{skeleton}</div>
+          ) : stages.length === 0 ? (
+            <EmptyPanel title="No stage transitions in this range" body="As deals move between pipeline stages, movement builds here." />
+          ) : (
+            <div className="px-5 py-5 sm:px-6">
+              <p className="text-3xl font-semibold tabular-nums text-[var(--ds-text)]">{conversionTotal}</p>
+              <p className="mt-1 text-sm text-[var(--ds-text-2)]">stage transitions</p>
+              <p className="mt-0.5 text-xs text-[var(--ds-text-3)]">A count of deals moving into each stage, not a conversion rate.</p>
+              <ul aria-label="Stage transitions" className="mt-5 space-y-3">
+                {stages.map((st) => (
+                  <li key={st.stage}>
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="truncate text-[var(--ds-text)]">{st.stage}</span>
+                      <span className="shrink-0 tabular-nums text-xs text-[var(--ds-text-3)]">{st.count}</span>
+                    </div>
+                    <div aria-hidden className="mt-1 h-1.5 rounded-full bg-white/[0.07]">
+                      <div className="h-full rounded-full bg-[var(--ds-highlight)]/70" style={{ width: `${st.pct}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Panel>
       </div>
 
-      {/* NEXT ACTIONS */}
-
-      <SectionCard
-        title="Act on these insights"
-        subtitle="Move from analysis to coaching action"
-        actions={
-          <Link href="/upload" className={buttonClasses("ghost")}>
-            Upload a call
-          </Link>
-        }
-        padded
-      >
-        <div className="grid gap-3 sm:grid-cols-3">
-          {nextActions.map((a) => (
-            <Link
-              key={a.href}
-              href={a.href}
-              className="group rounded-lg border border-neutral-800/70 bg-neutral-950 px-4 py-3.5 transition-colors hover:border-brand-500/40 hover:bg-brand-500/5"
+      {/* PROGRESSIVE DISCLOSURE — exports, definitions, next steps */}
+      <details className="ds-panel rounded-[var(--ds-radius-card)]">
+        <summary className="ds-focus cursor-pointer select-none rounded-[var(--ds-radius-card)] px-5 py-4 text-sm font-medium text-[var(--ds-text)]">
+          Exports, definitions and next steps
+        </summary>
+        <div className="space-y-5 border-t border-[var(--ds-border)] px-5 py-5 text-sm text-[var(--ds-text-2)]">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={dsButton("secondary", "sm")} disabled={!stages.length} onClick={() => exportCSV("conversion-by-stage.csv", conversion)}>Export stage transitions (CSV)</button>
+            <button
+              type="button"
+              className={dsButton("secondary", "sm")}
+              disabled={!repChartData.length}
+              onClick={() =>
+                // Day 213A — export human labels, not raw ids.
+                exportCSV("activity-by-rep.csv", repChartData.map((r) => ({ rep: r.label, activities_created: r.created, activities_completed: r.completed })))
+              }
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-neutral-100">{a.title}</span>
-                <span aria-hidden className="text-neutral-600 transition-colors group-hover:text-brand-300">
-                  →
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-neutral-500">{a.detail}</p>
-            </Link>
-          ))}
+              Export coaching by rep (CSV)
+            </button>
+          </div>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-[var(--ds-text-3)]">
+            <li>Average score is the mean of daily average review scores; it is not weighted by call volume.</li>
+            <li>The change figure compares the second half of the selected range with the first half.</li>
+            <li>Coaching follow-through counts CRM coaching tasks; coaching impact is the team-wide figure from the manager command centre and ignores the rep filter.</li>
+            <li>Pipeline movement counts stage transitions. Sparring results are not part of these analytics sources.</li>
+          </ul>
+          <nav aria-label="Next steps" className="flex flex-wrap gap-2">
+            {nextActions.map((a) => (
+              <Link key={a.href} href={a.href} className={dsButton("secondary", "sm")}>{a.title}</Link>
+            ))}
+            <Link href="/upload" className={dsButton("quiet", "sm")}>Upload a call</Link>
+          </nav>
         </div>
-      </SectionCard>
-    </PageContainer>
+      </details>
+    </PageShell>
   );
 }

@@ -109,3 +109,42 @@ Trend = 30-day average vs 90-day average (±3 pts), labelled in the footnote —
 ## 10. Verification
 
 Playwright (plugin tools + `tests/e2e/glass-manager.spec.ts`, fully mocked, fake local session): desktop 1440 and mobile 375, manager navigation, keyboard, overflow (incl. panels wider than viewport), console. Screenshots: `screenshots/manager/*`.
+
+## 11. Manager Assignments (`/coaching?tab=assignments`)
+
+`/assignments` (the signed-in user's own queue) is untouched.
+
+| Before | After |
+|---|---|
+| Filter pills (Open/Overdue/Completed/All) + flat rows with two tiny text buttons ("From call →", "Rep →") + two buttons under the list | **Summary** (Open / Overdue / Completed), **one primary** "Create assignment" (→ existing `/admin/assignments/create`), quiet "Assignment manager" and Refresh |
+| No search; status only | Search (rep, title, notes) + status segmented + **rep, type, due-date** selects, "Clear filters", "Showing x of y" |
+| Rep shown only if the control-centre list happened to contain them | Rep names resolved from the roster (shared resolver); unmatched = "Team member", never an id |
+| Origin/priority/notes inline on every row | Row = title, rep · type · due, evidence badge, status badge. **Details** disclosure holds created/due/completed, notes, evidence text, "Open call", "Open rep", "Open in assignment manager" |
+| No in-list actions | **Mark complete** (two-step confirm) on open/overdue rows, via the *existing* `PATCH /v1/assignments/manager/:id` (`{status:'completed'}`); the API's ownership rule is unchanged and a refusal shows a clear message |
+| Silent empty list on failure | Loading rows, empty state (with Create), no-match state, error state with retry |
+
+**Not built, deliberately:** *reassign*. The manager PATCH accepts status, due date, title and completion proof only — not a new assignee — and adding that would be a new API capability. The Assignment manager link is the escape hatch. Evidence is shown only when the record carries it (persisted sparring completion proof, or a source call); otherwise "No proof attached yet."
+The list is the latest 100 (API `limit=100`); the page says so when it is full. Legacy helpers (`ASSIGNMENT_FILTERS`, `assignmentOriginLabel`, …) remain in `coaching/page.tsx` because older validators pin their strings; they are now unused (lint warnings only).
+
+## 12. Insights (`/crm/analytics`)
+
+`/intelligence` is untouched.
+
+| Before | After |
+|---|---|
+| Hero band + 5 KPI cards + a 4-signal band + 3 charts + 3 action cards (+ 6 export buttons) | Filter bar, **one lead card** (average score, labelled change, the one chart, latest/high/low), two panels (Coaching follow-through, Pipeline movement), one collapsed "Exports, definitions and next steps" |
+| "Conversion by stage" bar chart | "Pipeline movement": ranked CSS bars; labelled a **count of stage transitions, not a conversion rate** |
+| "Activity by rep" bar chart | "By rep": top 5 with completed/created bars, the rest behind a disclosure |
+| — | **Coaching impact** sentence from the existing manager command-centre (team-wide; ignores the rep filter, and says so) |
+| Failed fetch looked like "no data" | A non-OK analytics response is now an error state with retry; empty and loading states per section |
+
+Labels: *average of daily review scores* (not call-weighted); *second half vs first half of range*; coaching follow-through counts CRM coaching tasks. **Sparring is not shown**: none of the analytics endpoints return it. Realtime refresh, the cache, rep/range filters, CSV exports and the PNG export of the score chart are preserved; PNG export of the two retired charts is gone.
+
+## 13. Visual identity debt (still open)
+
+Both screens deliberately reuse the provisional system, so the same notes apply: still a generic calm dark dashboard; glass is faint (the lead cards read almost like panels); bars and the area chart are default-looking; the Overview/Assignments tab strip and the `Manager Command Centre` header above Assignments are legacy-styled; Insights tick labels are raw ISO dates; many selects stack on mobile. Restyle in the dedicated identity pass via tokens/primitives.
+
+## 14. Verification (Assignments + Insights)
+
+**Mocked** (fake local session, mocked `/api/proxy`, Supabase hosts/sockets blocked): `tests/e2e/glass-assignments-insights.spec.ts` (16 checks: desktop + mobile, summary/list/filters/search, keyboard Details, two-step complete + 403 message, loading/empty/error, Insights sections/disclosure/range filter/empty/error, back/forward), plus the earlier manager and rep-identity specs (33 total), plus the Playwright plugin tools on a production build. **Real data:** none — nothing here was run against hosted staging or production.
+
