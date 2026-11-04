@@ -228,3 +228,67 @@ export async function mockRepApi(page: Page, o: RepApiOpts = {}) {
     return route.fulfill(json({ ok: true, items: [], calls: [] }))
   })
 }
+
+/* ── Settings hub (manager) ──────────────────────────────────────────────────────────────────────────
+   Stateful mock of the endpoints the hub uses. Writes are recorded so tests can assert the exact payload. */
+export type SettingsApiOpts = {
+  thresholds?: boolean // false → API returns null thresholds (migration not applied)
+  visibility?: string
+  visibilityPatchStatus?: number
+  configPatchStatus?: number
+  configGetStatus?: number
+  configDelay?: number
+  teamStatus?: number
+  versionStatus?: number
+  usersMeStatus?: number
+  writes?: Array<{ url: string; body: any }>
+  gets?: string[]
+}
+
+export async function mockSettingsApi(page: Page, o: SettingsApiOpts = {}) {
+  const config: any = { streak_threshold: 3, xp_multiplier: 1, comeback_bonus: 25, updated_at: new Date(Date.now() - 86_400_000).toISOString(), low_score_threshold: o.thresholds === false ? null : 65, critical_score_threshold: o.thresholds === false ? null : 45 }
+  let visibility = o.visibility ?? 'everyone'
+  await page.route('**/api/proxy/**', async (route) => {
+    const url = route.request().url()
+    const method = route.request().method()
+    o.gets && method === 'GET' && o.gets.push(url)
+    if (url.includes('/v1/admin/config')) {
+      if (method === 'PATCH') {
+        const body = JSON.parse(route.request().postData() || '{}')
+        o.writes?.push({ url, body })
+        if (o.configPatchStatus && o.configPatchStatus !== 200) return route.fulfill(json({ ok: false, error: 'Missing or invalid x-org-id (secret=sk-live-123)' }, o.configPatchStatus))
+        Object.assign(config, body, { updated_at: new Date().toISOString() })
+        return route.fulfill(json({ ok: true, config }))
+      }
+      if (o.configDelay) await new Promise((r) => setTimeout(r, o.configDelay))
+      if (o.configGetStatus && o.configGetStatus !== 200) return route.fulfill(json({ ok: false, error: 'boom' }, o.configGetStatus))
+      return route.fulfill(json({ ok: true, config, scoring: { low: config.low_score_threshold, critical: config.critical_score_threshold } }))
+    }
+    if (url.includes('/v1/admin/org-settings')) {
+      if (method === 'PATCH') {
+        const body = JSON.parse(route.request().postData() || '{}')
+        o.writes?.push({ url, body })
+        if (o.visibilityPatchStatus && o.visibilityPatchStatus !== 200) return route.fulfill(json({ ok: false, error: 'org_settings_update_failed: relation "org_settings" does not exist' }, o.visibilityPatchStatus))
+        visibility = body.call_visibility
+        return route.fulfill(json({ ok: true, settings: { call_visibility: visibility } }))
+      }
+      return route.fulfill(json({ ok: true, settings: { call_visibility: visibility } }))
+    }
+    if (url.includes('/v1/users/me')) {
+      if (o.usersMeStatus && o.usersMeStatus !== 200) return route.fulfill(json({ ok: false }, o.usersMeStatus))
+      return route.fulfill(json({ ok: true, user: { id: '00000000-0000-4000-8000-000000000001', name: 'Dana Lee', tier: 'Manager', company_name: 'Gravix Staging QA', timezone: 'Europe/London', active: true } }))
+    }
+    if (url.includes('/v1/team/members')) {
+      if (o.teamStatus && o.teamStatus !== 200) return route.fulfill(json({ ok: false }, o.teamStatus))
+      return route.fulfill(json({ ok: true, items: [
+        { id: 'm1', name: 'Dana Lee', role: 'Manager' }, { id: 'm2', name: 'Alex Johnson', role: 'SalesRep' }, { id: 'm3', name: 'Sam Rivera', role: 'SalesRep' }, { id: 'm4', name: 'Priya Nair', role: 'TeamLead' },
+      ], seats: { allocated: 8, used: 4, available: 4, source: 'company_licences' }, warnings: ['members_missing_office'] }))
+    }
+    if (url.includes('/v1/version')) {
+      if (o.versionStatus && o.versionStatus !== 200) return route.fulfill(json({ ok: false }, o.versionStatus))
+      return route.fulfill(json({ ok: true, version: '0c92270abcdef', buildTime: '2026-11-01T10:00:00Z', app_env: 'staging', scoring: { contract: 'v1', provider: 'openai' }, transcription_provider: 'assemblyai', sparring: { provider: 'openai' }, secret_key: 'sk-live-123' }))
+    }
+    if (url.includes('/v1/health')) return route.fulfill(json({ ok: true, service: 'gravix-api', uptime_s: 1234 }))
+    return route.fallback()
+  })
+}

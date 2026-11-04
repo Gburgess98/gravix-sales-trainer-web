@@ -19,6 +19,8 @@
 // editor.
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { buttonClasses } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
@@ -62,6 +64,11 @@ export default function IntelligencePage() {
       <PageHeader
         title="Intelligence"
         subtitle="Teach Gravix your business and what a good call sounds like"
+        actions={
+          <Link href="/admin/settings?section=ai" className={buttonClasses("ghost", "md")}>
+            ← Settings
+          </Link>
+        }
       />
 
       {/* Day 233 — page-level Intelligence Command band: the moat story and

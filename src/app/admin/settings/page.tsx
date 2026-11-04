@@ -1,228 +1,139 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useCallback } from "react";
+// NOTE: admin_config is a platform-wide singleton on the API (one row, not per organisation), so the streak / points /
+// threshold controls change values for every company. The UI says so (badge + confirmation); see docs/glass-system/SETTINGS_HUB.md.
+// Settings hub (administration). Manager/admin only: ManagerGate renders nothing until the API confirms the role and
+// sends everyone else to /assignments. Every editable control here writes through an EXISTING endpoint:
+//   PATCH /v1/admin/org-settings   call_visibility
+//   PATCH /v1/admin/config         streak_threshold, xp_multiplier, comeback_bonus, low/critical_score_threshold
+// Section components only present data; this page owns the drafts so switching sections never loses an edit.
+
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { getAdminConfig, patchAdminConfig, proxyGet, proxyPatch, AdminConfig } from "@/lib/api";
+import { PageHead, PageShell } from "@/components/ds";
+import { ManagerGate } from "@/components/auth/manager-gate";
+import { SettingsShell, useUnsavedGuard } from "@/components/settings/settings-shell";
+import { ConfirmDialog } from "@/components/settings/confirm-dialog";
 import {
-  getAdminConfig,
-  patchAdminConfig,
-  proxyFetch,
-  proxyGet,
-  proxyPatch,
-  AdminConfig,
-} from "@/lib/api";
-import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
+  AiSection,
+  CallsPrivacySection,
+  CoachingScoringSection,
+  GamificationSection,
+  GeneralSection,
+  PeopleSection,
+  SystemSection,
+  type Notice,
+} from "@/components/settings/sections";
+import {
+  VISIBILITY_OPTIONS,
+  gamificationDirty,
+  parseSection,
+  thresholdsDirty,
+  thresholdsFromConfig,
+  toGamificationForm,
+  validateGamification,
+  validateThresholds,
+  visibilityLabel,
+  type CallVisibility,
+  type GamificationForm,
+  type SectionId,
+  type ThresholdForm,
+} from "@/lib/settings-model";
 
 type OrgSettingsResp = {
   ok?: boolean;
   settings?: { call_visibility?: string | null } | null;
 };
 
-// Day 293 correction — canonical manager tiers, matching the API's
-// `requireManager` MANAGER_TIERS set exactly. Capability is decided by the
-// server-resolved `reps.tier` from the authenticated identity endpoint, never
-// by whether an unrelated config query happens to succeed.
-const MANAGER_TIERS = new Set(["Manager", "Owner", "PartnerAdmin", "SuperAdmin"]);
-
-type CallVisibility = "everyone" | "managers" | "disabled";
-
 function normaliseVisibility(v: unknown): CallVisibility | null {
   return v === "everyone" || v === "managers" || v === "disabled" ? v : null;
 }
 
-type FormState = {
-  streak_threshold: string;
-  xp_multiplier: string;
-  comeback_bonus: string;
-};
+type Confirm = null | "visibility" | "gamification" | "thresholds";
+const EMPTY_THRESHOLDS: ThresholdForm = { low_score_threshold: "", critical_score_threshold: "" };
 
-export default function AdminSettingsPage() {
-  // `loading` now tracks CAPABILITY resolution (the authenticated identity read),
-  // decoupled from the streak/XP config load which has its own section state.
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
+function AdminSettings() {
+  const section: SectionId = parseSection(useSearchParams()?.get("section"));
 
-  // Day 293 correction — the streak/XP admin-config load is a separate, section
-  // scoped concern. Its failure surfaces a friendly section error but must never
-  // affect manager capability or policy authority.
-  const [configLoading, setConfigLoading] = useState(false);
-  const [configErr, setConfigErr] = useState<string | null>(null);
-
-  const [raw, setRaw] = useState<AdminConfig | null>(null);
-  const [form, setForm] = useState<FormState>({
-    streak_threshold: "3",
-    xp_multiplier: "1",
-    comeback_bonus: "0",
-  });
-
-  // Day 292 — company-call visibility is server-owned; we only ever reflect a
-  // value the API has confirmed. "unknown" means we have not positively read it
-  // (never optimistically assume "everyone").
+  // ── Company call visibility ──────────────────────────────────────────────
+  // Day 292 — company-call visibility is server-owned; we only ever reflect a value the API has confirmed.
+  // "unknown" means we have not positively read it (never optimistically assume "everyone").
   const [visibility, setVisibility] = useState<CallVisibility | "unknown">("unknown");
   const [visLoading, setVisLoading] = useState(true);
   const [visSaving, setVisSaving] = useState(false);
   const [visErr, setVisErr] = useState<string | null>(null);
+  const [visDraft, setVisDraft] = useState<CallVisibility | null>(null);
+  const [visNotice, setVisNotice] = useState<Notice>(null);
 
-  // Day 293 correction — manager capability is resolved from the AUTHENTICATED,
-  // server-resolved identity endpoint `/v1/reps/me` (its `reps.tier`), matched
-  // against the canonical MANAGER_TIERS. It is NOT inferred from whether the
-  // unrelated manager-only admin-config query succeeds (that coupling mistook a
-  // config-data failure for an authorization failure and locked real managers out
-  // of the policy control). No localStorage, no client-supplied role/org.
-  //   true  → tier is a manager tier
-  //   false → identity resolved to a non-manager tier (rep) → clean read-only
-  //   null  → identity not positively resolved → fail-closed read-only
-  const [isManager, setIsManager] = useState<boolean | null>(null);
+  // ── Scoring + gamification config (one row, two forms) ───────────────────
+  const [raw, setRaw] = useState<AdminConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configErr, setConfigErr] = useState<string | null>(null);
+  const [gForm, setGForm] = useState<GamificationForm>({ streak_threshold: "", xp_multiplier: "", comeback_bonus: "" });
+  const [gAttempted, setGAttempted] = useState(false);
+  const [gSaving, setGSaving] = useState(false);
+  const [gNotice, setGNotice] = useState<Notice>(null);
+  const [tForm, setTForm] = useState<ThresholdForm>(EMPTY_THRESHOLDS);
+  const [tSaved, setTSaved] = useState<ThresholdForm | null>(null);
+  const [tAttempted, setTAttempted] = useState(false);
+  const [tSaving, setTSaving] = useState(false);
+  const [tNotice, setTNotice] = useState<Notice>(null);
 
-  const dirty = useMemo(() => {
-    if (!raw) return false;
-    return (
-      Number(form.streak_threshold) !== Number(raw.streak_threshold) ||
-      Number(form.xp_multiplier) !== Number(raw.xp_multiplier) ||
-      Number(form.comeback_bonus) !== Number(raw.comeback_bonus)
-    );
-  }, [form, raw]);
+  const [confirm, setConfirm] = useState<Confirm>(null);
 
-  // Resolve manager capability from the authenticated identity (server-resolved
-  // reps.tier). This is independent of the streak/XP config load below, so a
-  // config-data failure can never misclassify a real manager.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await proxyFetch("/v1/reps/me", { cache: "no-store" });
-        const d = await r.json().catch(() => ({} as any));
-        const tier = d?.rep?.tier ?? d?.tier ?? null;
-        if (!alive) return;
-        if (r.ok && d?.ok && typeof tier === "string") {
-          setIsManager(MANAGER_TIERS.has(tier));
-        } else {
-          // Identity not positively resolved → fail-closed to read-only.
-          setIsManager(null);
-        }
-      } catch {
-        if (alive) setIsManager(null);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+  const gSaved = useMemo(() => (raw ? toGamificationForm(raw) : null), [raw]);
+
+  const applyConfig = useCallback((cfg: AdminConfig) => {
+    setRaw(cfg);
+    setGForm(toGamificationForm(cfg));
+    const t = thresholdsFromConfig(cfg as unknown as Record<string, unknown>);
+    setTSaved(t);
+    setTForm(t ?? EMPTY_THRESHOLDS);
   }, []);
 
-  // Load streak/XP config ONLY after manager capability is positive. A failure
-  // here is a friendly section error — it does not touch capability or policy
-  // authority.
-  useEffect(() => {
-    if (isManager !== true) return;
-    let alive = true;
-    (async () => {
-      try {
-        setConfigLoading(true);
-        setConfigErr(null);
-        const cfg = await getAdminConfig();
-        if (!alive) return;
-        setRaw(cfg);
-        setForm({
-          streak_threshold: String(cfg.streak_threshold),
-          xp_multiplier: String(cfg.xp_multiplier),
-          comeback_bonus: String(cfg.comeback_bonus),
-        });
-      } catch {
-        // Never surface the raw provider/error string; keep policy authority.
-        if (alive) setConfigErr("Couldn’t load scoring settings. Please try again.");
-      } finally {
-        if (alive) setConfigLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [isManager]);
+  const loadConfig = useCallback(async () => {
+    setConfigLoading(true);
+    setConfigErr(null);
+    try {
+      applyConfig(await getAdminConfig());
+    } catch {
+      // Never surface the raw provider/error string.
+      setConfigErr("Couldn’t load these settings.");
+    } finally {
+      setConfigLoading(false);
+    }
+  }, [applyConfig]);
 
-  // Day 292 — read org settings through the canonical authenticated proxy helper
-  // (Supabase identity injected by proxyFetch); no raw /api/proxy fetch, no legacy
-  // localStorage x-user-id header. The org is resolved server-side, never from the
-  // client. On any failure we keep "unknown" rather than lying with "everyone".
+  // Day 292 — read org settings through the canonical authenticated proxy helper (Supabase identity injected by
+  // proxyFetch); the org is resolved server-side, never from the client. On any failure we keep "unknown" rather
+  // than lying with "everyone".
   const loadVisibility = useCallback(async () => {
     setVisErr(null);
     setVisLoading(true);
     try {
       const d = await proxyGet<OrgSettingsResp>("/v1/admin/org-settings");
       const v = normaliseVisibility(d?.settings?.call_visibility);
-      // Absent row is a genuine "everyone" default from the API; an unparseable
-      // value stays "unknown".
+      // Absent row is a genuine "everyone" default from the API; an unparseable value stays "unknown".
       setVisibility(v ?? (d?.settings?.call_visibility == null ? "everyone" : "unknown"));
-    } catch (e: any) {
+    } catch {
       setVisibility("unknown");
-      setVisErr("Couldn’t load company-call visibility.");
+      setVisErr("Couldn’t load call visibility.");
     } finally {
       setVisLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void loadVisibility();
-  }, [loadVisibility]);
+  useEffect(() => { void loadVisibility(); void loadConfig(); }, [loadVisibility, loadConfig]);
 
-  async function onSave() {
-    if (!raw) return;
-    setOkMsg(null);
-    setErr(null);
-
-    // Basic client validation (server also validates)
-    const streak = Number(form.streak_threshold);
-    const mult = Number(form.xp_multiplier);
-    const comeback = Number(form.comeback_bonus);
-
-    if (!Number.isInteger(streak) || streak < 1 || streak > 30) {
-      setErr("streak_threshold must be an integer 1–30");
-      return;
-    }
-    if (!Number.isFinite(mult) || mult < 0.1 || mult > 10) {
-      setErr("xp_multiplier must be a number 0.1–10");
-      return;
-    }
-    if (!Number.isInteger(comeback) || comeback < 0 || comeback > 5000) {
-      setErr("comeback_bonus must be an integer 0–5000");
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const updated = await patchAdminConfig({
-        streak_threshold: streak,
-        xp_multiplier: mult,
-        comeback_bonus: comeback,
-      });
-      setRaw(updated);
-      setForm({
-        streak_threshold: String(updated.streak_threshold),
-        xp_multiplier: String(updated.xp_multiplier),
-        comeback_bonus: String(updated.comeback_bonus),
-      });
-      setOkMsg("Saved ✅ (live immediately)");
-    } catch (e: any) {
-      // Day 293 — never surface the raw provider/authorization error.
-      setErr("Couldn’t save settings — please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Day 292 — write through the canonical authenticated proxy helper. PATCH stays
-  // manager-only at the API. We do NOT optimistically flip the UI: the selection
-  // only moves after a validated success, echoing the server-confirmed value. On
-  // denial / 5xx / transport failure we keep the previous value, surface a clean
-  // error, and reload the truth. A saving guard prevents rapid duplicate writes,
-  // and we never send a client org/company override.
+  // Day 292 — write through the canonical authenticated proxy helper. PATCH stays manager-only at the API. We do NOT
+  // optimistically flip the UI: the selection only moves after a validated success, echoing the server-confirmed
+  // value. On denial / 5xx / transport failure we keep the previous value, surface a clean error, and reload the
+  // truth. A saving guard prevents rapid duplicate writes, and we never send a client org/company override.
   const updateVisibility = useCallback(
-    async (val: CallVisibility) => {
-      if (visSaving) return;
-      if (val === visibility) return;
+    async (val: CallVisibility): Promise<boolean> => {
+      if (visSaving) return false;
+      if (val === visibility) return true;
       setVisErr(null);
       setVisSaving(true);
       const prev = visibility;
@@ -232,10 +143,12 @@ export default function AdminSettingsPage() {
         });
         const saved = normaliseVisibility(d?.settings?.call_visibility);
         setVisibility(saved ?? val);
-      } catch (e: any) {
+        return true;
+      } catch {
         setVisibility(prev);
         setVisErr("Couldn’t update visibility — your change was not saved.");
         void loadVisibility();
+        return false;
       } finally {
         setVisSaving(false);
       }
@@ -243,183 +156,192 @@ export default function AdminSettingsPage() {
     [visibility, visSaving, loadVisibility]
   );
 
+  // ── Dirty state ──────────────────────────────────────────────────────────
+  const visDirty = visDraft !== null && visDraft !== visibility;
+  const gDirty = gamificationDirty(gForm, gSaved);
+  const tDirty = thresholdsDirty(tForm, tSaved);
+  const dirtyBySection: Partial<Record<SectionId, boolean>> = { privacy: visDirty, gamification: gDirty, coaching: tDirty };
+  const { dialog: leaveDialog } = useUnsavedGuard(visDirty || gDirty || tDirty);
+
+  // ── Save flows: validate → confirm → write ───────────────────────────────
+  const gValidation = validateGamification(gForm);
+  const tValidation = validateThresholds(tForm);
+
+  async function confirmed() {
+    const which = confirm;
+    if (which === "visibility" && visDraft) {
+      setVisNotice(null);
+      const ok = await updateVisibility(visDraft);
+      setConfirm(null);
+      if (ok) { setVisDraft(null); setVisNotice({ type: "success", text: "Call visibility saved. It applies to everyone now." }); }
+      else setVisNotice({ type: "error", text: "Couldn’t save call visibility. Your change was not applied." });
+    }
+    if (which === "gamification" && gValidation.values) {
+      setGNotice(null);
+      setGSaving(true);
+      try {
+        applyConfigKeepThresholds(await patchAdminConfig(gValidation.values));
+        setGAttempted(false);
+        setGNotice({ type: "success", text: "Settings saved. They apply platform-wide now." });
+      } catch {
+        setGNotice({ type: "error", text: "Couldn’t save these settings. Your changes were not applied." });
+      } finally {
+        setGSaving(false);
+        setConfirm(null);
+      }
+    }
+    if (which === "thresholds" && tValidation.values) {
+      setTNotice(null);
+      setTSaving(true);
+      try {
+        const d = await proxyPatch<{ config?: AdminConfig }>("/v1/admin/config", tValidation.values);
+        if (d?.config) applyConfig(d.config);
+        else await loadConfig();
+        setTAttempted(false);
+        setTNotice({ type: "success", text: "Thresholds saved. They apply platform-wide to new scoring now." });
+      } catch {
+        setTNotice({ type: "error", text: "Couldn’t save thresholds. Your changes were not applied." });
+      } finally {
+        setTSaving(false);
+        setConfirm(null);
+      }
+    }
+  }
+
+  // After a gamification save keep any unsaved threshold draft; only the saved baseline moves.
+  function applyConfigKeepThresholds(cfg: AdminConfig) {
+    setRaw(cfg);
+    setGForm(toGamificationForm(cfg));
+    setTSaved(thresholdsFromConfig(cfg as unknown as Record<string, unknown>) ?? tSaved);
+  }
+
+  function requestSaveGamification() {
+    setGAttempted(true);
+    setGNotice(null);
+    if (gValidation.ok) setConfirm("gamification");
+  }
+  function requestSaveThresholds() {
+    setTAttempted(true);
+    setTNotice(null);
+    if (tValidation.ok) setConfirm("thresholds");
+  }
+
+  const change = (label: string, from: string, to: string) => (from === to ? null : <li key={label}>{label}: <span className="text-[var(--ds-text)]">{from} → {to}</span></li>);
+
   return (
-    <PageContainer className="mx-auto w-full max-w-2xl">
-      <PageHeader
-        glass
-        title="Settings"
-        subtitle="Configure streak threshold, XP multiplier, and comeback bonus (applies immediately)."
-      />
+    <PageShell>
+      <PageHead title="Settings" subtitle="Administration for your workspace." />
+      <SettingsShell active={section} dirty={dirtyBySection}>
+        {section === "general" && <GeneralSection />}
+        {section === "people" && <PeopleSection />}
+        {section === "ai" && <AiSection />}
+        {section === "privacy" && (
+          <CallsPrivacySection
+            saved={visibility}
+            draft={visDraft}
+            onDraft={(v) => { setVisNotice(null); setVisDraft(v === visibility ? null : v); }}
+            onDiscard={() => { setVisDraft(null); setVisNotice(null); }}
+            onSave={() => { setVisNotice(null); if (visDirty) setConfirm("visibility"); }}
+            loading={visLoading}
+            saving={visSaving}
+            error={visErr}
+            onRetry={() => void loadVisibility()}
+            notice={visNotice}
+          />
+        )}
+        {section === "coaching" && (
+          <CoachingScoringSection
+            loading={configLoading}
+            error={configErr}
+            onRetry={() => void loadConfig()}
+            available={tSaved !== null}
+            form={tForm}
+            errors={tAttempted ? tValidation.errors : {}}
+            dirty={tDirty}
+            saving={tSaving}
+            onChange={(f) => { setTNotice(null); setTForm(f); }}
+            onDiscard={() => { setTForm(tSaved ?? EMPTY_THRESHOLDS); setTAttempted(false); setTNotice(null); }}
+            onSave={requestSaveThresholds}
+            notice={tNotice}
+          />
+        )}
+        {section === "gamification" && (
+          <GamificationSection
+            loading={configLoading}
+            error={configErr}
+            onRetry={() => void loadConfig()}
+            form={gForm}
+            errors={gAttempted ? gValidation.errors : {}}
+            dirty={gDirty}
+            saving={gSaving}
+            updatedAt={raw?.updated_at ?? null}
+            onChange={(f) => { setGNotice(null); setGForm(f); }}
+            onDiscard={() => { if (gSaved) setGForm(gSaved); setGAttempted(false); setGNotice(null); }}
+            onSave={requestSaveGamification}
+            notice={gNotice}
+          />
+        )}
+        {section === "system" && <SystemSection />}
+      </SettingsShell>
 
-      {loading ? (
-        <div className="mt-6 text-sm">Loading…</div>
-      ) : (
-        <div className="mt-6 space-y-4">
-          <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 space-y-3">
-            <div>
-              <h2 className="text-sm font-semibold">Company Call Visibility</h2>
-              <p className="text-xs text-neutral-400">
-                Control who can access company-wide calls.
-              </p>
-            </div>
+      <ConfirmDialog
+        open={confirm === "visibility"}
+        title="Change company call visibility?"
+        confirmLabel="Change visibility"
+        busy={visSaving}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void confirmed()}
+      >
+        <p>Company calls will be set to <strong className="text-[var(--ds-text)]">{visDraft ? visibilityLabel(visDraft) : ""}</strong>. {VISIBILITY_OPTIONS.find((o) => o.value === visDraft)?.description}</p>
+        <p>This applies to your whole organisation immediately.</p>
+      </ConfirmDialog>
 
-            {visLoading ? (
-              <div className="text-sm">Loading visibility…</div>
-            ) : isManager === true ? (
-              // Manager — confirmed writes (Day 292 contract): no optimistic
-              // selection, duplicate writes disabled, server-echoed success.
-              <>
-                <div className="flex items-center gap-2">
-                  {(["everyone", "managers", "disabled"] as CallVisibility[]).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      disabled={visSaving}
-                      onClick={() => updateVisibility(opt)}
-                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                        visibility === opt
-                          ? "bg-brand-600 text-white"
-                          : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                  {visSaving && (
-                    <span className="text-xs text-neutral-400">Saving…</span>
-                  )}
-                </div>
-                {visibility === "unknown" && !visErr && (
-                  <p className="text-xs text-neutral-400">
-                    Current visibility couldn’t be confirmed.
-                  </p>
-                )}
-                {visErr && (
-                  <p className="text-xs text-danger-300">{visErr}</p>
-                )}
-              </>
-            ) : (
-              // Day 293 — rep / unknown: explicit READ-ONLY surface. Show the
-              // server-confirmed current value with neutral manager-only copy and
-              // no enabled mutation path. Reading stays allowed (rep-readable GET);
-              // only writing is manager-only.
-              <div className="space-y-1">
-                <div className="text-sm">
-                  Current setting:{" "}
-                  <span className="font-medium">
-                    {visibility === "unknown" ? "—" : visibility}
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-400">
-                  Only a manager can change company call visibility.
-                </p>
-                {visibility === "unknown" && !visErr && (
-                  <p className="text-xs text-neutral-400">
-                    Current visibility couldn’t be confirmed.
-                  </p>
-                )}
-                {visErr && <p className="text-xs text-danger-300">{visErr}</p>}
-              </div>
-            )}
-          </div>
-          {err && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm">
-              {err}
-            </div>
-          )}
-          {okMsg && (
-            <div className="rounded border border-green-500/30 bg-green-500/10 p-3 text-sm">
-              {okMsg}
-            </div>
-          )}
+      <ConfirmDialog
+        open={confirm === "gamification"}
+        title="Apply these streak and points settings?"
+        confirmLabel="Apply settings"
+        busy={gSaving}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void confirmed()}
+      >
+        {gSaved && (
+          <ul className="space-y-1">
+            {change("Streak threshold", gSaved.streak_threshold, String(gValidation.values?.streak_threshold ?? ""))}
+            {change("Points multiplier", gSaved.xp_multiplier, String(gValidation.values?.xp_multiplier ?? ""))}
+            {change("Comeback bonus", gSaved.comeback_bonus, String(gValidation.values?.comeback_bonus ?? ""))}
+          </ul>
+        )}
+        <p><strong className="text-amber-200">Platform-wide:</strong> these values are shared by every company on this platform, not only yours, and apply immediately.</p>
+      </ConfirmDialog>
 
-          {isManager === true ? (
-            configLoading ? (
-              <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 text-sm">Loading scoring settings…</div>
-            ) : configErr ? (
-              // Config-data failure is section-scoped: friendly copy, and the
-              // policy control above keeps its authority.
-              <div className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm space-y-1">
-                <p>{configErr}</p>
-                <p className="text-xs text-neutral-400">
-                  Company call visibility above is unaffected.
-                </p>
-              </div>
-            ) : (
-            <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium">Streak threshold</label>
-                <input
-                  aria-label="Streak threshold"
-                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-                  value={form.streak_threshold}
-                  onChange={(e) => setForm((s) => ({ ...s, streak_threshold: e.target.value }))}
-                  inputMode="numeric"
-                />
-                <p className="text-xs text-neutral-400 mt-1">
-                  When the rep hits this streak, multipliers start stepping up.
-                </p>
-              </div>
+      <ConfirmDialog
+        open={confirm === "thresholds"}
+        title="Change the review thresholds?"
+        confirmLabel="Change thresholds"
+        busy={tSaving}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void confirmed()}
+      >
+        {tSaved && (
+          <ul className="space-y-1">
+            {change("Low score", tSaved.low_score_threshold, String(tValidation.values?.low_score_threshold ?? ""))}
+            {change("Critical score", tSaved.critical_score_threshold, String(tValidation.values?.critical_score_threshold ?? ""))}
+          </ul>
+        )}
+        <p><strong className="text-amber-200">Platform-wide:</strong> this changes which new calls are flagged for coaching for every company on this platform, not only yours.</p>
+      </ConfirmDialog>
 
-              <div>
-                <label className="block text-sm font-medium">XP multiplier</label>
-                <input
-                  aria-label="XP multiplier"
-                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-                  value={form.xp_multiplier}
-                  onChange={(e) => setForm((s) => ({ ...s, xp_multiplier: e.target.value }))}
-                  inputMode="decimal"
-                />
-                <p className="text-xs text-neutral-400 mt-1">
-                  Global multiplier applied to XP (sparring + call scoring).
-                </p>
-              </div>
+      {leaveDialog}
+    </PageShell>
+  );
+}
 
-              <div>
-                <label className="block text-sm font-medium">Comeback bonus</label>
-                <input
-                  aria-label="Comeback bonus"
-                  className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-                  value={form.comeback_bonus}
-                  onChange={(e) => setForm((s) => ({ ...s, comeback_bonus: e.target.value }))}
-                  inputMode="numeric"
-                />
-                <p className="text-xs text-neutral-400 mt-1">
-                  Bonus XP awarded when they “come back” after a streak break.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-                  onClick={onSave}
-                  disabled={!dirty || saving}
-                >
-                  {saving ? "Saving…" : "Save settings"}
-                </button>
-
-                {raw?.updated_at && (
-                  <span className="text-xs text-neutral-400">
-                    Last updated: {new Date(raw.updated_at).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            </div>
-            )
-          ) : (
-            <div className="rounded border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm">
-              Streak, XP and comeback settings are managed by your manager. You have
-              read-only access to Admin Settings.
-            </div>
-          )}
-
-          {isManager === true && (
-            <div className="text-xs text-neutral-400">
-              Tip: set multiplier to <span className="font-mono">1</span> to instantly disable boosts without redeploying.
-            </div>
-          )}
-        </div>
-      )}
-    </PageContainer>
+export default function AdminSettingsPage() {
+  return (
+    <ManagerGate>
+      <Suspense fallback={null}>
+        <AdminSettings />
+      </Suspense>
+    </ManagerGate>
   );
 }
