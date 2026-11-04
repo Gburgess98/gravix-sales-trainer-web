@@ -74,9 +74,13 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
 
 const Quiet = ({ children }: { children: React.ReactNode }) => <p className="px-5 py-6 text-sm text-[var(--ds-text-2)] sm:px-6">{children}</p>
 
-function ActionButton({ a, saving, onComplete, size = 'sm' }: { a: MyAssignment; saving: boolean; onComplete: (id: string) => void; size?: 'sm' | 'md' }) {
+function ActionButton({ a, saving, onComplete, size = 'sm', openId, onView }: { a: MyAssignment; saving: boolean; onComplete: (id: string) => void; size?: 'sm' | 'md'; openId?: string | null; onView?: (id: string | null) => void }) {
   const act = primaryAction(a)
   if (!act) return null
+  if (act.kind === 'view') {
+    const open = openId === a.id
+    return <button type="button" aria-expanded={open} aria-controls={`assignment-view-${a.id}`} onClick={() => onView?.(open ? null : a.id)} className={dsButton('primary', size)}>{open ? 'Hide assignment' : act.label}</button>
+  }
   if (act.kind === 'link') {
     return (
       <span className="inline-flex flex-col items-end gap-1">
@@ -88,8 +92,22 @@ function ActionButton({ a, saving, onComplete, size = 'sm' }: { a: MyAssignment;
   return <button type="button" onClick={() => onComplete(a.id)} disabled={saving} className={dsButton('primary', size)}>{saving ? 'Saving…' : act.label}</button>
 }
 
+/** Read-only detail for assignment types with no defined action. Shows only what the row carries. */
+function ViewDetail({ a, now }: { a: MyAssignment; now: Date }) {
+  const note = managerNote(a)
+  return (
+    <dl id={`assignment-view-${a.id}`} className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+      <div><dt className="text-xs text-[var(--ds-text-3)]">Type</dt><dd className="text-[var(--ds-text)]">{typeLabel(a.type)}</dd></div>
+      <div><dt className="text-xs text-[var(--ds-text-3)]">Due</dt><dd className="text-[var(--ds-text)]">{dueText(a, now)}</dd></div>
+      {note && <div className="sm:col-span-2"><dt className="text-xs text-[var(--ds-text-3)]">Manager’s note</dt><dd className="text-[var(--ds-text-2)]">{note}</dd></div>}
+      <div className="sm:col-span-2"><dd className="text-xs text-[var(--ds-text-3)]">This assignment type can’t be completed from here.</dd></div>
+    </dl>
+  )
+}
+
 export function MyAssignmentsPanel(p: Props) {
   const { items, loading, error, view, type, due } = p
+  const [openId, setOpenId] = useState<string | null>(null)
   const [now] = useState(() => new Date())
   const visibleItems = useMemo(() => items.filter((a) => !(groupOf(a) === 'todo' && p.snoozedIds.has(a.id))), [items, p.snoozedIds])
   const todoAll = useMemo(() => visibleItems.filter((a) => groupOf(a) === 'todo').sort((a, b) => compareTodo(a, b, now)), [visibleItems, now])
@@ -135,8 +153,9 @@ export function MyAssignmentsPanel(p: Props) {
                   {why && <p className="mt-2 text-sm text-[var(--ds-text-2)]">{why}.</p>}
                   {note && <p className="mt-2 max-w-2xl text-sm text-[var(--ds-text-2)]"><span className="text-[var(--ds-text-3)]">Manager’s note: </span>{note}</p>}
                 </div>
-                <div className="shrink-0"><ActionButton a={top} saving={p.savingId === top.id} onComplete={p.onComplete} size="md" /></div>
+                <div className="shrink-0"><ActionButton a={top} saving={p.savingId === top.id} onComplete={p.onComplete} size="md" openId={openId} onView={setOpenId} /></div>
               </div>
+              {openId === top.id && <ViewDetail a={top} now={now} />}
             </>
           ) : (
             <>
@@ -245,9 +264,10 @@ export function MyAssignmentsPanel(p: Props) {
                       {ds === 'overdue' ? <Badge tone="bad">Overdue</Badge> : ds === 'today' ? <Badge tone="warn">Due today</Badge> : <Badge>To do</Badge>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <ActionButton a={a} saving={p.savingId === a.id} onComplete={p.onComplete} />
+                      <ActionButton a={a} saving={p.savingId === a.id} onComplete={p.onComplete} openId={openId} onView={setOpenId} />
                       {String(a.type ?? '') === 'custom' && <button type="button" onClick={() => p.onSnooze(a.id)} className={dsButton('quiet', 'sm')}>Snooze 24h</button>}
                     </div>
+                    {openId === a.id && primaryAction(a)?.kind === 'view' && <div className="basis-full"><ViewDetail a={a} now={now} /></div>}
                   </li>
                 )
               })}

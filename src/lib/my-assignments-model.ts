@@ -142,6 +142,10 @@ export const reviewedByManager = (a: MyAssignment) => String(a.status ?? '').toL
 export type Action =
   | { kind: 'link'; label: string; href: string; hint?: string }
   | { kind: 'complete'; label: string }
+  | { kind: 'view'; label: string }
+
+/** The only types the API accepts when creating an assignment (and the DB check constraint). */
+export const KNOWN_TYPES = ['custom', 'sparring', 'call_review'] as const
 
 export function sparringHref(id: string, personaId: string | null | undefined) {
   const pid = personaId && personaId.trim() ? personaId : 'default'
@@ -159,14 +163,17 @@ export function callReviewHref(a: MyAssignment) {
   return `/call-library?${qs.toString()}`
 }
 
-/** One primary action per row. To-do rows start the work; done rows only link to a real call. Null when there is nothing real to open. */
+/** One primary action per row. To-do rows start the work (unknown types can only be viewed); done rows only link to a real call. Null when there is nothing real to open. */
 export function primaryAction(a: MyAssignment): Action | null {
   const g = groupOf(a)
   const t = String(a.type ?? '').toLowerCase()
   if (g === 'todo') {
     if (t === 'sparring') return { kind: 'link', label: 'Start sparring', href: sparringHref(a.id, a.target_id), hint: a.target_id ? undefined : 'No persona set on this assignment — using default.' }
     if (t === 'call_review') return { kind: 'link', label: a.target_id ? 'Review call' : 'Pick a call', href: callReviewHref(a) }
-    return { kind: 'complete', label: 'Mark complete' }
+    // Mark complete is only offered for the type the product defines it for. Any other type gets a read-only
+    // view: the complete endpoint does not check type, but it is not a documented contract for them.
+    if (t === 'custom') return { kind: 'complete', label: 'Mark complete' }
+    return { kind: 'view', label: 'View assignment' }
   }
   if (g === 'done' && t === 'call_review' && a.target_id) return { kind: 'link', label: 'Review result', href: `/calls/${encodeURIComponent(a.target_id)}` }
   return null

@@ -31,7 +31,7 @@ export interface NavItem {
    * Staging redesign — same destination, role-appropriate wording/priority. Applied only
    * when the viewer is a manager; visibility is still decided by `roles` alone.
    * `hidden` is only for an item whose destination a manager already reaches under another label
-   * (Command Centre = manager Overview) — never to remove a destination.
+   * — never to remove a destination.
    */
   manager?: { label?: string; secondary?: boolean; hidden?: boolean }
   /**
@@ -81,7 +81,8 @@ export const navigation: NavSection[] = [
   // Staging redesign — five labelled destinations per role. Rep: Home, Calls, Practice,
   // Coaching. Manager: Overview, Team, Reviews, Assignments, Insights. Same hrefs and
   // role gates as before; only wording and primary/"More" placement differ by role.
-  // Rep Progress lives at /progress.
+  // Rep Progress lives at /progress. /coaching is the manager Command Centre: it has no rep nav entry and
+  // a rep who loads it directly is sent to /assignments (see the gate in coaching/page.tsx).
   {
     title: 'Workspace',
     items: [
@@ -107,7 +108,6 @@ export const navigation: NavSection[] = [
       { label: 'Accounts', href: '/crm/accounts', icon: Building2, secondary: true },
       { label: 'Contacts', href: '/crm/manager/contacts', icon: Users, roles: ['manager'], secondary: true },
       { label: 'Manager Centre', href: '/crm/manager', icon: Briefcase, roles: ['manager'], secondary: true },
-      { label: 'Command Centre', href: '/coaching', icon: Brain, secondary: true, manager: { hidden: true } },
       // Day 225 — Intelligence = "teach" (what Gravix knows about how you sell); Insights = "observe".
       { label: 'Intelligence', href: '/intelligence', icon: Sparkles, roles: ['manager'], secondary: true },
       { label: 'Settings', href: '/admin/settings', icon: Settings, roles: ['manager'], secondary: true },

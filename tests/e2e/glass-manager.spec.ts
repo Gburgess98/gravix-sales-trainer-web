@@ -131,6 +131,9 @@ test.describe('Manager navigation', () => {
     await aside.getByRole('link', { name: 'Overview', exact: true }).click()
     await expect(page).toHaveURL(/\/coaching/)
     await expect(page.getByRole('heading', { name: 'Reps requiring attention' })).toBeVisible({ timeout: 15000 })
+    // Calls is a "More" destination for managers; expand the group like a user would.
+    const more = aside.getByRole('button', { name: /more/i })
+    if ((await aside.getByRole('link', { name: 'Calls', exact: true }).count()) === 0) await more.first().click()
     await aside.getByRole('link', { name: 'Calls', exact: true }).click()
     await expect(page).toHaveURL(/call-library/)
     await page.getByRole('button', { name: 'Practice' }).click()

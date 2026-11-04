@@ -110,12 +110,22 @@ test('manager override changes wording/placement only, never visibility', () => 
   )
 })
 
-test('/coaching: manager sees Overview, rep sees Command Centre (never both, never lost)', () => {
+test('/coaching is the manager Command Centre: managers get Overview, reps get NO link to it', () => {
   const m = all(true).filter((i) => i.href === '/coaching').map((i) => i.label)
-  const r = all(false).filter((i) => i.href === '/coaching').map((i) => i.label)
   assert.deepEqual(m, ['Overview'])
-  assert.deepEqual(r, ['Command Centre'])
-  assert.ok(!all(false).some((i) => i.label === 'Overview'))
+  // no rep-visible item may point at /coaching (any query), and no item is labelled Command Centre
+  const rep = all(false)
+  assert.deepEqual(rep.filter((i) => i.href === '/coaching' || i.href.startsWith('/coaching?')), [])
+  assert.ok(!rep.some((i) => i.label === 'Command Centre' || i.label === 'Overview'))
+  assert.ok(!navigation.flatMap((s) => s.items).some((i) => i.label === 'Command Centre'))
+  // the rep's own coaching destination is /assignments
+  assert.ok(rep.some((i) => i.label === 'Coaching' && i.href === '/assignments'))
+})
+
+test('every /coaching destination in the config is manager-only', () => {
+  const items = navigation.flatMap((s) => s.items).filter((i) => i.href === '/coaching' || i.href.startsWith('/coaching?'))
+  assert.ok(items.length >= 3)
+  for (const i of items) assert.deepEqual(i.roles, ['manager'], i.label)
 })
 
 test('hasAccess role matrix', () => {

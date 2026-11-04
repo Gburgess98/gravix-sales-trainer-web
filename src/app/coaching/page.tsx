@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { PageContainer } from '@/components/layout/page-container'
@@ -3862,11 +3862,46 @@ function CoachingPageInner() {
   )
 }
 
+// /coaching is the manager Command Centre. Reps have no link to it; if one loads it directly we send them to
+// their own queue. The role is decided by the API (GET /v1/admin/config is manager-only: 401/403 = not a
+// manager), so nothing manager-shaped renders and no manager request is made until it says yes. router.replace
+// keeps the redirect out of history, so Back/Forward cannot bounce between the two routes.
+function CoachingGate() {
+  const router = useRouter()
+  const [state, setState] = useState<'checking' | 'manager' | 'error'>('checking')
+
+  const check = useCallback(async () => {
+    setState('checking')
+    try {
+      const res = await proxyFetch('/v1/admin/config', { cache: 'no-store' })
+      if (res.ok) return setState('manager')
+      if (res.status === 401 || res.status === 403) return router.replace('/assignments')
+      setState('error')
+    } catch {
+      setState('error')
+    }
+  }, [router])
+
+  useEffect(() => { void check() }, [check])
+
+  if (state === 'manager') return <CoachingPageInner />
+  if (state === 'error') {
+    return (
+      <div role="alert" className="mx-auto max-w-md px-4 py-16 text-center">
+        <p className="text-sm font-medium text-red-200">Couldn’t check your access</p>
+        <p className="mt-1.5 text-sm text-[var(--ds-text-3)]">Nothing has changed. Try again in a moment.</p>
+        <button type="button" onClick={() => void check()} className="ds-focus mt-5 inline-flex rounded-[var(--ds-radius-control)] border border-[var(--ds-border-strong)] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-[var(--ds-text)] hover:bg-white/[0.08]">Try again</button>
+      </div>
+    )
+  }
+  return <div role="status" aria-label="Checking access" className="mx-auto max-w-md px-4 py-16 text-center text-sm text-[var(--ds-text-3)]">Loading…</div>
+}
+
 // useSearchParams needs a Suspense boundary (same pattern as /call-library).
 export default function CoachingPage() {
   return (
     <Suspense fallback={null}>
-      <CoachingPageInner />
+      <CoachingGate />
     </Suspense>
   )
 }

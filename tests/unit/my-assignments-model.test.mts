@@ -78,7 +78,9 @@ test('one primary action per row, by type and group', () => {
   assert.equal((primaryAction(A({ type: 'call_review', target_id: 'c1' })) as any).label, 'Review call')
   assert.equal((primaryAction(A({ type: 'call_review' })) as any).label, 'Pick a call')
   assert.deepEqual(primaryAction(A({ type: 'custom' })), { kind: 'complete', label: 'Mark complete' })
-  assert.deepEqual(primaryAction(A({ type: 'drill' })), { kind: 'complete', label: 'Mark complete' })
+  // unknown types are view-only: the API creates only custom/sparring/call_review, so no mutating action is offered
+  assert.deepEqual(primaryAction(A({ type: 'drill' })), { kind: 'view', label: 'View assignment' })
+  assert.deepEqual(primaryAction(A({ type: null })), { kind: 'view', label: 'View assignment' })
   assert.equal((primaryAction(A({ type: 'call_review', target_id: 'c1', status: 'completed' })) as any).label, 'Review result')
   assert.equal(primaryAction(A({ type: 'custom', status: 'completed' })), null)
   assert.equal(primaryAction(A({ type: 'sparring', status: 'cancelled' })), null)
