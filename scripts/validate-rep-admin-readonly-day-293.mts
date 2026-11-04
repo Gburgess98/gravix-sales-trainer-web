@@ -4,7 +4,7 @@
  * History: Day 293 originally pinned a rep READ-ONLY Settings surface and a capability derived from `/v1/reps/me`
  * tier. The Settings hub supersedes that product decision: Settings is manager/admin-only, so reps neither see the
  * navigation entry nor render the page. What Day 293 protected is kept:
- *   - capability is decided by the SERVER (the API's manager-only GET /v1/admin/config via ManagerGate), never by
+ *   - capability is decided by the SERVER (the API's manager-only GET /v1/admin/config via the admin segment's RoleGate), never by
  *     localStorage, a client-supplied role/org, or the substring of a raw error;
  *   - a config-data failure is section-scoped and never changes who may use the page;
  *   - no raw provider/authorization error is displayed;
@@ -32,16 +32,17 @@ const read = (rel: string) => readFileSync(join(root, rel), "utf8");
 const page = read("src/app/admin/settings/page.tsx");
 const sections = read("src/components/settings/sections.tsx");
 const shell = read("src/components/settings/settings-shell.tsx");
-const gate = read("src/components/auth/manager-gate.tsx");
+const gate = read("src/components/auth/role-gate.tsx");
+const adminLayout = read("src/app/admin/layout.tsx");
 const all = page + sections + shell;
 
 console.log("Day 293 — Admin Settings authority (no network, no secrets)\n");
 
 console.log("── capability is decided by the server ──");
-check("the page default export is wrapped in ManagerGate", /export default function AdminSettingsPage\(\)\s*\{\s*return \(\s*<ManagerGate>/.test(page));
-check("gate asks the manager-only GET /v1/admin/config", /proxyFetch\(\s*['"]\/v1\/admin\/config['"]/.test(gate));
+check("Settings sits under the admin segment layout, which wraps it in a manager-level RoleGate", /<RoleGate level="manager">/.test(adminLayout) && !/RoleGate|ManagerGate/.test(page.replace(/\/\/.*$/gm, "")));
+check("gate asks the manager-only GET /v1/admin/config", /manager: ['"]\/v1\/admin\/config['"]/.test(gate));
 check("gate: 401/403 → router.replace (not manager), other failures → retry (never redirect, never manager UI)", /res\.status === 401 \|\| res\.status === 403\) return router\.replace\(redirectTo\)/.test(gate) && /setState\('error'\)/.test(gate));
-check("gate renders children only when the API said yes", /if \(state === 'manager'\) return <>\{children\}<\/>/.test(gate));
+check("gate renders children only when the API said yes", /if \(state === 'allowed'\) return <>\{children\}<\/>/.test(gate));
 check("no localStorage identity / client role used for capability", !/localStorage\.(get|set)Item/.test(all) && !/["']role["']\s*[:=]/.test(page));
 check("no capability inferred from a raw error (no forbidden_not_manager anywhere)", !/forbidden_not_manager/.test(all + gate));
 

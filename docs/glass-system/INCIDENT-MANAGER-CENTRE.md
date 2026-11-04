@@ -20,7 +20,7 @@ pointing at a closed port; against the old page all 4 tests fail, against the fi
 - `/crm/manager` is now a client page: no server-side self-fetch, no `cookies()`. The overview loads through `proxyFetch` (attaches auth).
   A failure is a page-level notice with **Try again**; the controls below still work. The raw API error is no longer put in a tooltip.
 - `ManagerClient` used raw `fetch("/api/proxy/…")` (no Bearer, bypassing the `check:proxy` guard by using a variable); it now uses `proxyFetch`.
-- New shared `ManagerGate` (extracted from the `/coaching` gate): manager = render; 401/403 = `router.replace('/assignments')`
+- New shared `RoleGate (manager level, now applied from segment layouts)` (extracted from the `/coaching` gate): manager = render; 401/403 = `router.replace('/assignments')`
   (no history entry, no manager UI, no manager requests); any other failure = "Couldn't check your access" + retry.
 - New `src/app/error.tsx`: any other render failure shows a page-level "This page couldn't load" with **Try again** and a support
   reference (digest) instead of the full application error. The raw message is never rendered. A safety net, not the fix.

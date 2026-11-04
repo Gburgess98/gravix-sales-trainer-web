@@ -2,7 +2,7 @@
 
 // NOTE: admin_config is a platform-wide singleton on the API (one row, not per organisation), so the streak / points /
 // threshold controls change values for every company. The UI says so (badge + confirmation); see docs/glass-system/SETTINGS_HUB.md.
-// Settings hub (administration). Manager/admin only: ManagerGate renders nothing until the API confirms the role and
+// Settings hub (administration). Manager/admin only: the admin segment's RoleGate renders nothing until the API confirms the role and
 // sends everyone else to /assignments. Every editable control here writes through an EXISTING endpoint:
 //   PATCH /v1/admin/org-settings   call_visibility
 //   PATCH /v1/admin/config         streak_threshold, xp_multiplier, comeback_bonus, low/critical_score_threshold
@@ -12,7 +12,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getAdminConfig, patchAdminConfig, proxyGet, proxyPatch, AdminConfig } from "@/lib/api";
 import { PageHead, PageShell } from "@/components/ds";
-import { ManagerGate } from "@/components/auth/manager-gate";
 import { SettingsShell, useUnsavedGuard } from "@/components/settings/settings-shell";
 import { ConfirmDialog } from "@/components/settings/confirm-dialog";
 import {
@@ -338,10 +337,9 @@ function AdminSettings() {
 
 export default function AdminSettingsPage() {
   return (
-    <ManagerGate>
-      <Suspense fallback={null}>
-        <AdminSettings />
-      </Suspense>
-    </ManagerGate>
+    // Access is guarded by src/app/admin/layout.tsx (RoleGate, manager level).
+    <Suspense fallback={null}>
+      <AdminSettings />
+    </Suspense>
   );
 }

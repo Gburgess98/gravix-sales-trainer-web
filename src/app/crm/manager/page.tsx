@@ -13,7 +13,6 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { PageContainer } from '@/components/layout/page-container'
 import { PageHeader } from '@/components/layout/page-header'
-import { ManagerGate } from '@/components/auth/manager-gate'
 import { proxyFetch } from '@/lib/api'
 import ManagerClient from './ManagerClient'
 
@@ -81,9 +80,6 @@ function ManagerCentre() {
 }
 
 export default function CrmManagerPage() {
-  return (
-    <ManagerGate>
-      <ManagerCentre />
-    </ManagerGate>
-  )
+  // Access is guarded by src/app/crm/manager/layout.tsx (RoleGate).
+  return <ManagerCentre />
 }

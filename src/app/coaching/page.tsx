@@ -2,7 +2,6 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ManagerGate } from '@/components/auth/manager-gate'
 import Link from 'next/link'
 import { WorkspaceTabs } from '@/components/shell/workspace-tabs'
 import { PageContainer } from '@/components/layout/page-container'
@@ -3867,9 +3866,7 @@ function CoachingPageInner() {
 export default function CoachingPage() {
   return (
     <Suspense fallback={null}>
-      <ManagerGate>
-        <CoachingPageInner />
-      </ManagerGate>
+      <CoachingPageInner />
     </Suspense>
   )
 }

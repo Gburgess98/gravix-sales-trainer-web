@@ -1,6 +1,6 @@
 # Settings hub (`/admin/settings`) — audit and decisions
 
-Manager/admin only. `ManagerGate` (API-decided via the manager-only `GET /v1/admin/config`) renders nothing until the role is
+Manager/admin only. `RoleGate (manager level, now applied from segment layouts)` (API-decided via the manager-only `GET /v1/admin/config`) renders nothing until the role is
 confirmed and sends non-managers to `/assignments`; the nav entry already had `roles: ['manager']`. Sections are real URLs
 (`?section=general|people|ai|privacy|coaching|gamification|system`); desktop has a left section nav, below `lg` a labelled native
 `<select>`. Drafts live in the page, so switching sections keeps edits; leaving the page asks first (`beforeunload` + in-app links).
