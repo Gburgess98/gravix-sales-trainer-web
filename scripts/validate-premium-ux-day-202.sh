@@ -11,6 +11,9 @@
 # the day-179-pinned PageContainer are retained.
 # WEB-only, patch mode — no API, no migrations, no new features.
 # Own checks only, Day 135 rhythm, no recursive historical chain.
+# Glass rep redesign (Day 202 pins deliberately updated): the page is now PageShell + MyAssignmentsPanel; streak/XP chips and
+# the progress bar moved out of this page (Progress phase). Endpoints, optimistic completion, snooze, BroadcastChannel refresh
+# and the sparring / call-review href contracts are still pinned below.
 # For current core invariants run: npm run validate-tier-2b-smoke
 set -u
 
@@ -18,6 +21,8 @@ WEB_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AUDIT="$WEB_ROOT/PREMIUM_UX_AUDIT.md"
 PKG="$WEB_ROOT/package.json"
 CLIENT="$WEB_ROOT/src/app/assignments/AssignmentsClient.tsx"
+PANEL="$WEB_ROOT/src/components/rep/my-assignments-panel.tsx"
+MODEL="$WEB_ROOT/src/lib/my-assignments-model.ts"
 
 fail=0
 check() {
@@ -36,98 +41,70 @@ check "package.json has validate-premium-ux-day-202 script" $?
 # --- Pinned invariants retained ---
 grep -q 'title="My Assignments"' "$CLIENT" 2>/dev/null
 check "e2e-pinned 'My Assignments' heading retained" $?
-grep -q 'PageContainer' "$CLIENT" 2>/dev/null
-check "day-179-pinned PageContainer retained" $?
+grep -q 'PageShell' "$CLIENT" 2>/dev/null
+check "glass PageShell replaces PageContainer (day-179 pin updated)" $?
+grep -q 'MyAssignmentsPanel' "$CLIENT" 2>/dev/null
+check "page renders the shared rep panel" $?
 
-# --- White CTA recipe + arcade colour retired ---
-! grep -q 'bg-white ' "$CLIENT" 2>/dev/null
-check "white bg-white CTA recipe gone" $?
-! grep -q 'bg-white/60' "$CLIENT" 2>/dev/null
-check "white progress bar fill gone" $?
-grep -q 'bg-indigo-500' "$CLIENT" 2>/dev/null
-check "progress bar fill is indigo" $?
-! grep -qi 'sky-' "$CLIENT" 2>/dev/null
+# --- Retired styling stays retired ---
+! grep -qE 'bg-white |bg-white/60' "$CLIENT" "$PANEL" 2>/dev/null
+check "white CTA / progress bar recipes gone" $?
+! grep -qi 'sky-' "$CLIENT" "$PANEL" 2>/dev/null
 check "sky origin badge gone" $?
-! grep -qiE 'fuchsia|purple|pink|cyan' "$CLIENT" 2>/dev/null
+! grep -qiE 'fuchsia|purple|pink|cyan' "$CLIENT" "$PANEL" 2>/dev/null
 check "no fuchsia/purple/pink/cyan" $?
-
-# --- Arcade/task-list language reframed ---
-! grep -q 'Clear tasks, fast wins' "$CLIENT" 2>/dev/null
+! grep -q 'Clear tasks, fast wins' "$CLIENT" "$PANEL" 2>/dev/null
 check "task-list subtitle gone" $?
-grep -q 'Your coaching queue' "$CLIENT" 2>/dev/null
-check "coaching queue subtitle present" $?
-! grep -q 'Daily Win' "$CLIENT" 2>/dev/null
+! grep -q 'Daily Win' "$CLIENT" "$PANEL" 2>/dev/null
 check "'Daily Win' panel title gone" $?
-grep -q 'title="Next Best Action"' "$CLIENT" 2>/dev/null
-check "Next Best Action SectionCard present" $?
-! grep -qE '✅|🔥|🎯' "$CLIENT" 2>/dev/null
+! grep -qE '✅|🔥|🎯' "$CLIENT" "$PANEL" 2>/dev/null
 check "emoji chips gone" $?
-! grep -q '(+XP soon)' "$CLIENT" 2>/dev/null
+! grep -q '(+XP soon)' "$CLIENT" "$PANEL" 2>/dev/null
 check "'(+XP soon)' toast copy gone" $?
-! grep -q 'XP today:' "$CLIENT" 2>/dev/null
-check "'XP today' chip relabelled" $?
-grep -q 'Progress today:' "$CLIENT" 2>/dev/null
-check "Progress today points chip present" $?
-grep -q 'Practice streak:' "$CLIENT" 2>/dev/null
-check "Practice streak chip present" $?
-! grep -q 'Finish one task to keep your streak alive' "$CLIENT" 2>/dev/null
-check "task-language streak warning gone" $?
-! grep -q 'Run this drill now (5 mins)' "$CLIENT" 2>/dev/null
+! grep -q 'Run this drill now (5 mins)' "$CLIENT" "$PANEL" 2>/dev/null
 check "timed arcade next-action copy gone" $?
-grep -q 'function typeLabel' "$CLIENT" 2>/dev/null
+
+# --- Rep panel language + states ---
+grep -q 'Do this first' "$PANEL" 2>/dev/null
+check "priority card present" $?
+grep -q 'Coaching work from your manager' "$CLIENT" 2>/dev/null
+check "coaching subtitle present" $?
+grep -q "export function typeLabel\|export const typeLabel" "$MODEL" 2>/dev/null && grep -q 'typeLabel(' "$PANEL" 2>/dev/null
 check "raw a.type mapped through typeLabel" $?
-grep -q 'Something went wrong.' "$CLIENT" 2>/dev/null
-check "error banner has calm lead-in" $?
-
-# --- Shared primitives adopted ---
-grep -q 'import { SectionCard } from "@/components/ui/section-card"' "$CLIENT" 2>/dev/null
-check "SectionCard imported" $?
-[[ "$(grep -c '<SectionCard' "$CLIENT" 2>/dev/null)" -ge 3 ]]
-check "at least 3 SectionCard panels (Next Best Action, Open, Completed)" $?
-grep -q 'import { StatCard } from "@/components/ui/stat-card"' "$CLIENT" 2>/dev/null
-check "StatCard imported" $?
-[[ "$(grep -c '<StatCard' "$CLIENT" 2>/dev/null)" -ge 5 ]]
-check "five momentum StatCards" $?
-grep -q 'import { EmptyState } from "@/components/ui/empty-state"' "$CLIENT" 2>/dev/null
-check "EmptyState imported" $?
-grep -q 'import { Button, buttonClasses } from "@/components/ui/button"' "$CLIENT" 2>/dev/null
-check "Button/buttonClasses imported" $?
-grep -q 'buttonClasses("primary", "md")' "$CLIENT" 2>/dev/null
-check "link CTAs use shared primary recipe" $?
-! grep -q 'text-sm underline' "$CLIENT" 2>/dev/null
-check "underline Back link upgraded to ghost recipe" $?
-
-# --- Status colours kept on genuine status duty ---
-grep -q 'border-emerald-500/30 bg-emerald-500/10' "$CLIENT" 2>/dev/null
-check "emerald kept for completed status" $?
-grep -q 'border-red-500/40 bg-red-500/10 border-l-4 border-l-red-500/70' "$CLIENT" 2>/dev/null
-check "overdue red wash kept" $?
-grep -q "variant={momentum.overdueCount > 0 ? \"danger\" : \"default\"}" "$CLIENT" 2>/dev/null
-check "overdue StatCard: danger only when > 0" $?
+grep -q 'Couldn’t load your assignments' "$PANEL" 2>/dev/null
+check "calm full-error state" $?
+grep -q 'tone="bad"' "$PANEL" 2>/dev/null && grep -q 'Overdue' "$PANEL" 2>/dev/null
+check "overdue stays red (status duty)" $?
+grep -q '<Badge tone="good">Completed</Badge>' "$PANEL" 2>/dev/null
+check "completed stays green (status duty)" $?
+grep -q "tone === 'bad' && Number(value) > 0" "$PANEL" 2>/dev/null
+check "overdue stat: red only when > 0" $?
 
 # --- Behaviour preserved (spot checks) ---
 grep -q 'proxyJson<AssignmentsResponse>("/v1/assignments")' "$CLIENT" 2>/dev/null
 check "/v1/assignments fetch intact" $?
-grep -q 'proxyJson<RepsMeResponse>("/v1/reps/me")' "$CLIENT" 2>/dev/null
-check "/v1/reps/me fetch intact" $?
+grep -q '/daily-feed' "$CLIENT" 2>/dev/null
+check "own daily-feed fetch (repId from the assignments response)" $?
+! grep -q '/v1/team\|/v1/manager\|assignments/manager' "$CLIENT" "$PANEL" 2>/dev/null
+check "no manager endpoint used by the rep page" $?
 grep -q '/complete' "$CLIENT" 2>/dev/null && grep -q '{ method: "PATCH" }' "$CLIENT" 2>/dev/null
 check "PATCH complete endpoint intact" $?
 grep -q 'bumpAssignmentsRefresh("Assignment completed")' "$CLIENT" 2>/dev/null
 check "cross-tab refresh bump intact" $?
-grep -q 'sparringHref(todayFocus.id, todayFocus.target_id)' "$CLIENT" 2>/dev/null
-check "sparring focus href intact" $?
-grep -q 'callReviewHref(todayFocus)' "$CLIENT" 2>/dev/null
-check "call review focus href intact" $?
-grep -q 'href: "/sparring"' "$CLIENT" 2>/dev/null
-check "empty-state Go to Sparring href intact" $?
-grep -q 'href="/crm/overview"' "$CLIENT" 2>/dev/null
-check "Back link href intact" $?
-grep -q 'Snooze 24h' "$CLIENT" 2>/dev/null && grep -q 'Snoozed: {activeSnoozedCount} (clear)' "$CLIENT" 2>/dev/null
-check "snooze + clear-snoozes controls intact" $?
-grep -q 'disabled={savingId === todayFocus.id}' "$CLIENT" 2>/dev/null && grep -q 'disabled={savingId === a.id}' "$CLIENT" 2>/dev/null
-check "Mark complete disabled states intact" $?
-grep -q 'data-todays-focus="true"' "$CLIENT" 2>/dev/null
-check "auto-focus data attribute intact" $?
+grep -q 'new BroadcastChannel("gst:assignments")' "$CLIENT" 2>/dev/null
+check "BroadcastChannel refresh intact" $?
+grep -q "/sparring/\${encodeURIComponent(pid)}?assignmentId=" "$MODEL" 2>/dev/null
+check "sparring href contract intact" $?
+grep -q 'qs.set("assignment", a.id)' "$MODEL" 2>/dev/null || grep -q "qs.set('assignment', a.id)" "$MODEL" 2>/dev/null
+check "call review href contract intact" $?
+grep -q '/call-library?tab=sparring' "$PANEL" 2>/dev/null
+check "empty-state practise href intact" $?
+grep -q 'Snooze 24h' "$PANEL" 2>/dev/null && grep -q 'Show again' "$PANEL" 2>/dev/null
+check "snooze + show-again controls intact" $?
+grep -q 'disabled={saving}' "$PANEL" 2>/dev/null
+check "Mark complete disabled state intact" $?
+grep -q 'data-assignment-id' "$PANEL" 2>/dev/null
+check "next-assignment highlight hook intact" $?
 
 if [[ "$fail" == "0" ]]; then
   echo "Day 202 validation PASSED"

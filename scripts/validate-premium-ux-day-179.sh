@@ -25,8 +25,8 @@ check "PREMIUM_UX_AUDIT.md includes Day 179" $?
 grep -q "PageContainer" "$SRC/app/call-library/page.tsx" 2>/dev/null
 check "/call-library uses PageContainer" $?
 
-grep -q "PageContainer" "$SRC/app/assignments/AssignmentsClient.tsx" 2>/dev/null
-check "/assignments uses PageContainer" $?
+grep -q "PageShell" "$SRC/app/assignments/AssignmentsClient.tsx" 2>/dev/null
+check "/assignments uses the glass PageShell (was PageContainer; updated with the rep redesign)" $?
 
 grep -q "PageContainer" "$SRC/app/settings/profile/page.tsx" 2>/dev/null
 check "/settings/profile uses PageContainer" $?

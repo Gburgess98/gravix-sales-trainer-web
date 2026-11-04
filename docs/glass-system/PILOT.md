@@ -165,3 +165,36 @@ Only the Review Queue tab body changed (`ReviewsPanel`, `reviews-model.ts`); the
 **Debt.** Same provisional identity as §13; the `Manager Command Centre` header and tab strip above are legacy-styled; rows wrap to three stacked lines on mobile; Overview's collapsed legacy "Detailed queues" still has an older review list. A reviewed-call list needs an API addition (out of scope). `tsconfig` gained `allowImportingTsExtensions` (noEmit already on) so a model can import another with `.ts` and still run under `node --test`.
 
 **Verification.** *Mocked:* `tests/e2e/glass-reviews.spec.ts` (16 checks: desktop + 375px, summary/rows/no UUIDs, filters/search/sort, empty/loading/full+partial error, open call → back → forward, keyboard Enter, mark reviewed + focus, assign modal, UUID-flash observer), 94 unit tests, plus Playwright plugin tools on a production build. *Real data:* none.
+
+## 16. Rep Coaching + My Assignments (`/assignments`)
+
+### Route map (audited from `src/config/navigation.ts`, `next.config.ts`, `src/app`)
+| Rep-facing | Route | Notes |
+|---|---|---|
+| **Coaching** (primary nav) | `/assignments` | The only rep Coaching destination. Page H1 stays "My Assignments" (pinned by an e2e test); the shell breadcrumb says "Coaching". |
+| My Assignments | `/assignments` | Same route and component — for a rep these are one workflow. |
+| Home, Calls, Practice, Progress | `/dashboard`, `/call-library`, `/call-library?tab=sparring`, `/progress` | Untouched. Progress is the next phase and was not started. |
+| Opened from a row | `/sparring/[persona]?assignmentId=`, `/calls/[id]?assignment=…&assignmentId=…`, `/call-library?assignment=…` | Link contracts unchanged. |
+
+Not the same workflow: the manager's **Assignments** is `/coaching?tab=assignments` (team list, `GET /v1/assignments/manager`). A manager reaches their *own* queue at `/assignments` as "My Assignments" under More. There are no redirects in `next.config.ts` (headers only); `/rewards` → `/dashboard` is the only page-level redirect, and `/review` has no page.
+
+**Boundary finding (not changed here):** a rep can still open `/coaching` (More → "Command Centre", pinned by `navigation.test.mts`). It renders the manager Command Centre shell, every manager request is refused with 403 by the API, and the raw text `forbidden_not_manager` appears. No manager data is exposed (the API enforces it), but the manager chrome should not be reachable. Suggested follow-up: send non-managers from `/coaching` to `/assignments` and drop the rep "Command Centre" nav item.
+
+### What changed
+| Before | After |
+|---|---|
+| Streak/XP chips, progress bar, "Next Best Action" card, "Today's Focus" card, 5 StatCards, Open/Completed card walls | Summary (To do, Overdue, Completed 7 days) → **Do this first** (the top to-do or, if nothing is assigned, the feed's suggested drill) → one list with **To do / Completed** switch and type + due filters |
+| Title/type/origin pill/`Band: …` line | Title, type · source · due state, why it was assigned, the manager's own note, status badge, **one primary action**: Start sparring / Review call / Pick a call / Mark complete (done rows: Review result when a real call is linked) |
+| Raw `by rep`, raw errors (`request_failed_500`) | "by you", calm full/partial error states; a failed refresh keeps the list |
+| View state lost on return | `?view=completed&type=…&due=…` via `replaceState` (no extra history entries), so back/forward and reload keep the view |
+
+**Honest sourcing.** The rep API has no manager name and no feedback field. "From your manager" appears only when a manager id is present; "Created automatically" for auto-created rows; the manager's words appear only as the creation note (`meta.coaching_notes`); "Reviewed by your manager" only when status is literally `reviewed`; evidence only when the row carries sparring-session proof. Nothing says "feedback". The due state is calendar-day based (due earlier today = Due today; the old code could show a past date as "Due tomorrow"). "Weakest area", the suggested drill and the suggested call come from the rep's own `GET /v1/reps/:id/daily-feed` (repId taken from the assignments response); `/v1/reps/me` is no longer called here.
+
+**Preserved:** `GET /v1/assignments`, `PATCH /v1/assignments/:id/complete` (optimistic, rollback, cross-tab refresh, local completed-days write), snooze (custom tasks, 24h), href contracts. Unknown assignment types now get Mark complete (previously no action), matching what the API allows.
+**Removed from this page (for the Progress phase):** streak chips/warnings, "Progress today" points, completion-rate and progress bar. `gst:completedDays` is still written on completion.
+
+### Debt
+Same provisional identity as §13. The priority card repeats the first list row (kept so the reason and action sit above the list); completed rows are text-only; no way to open a sparring result (no route); mobile stacks the quiet links; "Do this first" is a plain label, not designed. Legacy `Today's Focus`/streak copy is gone, so Day 202 pins were deliberately rewritten (mutation-checked).
+
+### Verification
+**Mocked:** `tests/e2e/glass-rep-assignments.spec.ts` (17 checks; rep session where the manager probe and all manager endpoints return 403): desktop + 375px, ordering, priority reason, one action per row, no manager controls/requests, no UUIDs (incl. a load-time DOM observer), To do/Completed, filters + URL state, Mark complete PATCH + rollback, snooze, open → back → forward, keyboard Enter, loading/empty/full/partial error. 105 unit tests. Playwright plugin on a production build. **Real data:** none — nothing was run against hosted staging or production. Legacy `tests/e2e/assignments.spec.ts` fails identically before and after (no auth session in that spec).

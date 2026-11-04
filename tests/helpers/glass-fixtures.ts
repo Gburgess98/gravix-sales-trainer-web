@@ -65,7 +65,7 @@ export const COMMAND_CENTRE = {
   roi: { callsReviewed: 31, estimatedMinutesSaved: 620, estimatedHoursSaved: 10 },
 }
 
-const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
 export async function mockManagerApi(page: Page, opts: { empty?: boolean } = {}) {
   await page.route('**/api/proxy/**', async (route) => {
@@ -103,4 +103,83 @@ export const REVIEW_QUEUE = {
     { callId: 'c2', repId: 'r2', repName: 'Sam Rivera', title: 'TechFlow demo', overallScore: 63, weakestSkill: 'Closing', createdAt: daysAgo(1), reasons: ['Closing below 50'] },
     { callId: 'c9', repId: ORPHAN_REP_ID, repName: 'Unknown rep', title: 'Orbit renewal', overallScore: 66, weakestSkill: 'Unknown', createdAt: daysAgo(9), reasons: ['Flagged for manager review'] },
   ],
+}
+
+/* ── Rep role (My Assignments / Coaching) ───────────────────────────────────────────────────────────
+   A fake REP session: no manager role. /v1/admin/config (the shell's manager probe) and every manager
+   endpoint answer 403 so the permission boundary is exercised, not assumed. */
+export const REP_UID = '5d0f6c1e-1a2b-4c3d-9e4f-5a6b7c8d9e01'
+export const MANAGER_UID = '9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
+
+export async function fakeRepSession(page: Page) {
+  const exp = Math.floor(Date.now() / 1000) + 3600 * 6
+  const token = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: REP_UID, exp, role: 'authenticated' })}.sig`
+  const session = {
+    access_token: token, refresh_token: 'fake-refresh', expires_in: 3600 * 6, expires_at: exp, token_type: 'bearer',
+    user: { id: REP_UID, aud: 'authenticated', email: 'rep@example.test', app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() },
+  }
+  await page.addInitScript(([key, value]) => { try { window.localStorage.setItem(key, value) } catch {} }, [`sb-${REF}-auth-token`, JSON.stringify(session)])
+}
+
+const mine = (o: object) => ({ rep_id: REP_UID, manager_id: MANAGER_UID, status: 'assigned', created_at: daysAgo(6), completed_at: null, ...o })
+
+export const REP_ASSIGNMENTS = [
+  mine({ id: 'a1', type: 'sparring', target_id: 'p-skeptic', title: 'Budget objection sparring', due_at: daysAgo(2), source: 'manager_review', meta: { score_overall: 52, coaching_notes: 'Focus on the budget objection' } }),
+  mine({ id: 'a2', type: 'call_review', target_id: REP_UID.replace('5d0f', 'aaaa'), title: 'Review your Northwind call', due_at: new Date().toISOString(), source: 'flagged_call_auto', manager_id: null, meta: { score_overall: 49 } }),
+  mine({ id: 'a3', type: 'custom', title: 'Write three discovery questions', due_at: daysAhead(4), source: 'manual' }),
+  mine({ id: 'a4', type: 'custom', title: 'Update your CRM notes', manager_id: null, source: null }),
+  mine({ id: 'a5', type: 'sparring', target_id: null, title: 'Closing practice', due_at: daysAhead(6), source: 'manual' }),
+  mine({ id: 'd1', type: 'sparring', title: 'Pricing pushback drill', status: 'completed', completed_at: daysAgo(1), completed_by: 'rep', meta: { completed_via: 'sparring_session_match', completion_score: 81, matched_sparring_session_id: 's1' } }),
+  mine({ id: 'd2', type: 'call_review', target_id: 'c-12', title: 'Review your TechFlow call', status: 'reviewed', completed_at: daysAgo(3), completed_by: 'rep' }),
+  mine({ id: 'd3', type: 'custom', title: 'Prepare account plan', status: 'completed', completed_at: daysAgo(30), completed_by: 'rep' }),
+]
+
+export const REP_FEED = {
+  coaching_summary: 'Objection handling is slipping on pricing calls.',
+  weakest_area: { category: 'Objection handling', score: 58 },
+  recommended_drill: 'Budget objection drill',
+  recommended_replay: { call_id: 'c-77', score: 49 },
+}
+
+export type RepApiOpts = {
+  assignments?: unknown[]
+  feed?: unknown | null
+  feedStatus?: number
+  listStatus?: number
+  listDelay?: number
+  /** URLs of manager-scoped endpoints that were requested (must stay empty on rep screens). */
+  managerCalls?: string[]
+  completeCalls?: string[]
+  completeStatus?: number
+}
+
+export async function mockRepApi(page: Page, o: RepApiOpts = {}) {
+  let list = (o.assignments ?? REP_ASSIGNMENTS) as any[]
+  await page.route('**/api/proxy/**', async (route) => {
+    const url = route.request().url()
+    const method = route.request().method()
+    const forbidden = () => route.fulfill(json({ ok: false, error: 'forbidden_not_manager' }, 403))
+    if (/\/v1\/(team|manager|crm\/manager|assignments\/manager|admin\/config)/.test(url)) {
+      if (!url.includes('/v1/admin/config')) o.managerCalls?.push(url)
+      return forbidden()
+    }
+    if (url.includes('/v1/reps/me')) return route.fulfill(json({ ok: true, id: REP_UID, name: 'Riley Chen', tier: 'rep' }))
+    if (/\/v1\/reps\/[^/]+\/daily-feed/.test(url)) {
+      if (o.feedStatus && o.feedStatus !== 200) return route.fulfill(json({ ok: false }, o.feedStatus))
+      return route.fulfill(json(o.feed === undefined ? REP_FEED : o.feed ?? {}))
+    }
+    if (/\/v1\/assignments\/[^/]+\/complete/.test(url) && method === 'PATCH') {
+      o.completeCalls?.push(url)
+      if (o.completeStatus && o.completeStatus !== 200) return route.fulfill(json({ ok: false, error: 'nope' }, o.completeStatus))
+      const id = url.split('/assignments/')[1].split('/')[0]
+      list = list.map((a) => (a.id === id ? { ...a, status: 'completed', completed_at: new Date().toISOString(), completed_by: 'rep' } : a))
+      return route.fulfill(json({ ok: true, assignment: list.find((a) => a.id === id) }))
+    }
+    if (/\/v1\/assignments(\?|$)/.test(url) && method === 'GET') {
+      if (o.listDelay) await new Promise((r) => setTimeout(r, o.listDelay))
+      if (o.listStatus && o.listStatus !== 200) return route.fulfill(json({ ok: false, error: 'boom' }, o.listStatus))
+      return route.fulfill(json({ ok: true, repId: REP_UID, items: list, assignments: list }))
+    }
+    return route.fulfill(json({ ok: true, items: [], calls: [] }))
+  })
 }
