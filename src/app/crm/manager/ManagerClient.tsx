@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 import RunHistoryTable from "@/components/RunHistoryTable";
 
 // DAY 57
@@ -46,7 +47,7 @@ async function safeJson(res: Response) {
 
 async function apiGet<T = any>(path: string): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(path, { method: "GET" });
+    const res = await proxyFetch(path, { method: "GET" });
     const data = (await safeJson(res)) as any;
 
     if (!res.ok) {
@@ -70,7 +71,7 @@ async function apiGet<T = any>(path: string): Promise<ApiResult<T>> {
 
 async function apiPost<T = any>(path: string, body: any): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(path, {
+    const res = await proxyFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
