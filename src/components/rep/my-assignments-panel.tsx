@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Badge, GlassCard, Panel, PanelHeader, Segmented, ErrorPanel, LoadingRows, dsButton, dsField } from '@/components/ds'
+import { skillLabel } from '@/lib/progress-view-model'
 import {
   compareTodo,
   dueStateOf,
@@ -120,7 +121,7 @@ export function MyAssignmentsPanel(p: Props) {
   const ready = !loading && !error
   const top = todoAll[0] ?? null
   const topDue = top ? dueStateOf(top, now) : null
-  const weakest = p.feed?.weakest_area?.category?.trim() || null
+  const weakest = skillLabel(p.feed?.weakest_area?.category)
   const replayId = p.feed?.recommended_replay?.call_id || null
   const note = top ? managerNote(top) : null
   const why = top ? whyText(top) : null

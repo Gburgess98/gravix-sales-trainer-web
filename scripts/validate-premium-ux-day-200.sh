@@ -71,8 +71,8 @@ grep -q 'className="hover:underline text-neutral-200 text-xs"' "$ACC_DETAIL" 2>/
 check "rep-performance link is neutral" $?
 grep -q '<span className="text-xs text-neutral-400">Open →</span>' "$ACC_DETAIL" 2>/dev/null
 check "contact Open arrow is neutral" $?
-grep -q 'href="/upload" className="text-xs text-indigo-300 hover:text-indigo-200 transition-colors"' "$DASH" 2>/dev/null
-check "dashboard Upload link is indigo" $?
+grep -q 'href="/upload"' "$WEB_ROOT/src/components/rep/progress-view.tsx" 2>/dev/null
+check "progress Upload link retained (indigo styling retired by the glass redesign)" $?
 ! grep -q 'text-cyan-500/70' "$DASH" 2>/dev/null
 check "dashboard cyan action link gone" $?
 

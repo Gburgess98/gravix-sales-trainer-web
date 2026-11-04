@@ -198,3 +198,49 @@ Same provisional identity as §13. The priority card repeats the first list row 
 
 ### Verification
 **Mocked:** `tests/e2e/glass-rep-assignments.spec.ts` (17 checks; rep session where the manager probe and all manager endpoints return 403): desktop + 375px, ordering, priority reason, one action per row, no manager controls/requests, no UUIDs (incl. a load-time DOM observer), To do/Completed, filters + URL state, Mark complete PATCH + rollback, snooze, open → back → forward, keyboard Enter, loading/empty/full/partial error. 105 unit tests. Playwright plugin on a production build. **Real data:** none — nothing was run against hosted staging or production. Legacy `tests/e2e/assignments.spec.ts` fails identically before and after (no auth session in that spec).
+
+## 17. Rep Progress (`/progress`)
+
+Route and nav are unchanged: rep **Progress** → `/progress` (a manager reaches the same page as "My Progress" under More). No other route was touched except one quiet **Your progress** link added to My Assignments' header (the streak/points that used to live there are now here).
+
+### Audit — what each value is
+| Value | Source | Status |
+|---|---|---|
+| Identity (id) | `GET /v1/reps/me` | live |
+| Overall call score per call (summary, chart, period comparison) | `GET /v1/reps/:id/weakness-trends` → `trends.overall`, latest **100** calls | derived on request; no cache; `score_overall \|\| 0` on the API, so an unscored call arrives as `0` — the UI ignores 0s |
+| Skill scores (Intro, Discovery, Objection handling, Closing) | same endpoint, per-stage series (unscored stages are omitted by the API) | derived on request |
+| Current vs previous period | computed in the browser from those series (30 or 90 days; `±3` = steady) | derived, labelled with dates and call counts |
+| Voice score | `GET /v1/dashboard/voice-score-trend?days=…&repId=<self>` (daily average from `call_scores.rubric`) | derived; direction via the existing `trendDirection` |
+| Recently completed, completion counts, open count | `GET /v1/assignments` | live |
+| Streak | `computeStreak` over `completed_at` (consecutive local days with a completed assignment) | derived client-side from live rows; not the old localStorage streak |
+| Points, points today | `GET /v1/assignments/me` (`reps.xp`, `rep_xp_events`) | live |
+| Level name | `xpLevel` (100 points per level; names are cosmetic) | derived; labelled "calculated from points" |
+| Suggested call / drill | `GET /v1/reps/:id/daily-feed` (`recommended_replay`, `recommended_drill`) | derived from the **latest call only**, rule-based text (not an LLM); the drill is shown only when its weakest area agrees with the period view |
+| `gst:completedDays`, `gst:streakState`, snoozes | browser localStorage | local only — **not used** on this screen |
+| Strongest area | **not returned by the API** (`daily-feed` never sends `strongest_area`) | unavailable from the feed, so computed from the stage series instead |
+| Demo/cached flags, team rankings | none exist | not shown |
+
+### Findings (not all fixed)
+1. **Points were always 0 on the web.** `/v1/reps/me` returns `{id,name,tier,…}` with no `xp_*`; the web read `.me.xp_total` from it (Home, the old Progress and the old My Assignments). Progress now reads the existing `/v1/assignments/me`, which does return `xp_total`/`xp_today`. **Home still has the old read** (out of scope) and will keep showing 0 points.
+2. **Voice trend was team-scoped for managers.** Without `repId` the endpoint returns the whole tenant for manager tiers; for a rep it is self only. Progress now always passes `repId=<self>`.
+3. **API: `weakness-trends` and `daily-feed` authorise by organisation only** (`assertOrgScopeOr403` checks the requester and the target are in the same org, not that the requester is that rep or their manager), so a rep could request a colleague's series by id. The UI only ever requests the signed-in rep's id. Needs an API fix (self-or-manager); not changed here.
+4. The old "Confidence" skill row was never a scored stage and is gone; stage slugs (`objection_handling`) are now mapped to labels everywhere, including the My Assignments weakest-area line (a real-data bug from the previous commit: the mock used display names).
+5. History is the latest 100 calls; the page says "older calls are not included" when the API returns 100.
+6. "Operating level: SalesRep" (the backend tier) was a role, not progress, and is no longer shown.
+
+### What changed
+| Before | After |
+|---|---|
+| Voice-score line chart, trend/level stat cards, a four-row "Skill Momentum" list driven by one call's weakest area, completed list, development panel with a progress bar | **Am I improving?** (one honest sentence, delta badge, a labelled current-vs-previous comparison, one chart only with ≥2 scored calls) → **Strongest and weakest skills** with a real per-skill period comparison and **What to work on next** (suggested call, Sparring, open assignments) → **Recently completed** (evidence only when the row carries sparring proof) → quiet **Practice and consistency** (completed 7/30 days, streak, points, level — each labelled) |
+| No period control | 30 / 90 days, kept in `?range=`; the comparison is withheld when the previous period has no scored calls |
+
+Empty/partial/error states: new user ("No scored calls yet" + Upload/Practise), older-history-only ("No scored calls in the last 30 days"), each section fails alone with a retry (score history, assignments, points, voice), and a full error only when identity cannot be loaded.
+
+### Debt
+Same provisional identity as §13. The chart is the generic blue area; skill rows are text with badges (no sparkline); the level/points block is plain text; strongest/weakest are recomputed in the browser and will differ from the feed's single-call "weakest area" (the drill is hidden when they disagree); no per-skill call links (the series carry no call ids); "Do this first" on Assignments and this page's next-action both exist (kept separate on purpose).
+
+### Recorded, deliberately not fixed: shared manager-route guard
+`/coaching` now has a client-side gate (§16), but `/team`, `/crm/analytics`, `/crm/manager`, `/crm/manager/contacts`, `/intelligence`, `/admin/settings` and the manager tabs have none: a rep who types the URL gets the manager chrome with 403s. A single shared guard (one hook/wrapper around the role check, used by every manager-only layout or route segment, rendering nothing until the API answers) is needed rather than per-page copies. The API still enforces every request.
+
+### Verification
+**Mocked:** `tests/e2e/glass-rep-progress.spec.ts` (17 checks; rep session, manager endpoints 403): desktop + 375px, improving / declining / new-user / older-history-only / partial / full-error states, 30↔90 day range + URL, next-action links, keyboard focus ring + Enter, back/forward, loading, truncation note, no UUIDs, no other-id requests, voice request scoped to self, no rankings; 117 unit tests; Playwright plugin on a production build. **Real data:** none — nothing was run against hosted staging or production, and none of the API findings above were reproduced against a live API.

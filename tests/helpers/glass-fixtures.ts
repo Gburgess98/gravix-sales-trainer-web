@@ -136,12 +136,41 @@ export const REP_ASSIGNMENTS = [
 
 export const REP_FEED = {
   coaching_summary: 'Objection handling is slipping on pricing calls.',
-  weakest_area: { category: 'Objection handling', score: 58 },
+  weakest_area: { category: 'objection_handling', score: 58 },
   recommended_drill: 'Budget objection drill',
   recommended_replay: { call_id: 'c-77', score: 49 },
 }
 
+/* Progress fixtures. A series point is {date, value}; stage series only contain scored stages, `overall`
+   is score_overall||0 on the API (so an unscored call is a 0 — the UI must not treat it as a score). */
+const pt = (d: number, v: number) => ({ date: daysAgo(d), value: v })
+export const TRENDS_IMPROVING = {
+  intro: [pt(50, 70), pt(40, 72), pt(12, 78), pt(3, 82)],
+  discovery: [pt(48, 60), pt(38, 62), pt(14, 70), pt(5, 74)],
+  objection_handling: [pt(46, 58), pt(36, 56), pt(10, 52), pt(2, 50)],
+  closing: [pt(44, 62), pt(34, 64), pt(8, 66), pt(1, 68)],
+  overall: [pt(50, 62), pt(46, 60), pt(40, 64), pt(36, 63), pt(14, 70), pt(10, 72), pt(5, 76), pt(3, 78), pt(2, 0)],
+}
+export const TRENDS_DECLINING = {
+  intro: [pt(40, 80), pt(5, 70)],
+  discovery: [pt(40, 78), pt(6, 66)],
+  objection_handling: [pt(40, 74), pt(4, 60)],
+  closing: [pt(40, 70), pt(3, 62)],
+  overall: [pt(50, 82), pt(40, 80), pt(14, 68), pt(6, 66), pt(3, 62)],
+}
+export const TRENDS_OLD_ONLY = { intro: [pt(200, 70)], discovery: [], objection_handling: [], closing: [], overall: [pt(200, 70)] }
+export const TRENDS_NONE = { intro: [], discovery: [], objection_handling: [], closing: [], overall: [] }
+
 export type RepApiOpts = {
+  trends?: unknown
+  meStatus?: number
+  trendsStatus?: number
+  xp?: { xp_total: number; xp_today: number }
+  xpStatus?: number
+  voiceStatus?: number
+  /** Any UUID in a request URL that is not the signed-in rep's (must stay empty: no other-rep data). */
+  otherIdCalls?: string[]
+  voiceUrls?: string[]
   assignments?: unknown[]
   feed?: unknown | null
   feedStatus?: number
@@ -163,6 +192,22 @@ export async function mockRepApi(page: Page, o: RepApiOpts = {}) {
       if (!url.includes('/v1/admin/config')) o.managerCalls?.push(url)
       return forbidden()
     }
+    const uuids = (url.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []).filter((u) => u.toLowerCase() !== REP_UID)
+    if (uuids.length) o.otherIdCalls?.push(url)
+    if (/\/v1\/reps\/[^/]+\/weakness-trends/.test(url)) {
+      if (o.trendsStatus && o.trendsStatus !== 200) return route.fulfill(json({ ok: false, error: 'server_error' }, o.trendsStatus))
+      return route.fulfill(json({ ok: true, rep_id: REP_UID, trends: o.trends ?? TRENDS_IMPROVING }))
+    }
+    if (url.includes('/v1/assignments/me')) {
+      if (o.xpStatus && o.xpStatus !== 200) return route.fulfill(json({ ok: false }, o.xpStatus))
+      return route.fulfill(json({ ok: true, rep: { id: REP_UID, name: 'Riley Chen', tier: 'SalesRep', ...(o.xp ?? { xp_total: 1240, xp_today: 30 }) } }))
+    }
+    if (url.includes('/v1/dashboard/voice-score-trend')) {
+      o.voiceUrls?.push(url)
+      if (o.voiceStatus && o.voiceStatus !== 200) return route.fulfill(json({ ok: false }, o.voiceStatus))
+      return route.fulfill(json({ ok: true, scope: 'rep', trend: [pt(9, 66), pt(7, 68), pt(5, 70), pt(4, 72), pt(3, 74), pt(2, 75), pt(1, 76)].map((p) => ({ date: p.date.slice(0, 10), voice_score: p.value })), latest_avg: 76 }))
+    }
+    if (url.includes('/v1/reps/me') && o.meStatus && o.meStatus !== 200) return route.fulfill(json({ ok: false }, o.meStatus))
     if (url.includes('/v1/reps/me')) return route.fulfill(json({ ok: true, id: REP_UID, name: 'Riley Chen', tier: 'rep' }))
     if (/\/v1\/reps\/[^/]+\/daily-feed/.test(url)) {
       if (o.feedStatus && o.feedStatus !== 200) return route.fulfill(json({ ok: false }, o.feedStatus))

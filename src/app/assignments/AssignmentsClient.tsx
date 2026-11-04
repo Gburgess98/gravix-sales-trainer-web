@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { proxyFetch } from "@/lib/api";
 import { PageShell, PageHead, dsButton } from "@/components/ds";
 import { MyAssignmentsPanel, type Feed, type View } from "@/components/rep/my-assignments-panel";
@@ -345,7 +346,12 @@ export default function AssignmentsClient() {
       <PageHead
         title="My Assignments"
         subtitle="Coaching work from your manager and your calls."
-        actions={<button type="button" onClick={() => void load()} className={dsButton("quiet", "sm")}>Refresh</button>}
+        actions={
+          <>
+            <Link href="/progress" className={dsButton("quiet", "sm")}>Your progress</Link>
+            <button type="button" onClick={() => void load()} className={dsButton("quiet", "sm")}>Refresh</button>
+          </>
+        }
       />
       <MyAssignmentsPanel
         items={rows}
