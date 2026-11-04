@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -123,7 +124,7 @@ export default function ContactHeaderClient({
         if (!alive) return;
 
         if (!res?.ok) {
-          setErr(res?.error || "Failed to load contact");
+          setErr(friendlyError(res?.error, "Couldn’t load this contact right now."));
           setContact(null);
           setAccount(null);
           return;
@@ -133,7 +134,7 @@ export default function ContactHeaderClient({
         setAccount(res.account || null);
       } catch (e: any) {
         if (!alive) return;
-        setErr(e?.message || "Failed to load contact");
+        setErr(friendlyError(e, "Couldn’t load this contact right now."));
       } finally {
         if (!alive) return;
         setLoading(false);

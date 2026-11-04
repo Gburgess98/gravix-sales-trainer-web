@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { proxyFetch } from "@/lib/api";
@@ -234,7 +235,7 @@ export default function AssignmentsClient() {
       }
     } catch (e: any) {
       // Keep showing what we already have if a refresh fails; only a first load is a full error.
-      if (rowsRef.current.length === 0) setErr(e?.message || "failed_to_load");
+      if (rowsRef.current.length === 0) setErr(friendlyError(e, "Something went wrong. Try again."));
       else showNotice({ type: "error", text: "Couldn’t refresh your assignments. Showing what was loaded earlier." });
     } finally {
       setLoading(false);

@@ -93,8 +93,9 @@ grep -q 'setAnalyticsDays' "$OVERVIEW" 2>/dev/null
 check "overview: analytics range filter preserved" $?
 grep -q '/crm/manager/control-centre' "$OVERVIEW" 2>/dev/null
 check "overview: control-centre href preserved" $?
-grep -q '/crm/contacts/import' "$OVERVIEW" 2>/dev/null
-check "overview: import-leads href preserved" $?
+# Release hygiene: the placeholder /crm/contacts/import now redirects, so the overview links the real importer.
+grep -q 'href="/crm/import"' "$OVERVIEW" 2>/dev/null && ! grep -q '/crm/contacts/import' "$OVERVIEW" 2>/dev/null
+check "overview: import-leads href points at the real importer (/crm/import)" $?
 
 # --- /crm/manager: scaffolding + raw copy retired ---
 ! grep -q 'Write flow pending' "$MGRCLIENT" 2>/dev/null
@@ -115,8 +116,9 @@ check "manager: run history preserved" $?
 check "manager: raw error codes off the error cards (hover only)" $?
 
 # --- /settings/profile ---
-grep -q 'function friendlyError' "$PROFILE" 2>/dev/null
-check "profile: parser errors mapped to calm copy" $?
+# Release hygiene: the local helper moved to the shared src/lib/friendly-error.ts (never returns raw text).
+grep -q "friendlyError(e, " "$PROFILE" 2>/dev/null && grep -q 'export function friendlyError' "$WEB_ROOT/src/lib/friendly-error.ts" 2>/dev/null
+check "profile: errors mapped to calm copy via the shared friendlyError" $?
 ! grep -qE 'red-|emerald-|indigo-' "$PROFILE" 2>/dev/null
 check "profile: raw palette classes retired for tokens" $?
 grep -q "'/v1/users/me'" "$PROFILE" 2>/dev/null

@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
@@ -677,7 +678,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       // Keep the flow fast
       titleInputRef.current?.focus();
     } catch (e: any) {
-      setCreateErr(e?.message || "create_failed");
+      setCreateErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setCreating(false);
     }
@@ -722,7 +723,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       await readJsonOrThrow(res);
       await load();
     } catch (e: any) {
-      setCreateErr(e?.message || "patch_failed");
+      setCreateErr(friendlyError(e, "Something went wrong. Try again."));
     }
   }
 
@@ -889,7 +890,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       await load();
       window.setTimeout(() => setActionMsg(null), 1500);
     } catch (e: any) {
-      setBulkErr(e?.message || "bulk_failed");
+      setBulkErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setBulkBusy(false);
     }
@@ -991,7 +992,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       });
       setActionMsg("Force completed ✓");
     } catch (e: any) {
-      setActionMsg(e?.message || "complete_failed");
+      setActionMsg(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setActioningId(null);
       window.setTimeout(() => setActionMsg(null), 1500);
@@ -1012,7 +1013,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       patchAssignmentInState(assignmentId, { due_at: due_at ?? null });
       setActionMsg("Due set to today ✓");
     } catch (e: any) {
-      setActionMsg(e?.message || "reschedule_failed");
+      setActionMsg(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setActioningId(null);
       window.setTimeout(() => setActionMsg(null), 1500);
@@ -1032,7 +1033,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
 
       setActionMsg("Nudge sent ✓");
     } catch (e: any) {
-      setActionMsg(e?.message || "nudge_failed");
+      setActionMsg(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setActioningId(null);
       window.setTimeout(() => setActionMsg(null), 1500);
@@ -1053,7 +1054,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
       removeAssignmentInState(assignmentId);
       setActionMsg("Deleted ✓");
     } catch (e: any) {
-      setActionMsg(e?.message || "delete_failed");
+      setActionMsg(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setActioningId(null);
       window.setTimeout(() => setActionMsg(null), 1500);
@@ -1185,7 +1186,7 @@ export default function AdminAssignmentsClient(props: AdminAssignmentsClientProp
 
       setRowsByRep(Object.fromEntries(entries));
     } catch (e: any) {
-      setErr(e?.message || "failed_to_load");
+      setErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setLoading(false);
     }

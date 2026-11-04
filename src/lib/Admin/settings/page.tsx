@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import { getAdminConfig, patchAdminConfig, type AdminConfig } from "@/lib/Admin/adminConfig";
 
@@ -34,7 +35,7 @@ export default function AdminSettingsPage() {
         setComebackBonus(c.comeback_bonus);
         setErr(null);
       } catch (e: any) {
-        setErr(e.message ?? "Failed to load");
+        setErr(friendlyError(e, "Failed to load"));
       } finally {
         setLoading(false);
       }
@@ -55,7 +56,7 @@ export default function AdminSettingsPage() {
       setCfg(updated);
       setOkMsg("Saved.");
     } catch (e: any) {
-      setErr(e.message ?? "Save failed");
+      setErr(friendlyError(e, "Save failed"));
     } finally {
       setSaving(false);
     }

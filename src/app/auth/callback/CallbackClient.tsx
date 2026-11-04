@@ -22,7 +22,7 @@ export default function CallbackClient() {
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
-            setMsg(`Auth exchange failed: ${error.message}`);
+            setMsg("Sign-in couldn’t be completed. Try signing in again.");
             return;
           }
         } else {

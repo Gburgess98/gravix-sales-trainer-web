@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
 
 function errText(e: unknown): string {
@@ -61,7 +62,7 @@ export default function RepNotesClient({
       });
       setItems(sorted);
     } catch (e: any) {
-      setErr(e?.message || "Failed to load notes");
+      setErr(friendlyError(e, "Couldn’t load notes right now."));
       setItems([]);
     } finally {
       setLoading(false);
@@ -99,7 +100,7 @@ export default function RepNotesClient({
       // ✅ always refresh list after save
       await loadNotes();
     } catch (e: any) {
-      setErr(e?.message || "Failed to save note");
+      setErr(friendlyError(e, "Couldn’t save the note. Try again."));
     } finally {
       setSaving(false);
     }

@@ -10,7 +10,7 @@ test.use({ viewport: { width: 1280, height: 800 } })
 type Role = 'rep' | 'manager' | 'partner' | 'super'
 const MANAGER = ['/coaching', '/team', '/intelligence', '/admin/settings', '/admin/personas', '/admin/reps', '/admin/assignments', '/admin/assignments/create', '/crm/analytics', '/crm/manager', '/crm/manager/contacts', '/crm/manager/nudges', '/crm/reps/r1', '/crm/overview', '/crm/import', '/crm/contacts/import']
 const PARTNER = ['/admin/users', '/admin/users/u1', '/admin/companies', '/admin/companies/c1']
-const SUPER = ['/admin/partners', '/admin/score', '/admin/status']
+const SUPER = ['/admin/partners', '/admin/score', '/admin/status', '/health']
 const SHARED = ['/dashboard', '/assignments', '/progress', '/call-library', '/upload', '/crm/accounts', '/crm/pipeline', '/settings/profile']
 const RANK: Record<Role, number> = { rep: 0, manager: 1, partner: 2, super: 3 }
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) })

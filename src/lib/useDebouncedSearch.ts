@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export function useDebouncedSearch<T>(
@@ -27,7 +28,7 @@ export function useDebouncedSearch<T>(
         const result = await searchFn(query.trim(), ac.signal);
         setData(result);
       } catch (e: any) {
-        if (e?.name !== "AbortError") setErr(e?.message || "search failed");
+        if (e?.name !== "AbortError") setErr(friendlyError(e, "search failed"));
       } finally {
         setLoading(false);
       }

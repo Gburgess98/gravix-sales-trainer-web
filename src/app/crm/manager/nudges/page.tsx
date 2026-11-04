@@ -96,7 +96,7 @@ export default async function ManagerNudgesPage() {
 
       {err ? (
         <div className="rounded-lg border border-red-900 bg-red-950/20 px-4 py-2 text-sm text-red-200">
-          Failed to load nudges — {String(err)}
+          Nudges couldn’t be loaded right now.
         </div>
       ) : null}
 

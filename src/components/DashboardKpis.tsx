@@ -1,5 +1,6 @@
 'use client';
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react';
 import { fetchJsonWithRetry } from '@/lib/fetchJsonwithretry';
 
@@ -38,7 +39,7 @@ export default function DashboardKpis({ onTrends }: { onTrends?: (t: Trends) => 
           onTrends(res.kpis.trends as Trends);
         }
       } catch (e: any) {
-        setErr(e?.message || 'Failed to load KPIs');
+        setErr(friendlyError(e, 'Failed to load KPIs'));
       } finally {
         if (!cancel) setLoading(false);
       }

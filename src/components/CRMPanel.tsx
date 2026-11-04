@@ -7,6 +7,7 @@ type ContactHealth = {
 // src/components/CRMPanel.tsx
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 
 type LinkInfo = {
@@ -83,7 +84,7 @@ export default function CRMPanel({
         setHealth(null);
       }
     } catch (e: any) {
-      setErr(e?.message || "Failed to load CRM link");
+      setErr(friendlyError(e, "Failed to load CRM link"));
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export default function CRMPanel({
       });
       setResults(items);
     } catch (e: any) {
-      setErr(e?.message || "Search failed");
+      setErr(friendlyError(e, "Search failed"));
     }
   }
 
@@ -131,7 +132,7 @@ export default function CRMPanel({
       });
       setAccountResults(items);
     } catch (e: any) {
-      setErr(e?.message || "Account search failed");
+      setErr(friendlyError(e, "Account search failed"));
     }
   }
 
@@ -155,7 +156,7 @@ export default function CRMPanel({
       setAccountQ("");
       setAccountResults([]);
     } catch (e: any) {
-      setErr(e?.message || "Account link failed");
+      setErr(friendlyError(e, "Account link failed"));
     } finally {
       setBusy(false);
     }
@@ -194,7 +195,7 @@ export default function CRMPanel({
       setMsg(`${target === "contact" ? "Contact" : "Account"} unlinked.`);
     } catch (e: any) {
       await loadLinkInfo();
-      setErr(e?.message || "Unlink failed");
+      setErr(friendlyError(e, "Unlink failed"));
     } finally {
       setBusy(false);
     }
@@ -213,7 +214,7 @@ export default function CRMPanel({
       await loadLinkInfo();
       setMsg("Linked via email.");
     } catch (e: any) {
-      setErr(e?.message || "Link failed");
+      setErr(friendlyError(e, "Link failed"));
     } finally {
       setBusy(false);
     }
@@ -230,7 +231,7 @@ export default function CRMPanel({
         throw new Error("Selected contact has no email");
       }
     } catch (e: any) {
-      setErr(e?.message || "Link failed");
+      setErr(friendlyError(e, "Link failed"));
     } finally {
       setBusy(false);
     }
@@ -258,7 +259,7 @@ export default function CRMPanel({
         setMsg("Preview generated.");
       }
     } catch (e: any) {
-      setErr(e?.message || "Preview failed");
+      setErr(friendlyError(e, "Preview failed"));
     } finally {
       setAutoAssignBusyId(null);
     }
@@ -292,7 +293,7 @@ export default function CRMPanel({
 
       setMsg(j.created ? "Auto-assigned." : "Already assigned (deduped).");
     } catch (e: any) {
-      setErr(e?.message || "Auto-assign failed");
+      setErr(friendlyError(e, "Auto-assign failed"));
     } finally {
       setAutoAssignBusyId(null);
     }

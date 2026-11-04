@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { proxyFetch } from "@/lib/api";
@@ -108,7 +109,7 @@ export default function SparringStartButton({
       router.push(`/sparring/${encodeURIComponent(json.session.id)}`);
     } catch (e: any) {
       console.error("Start sparring failed", e);
-      setErr(e?.message || "Failed to start sparring session.");
+      setErr(friendlyError(e, "Failed to start sparring session."));
     } finally {
       setBusy(false);
       setModalOpen(false);

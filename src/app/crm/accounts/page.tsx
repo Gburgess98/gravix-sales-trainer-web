@@ -1,5 +1,6 @@
 'use client';
 
+import { friendlyError } from '@/lib/friendly-error';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { proxyFetch } from '@/lib/api';
@@ -161,7 +162,7 @@ export default function CrmAccountsPage() {
 
         if (!active) return;
 
-        setError(e?.message || 'Failed loading accounts');
+        setError(friendlyError(e, 'Failed loading accounts'));
       } finally {
         if (!active) return;
 

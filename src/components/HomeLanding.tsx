@@ -106,12 +106,6 @@ export default function HomeLanding() {
           </>
         )}
 
-        <Link href="/proxy/health" className="block" data-testid="nav-proxy-health">
-          <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
-            Proxy Health
-          </div>
-        </Link>
-
         <Link
           href="/call-library"
           className="group rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 hover:border-neutral-500 hover:bg-neutral-900 transition-colors"

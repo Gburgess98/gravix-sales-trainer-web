@@ -2,6 +2,7 @@
 
 // src/app/crm/pipeline/page.tsx
 
+import { friendlyError } from '@/lib/friendly-error';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -820,7 +821,7 @@ export default function PipelinePage() {
 
       setItems(Array.isArray(opps) ? opps : []);
     } catch (e: any) {
-      setError(e?.message ?? "pipeline_fetch_failed");
+      setError(friendlyError(e, "Couldn’t load the pipeline right now."));
       setItems([]);
     } finally {
       setLoading(false);
@@ -907,7 +908,7 @@ export default function PipelinePage() {
         await refresh();
         await fetchSummary();
       } catch (e: any) {
-        setToast(e?.message ?? "create_failed");
+        setToast(friendlyError(e, "Something went wrong. Try again."));
       } finally {
         setCreating(false);
       }
@@ -982,7 +983,7 @@ export default function PipelinePage() {
         return;
       }
     } catch (e: any) {
-      setQcError(String(e?.message ?? "quick_create_failed"));
+      setQcError(friendlyError(e, "Couldn’t create that. Try again."));
     } finally {
       setQcLoading(false);
     }
@@ -1117,8 +1118,7 @@ const onDropToStage = useCallback(
     } catch (e: any) {
       // revert + toast error
       if (fromStage) moveOptimistic(oppId, fromStage);
-      const msg = String(e?.message ?? "stage_update_failed");
-      setToast(`Move failed: ${msg}`);
+      setToast(friendlyError(e, "Couldn’t move that deal. Try again."));
     }
   },
   [moveOptimistic, patchStage, refresh, fetchSummary]
@@ -2104,8 +2104,7 @@ return (
                                       await fetchSummary();
                                     } catch (e: any) {
                                       moveOptimistic(id, prevStage);
-                                      const msg = String(e?.message ?? "stage_update_failed");
-                                      setToast(`Move failed: ${msg}`);
+                                      setToast(friendlyError(e, "Couldn’t move that deal. Try again."));
                                     }
                                   }}
                                   title="Move to next stage"

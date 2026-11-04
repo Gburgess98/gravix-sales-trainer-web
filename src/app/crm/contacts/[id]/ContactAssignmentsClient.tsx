@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 
 function errText(e: unknown): string {
@@ -58,7 +59,7 @@ const ContactAssignmentsClient = forwardRef<
       setOpen(json.open || []);
       setCompleted(json.completed || []);
     } catch (e: any) {
-      setErr(e?.message || "Failed to load assignments");
+      setErr(friendlyError(e, "Couldn’t load assignments right now."));
       setOpen([]);
       setCompleted([]);
     } finally {
@@ -77,7 +78,7 @@ const ContactAssignmentsClient = forwardRef<
       if (!res.ok || !json?.ok) throw new Error(json?.error || `HTTP ${res.status}`);
       await load();
     } catch (e: any) {
-      setErr(e?.message || "Failed to complete action");
+      setErr(friendlyError(e, "Couldn’t complete the action. Try again."));
     }
   }
 

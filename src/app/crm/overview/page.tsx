@@ -1092,7 +1092,7 @@ export default function CrmOverviewPage() {
         title="Today’s actions"
         subtitle="Queued CRM actions for today"
         actions={
-          <Link href="/crm/contacts/import" className={buttonClasses('ghost')}>
+          <Link href="/crm/import" className={buttonClasses('ghost')}>
             Import leads
           </Link>
         }
@@ -1233,7 +1233,6 @@ export default function CrmOverviewPage() {
                   )}>
                     {a.status}
                   </span>
-                  <Link href={`/assignments/${a.id}`} className="text-sm text-neutral-400 hover:text-brand-300 transition-colors ml-3 shrink-0">Open</Link>
                 </li>
               ))}
             </ul>

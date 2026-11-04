@@ -118,6 +118,15 @@ Visual: **Redesigned** (shared glass primitives) · **Partially redesigned** · 
 **Resolved:** all 18 unguarded manager/admin routes in section 3 (the four self-handling ones now also guard before any request). Raw `forbidden_not_manager`/`forbidden`/`missing_user` text no longer appears on guarded routes for a rep, because those pages no longer render for a rep.
 **Not resolved by it** (still open in this inventory): the broken pages (nudges, contact detail), diagnostics, stub links, legacy redesigns, `/crm/pipeline` + `/crm/tasks` (deliberately open), `/admin/reps`’ unscoped endpoints (guarded, but hide it), the staging UUIDs, the proxy org lookup, and raw backend strings that can still appear on routes a *manager* may open (e.g. `/crm/manager/nudges` `missing_user`, `/settings/profile` JS error text).
 
+## Resolved by the release-hygiene batch (after 35f1208)
+Separate commit; no UUID migration, proxy change, redesign or CRM decision included.
+- **Removed:** `/probe` (`src/pages/`), `src/app/page/probe.tsx`, stray `src/login/page.tsx`, `/api/env`, `/dev/audio-test`, and the unused `crm/import/ContactsImportClient.tsx`.
+- **Gated:** `/dev/*` returns 404 in production unless `ENABLE_DEV_ROUTES=1` (the scoring-v2 preview spec runs with the flag); `/health` is a super-admin diagnostic (`RoleGate super`); `/admin/status` was already super-guarded.
+- **Links fixed:** HomeLanding no longer links the 404 `/proxy/health`; the dead `/assignments/${id}` "Open" link on `/crm/overview` is removed; the overview now links `/crm/import`; `/crm/contacts/import` is a redirect to `/crm/import`.
+- **Raw errors:** new `src/lib/friendly-error.ts`, applied to ~60 sites (call review, CRM pages, pipeline, tasks, manager centre, coaching, sparring, call library, whisperer, profile, OAuth callback, admin clients, nudges); raw tooltips removed. Guarded by `scripts/validate-no-raw-errors.mts` (non-vacuous) and a unit test.
+- **Kept on purpose:** `/recent-calls` and `/crm/manager/control-centre` (still linked), and the other compatibility redirects (some are pinned by validators).
+- Verification is mocked/local only; nothing here has been checked on hosted staging.
+
 ## 2. Answers to the specific questions
 
 **Everything under More.** Rep: *Accounts* (`/crm/accounts`, legacy), *My Profile* (`/settings/profile`, legacy). Manager: *My Dashboard*, *Calls*, *Practice*, *My Assignments*, *My Progress* (all redesigned) plus *Accounts*, *Contacts* (`/crm/manager/contacts`), *Manager Centre* (`/crm/manager`), *Intelligence*, *Settings*, *My Profile*. PartnerAdmin/SuperAdmin additionally *Companies*, *Users*, *Partners* (control plane). Every nav `href` resolves to a real page; none is a redirect or 404. The problems are not broken nav links but (a) **who can open the URL** and (b) **legacy surfaces behind real nav entries** (Accounts, Contacts, Manager Centre, Intelligence, Profile, control plane).

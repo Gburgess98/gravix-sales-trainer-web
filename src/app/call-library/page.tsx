@@ -1,6 +1,7 @@
 // src/app/call-library/page.tsx
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -469,9 +470,7 @@ function CallLibraryPageInner() {
       .catch((err: any) => {
         console.error("Error loading sparring:", err);
         if (!alive) return;
-        setSparringError(
-          err?.message ?? "Something went wrong loading sparring sessions."
-        );
+        setSparringError(friendlyError(err, "Something went wrong loading sparring sessions."));
       })
       .finally(() => {
         if (!alive) return;
@@ -498,7 +497,7 @@ function CallLibraryPageInner() {
         if (!res || res.ok === false) {
           setSparPersonas([]);
           if (res?.error) {
-            setSparPersonasError(res.error);
+            setSparPersonasError(friendlyError(res.error, "Unable to load sparring personas."));
           } else {
             setSparPersonasError("Unable to load sparring personas.");
           }
@@ -520,7 +519,7 @@ function CallLibraryPageInner() {
         if (cancelled) return;
         console.error("Failed to load sparring personas", e);
         setSparPersonas([]);
-        setSparPersonasError(e?.message || "Unable to load sparring personas.");
+        setSparPersonasError(friendlyError(e, "Unable to load sparring personas."));
       })
       .finally(() => {
         if (!cancelled) setSparPersonasLoading(false);
@@ -569,7 +568,7 @@ function CallLibraryPageInner() {
       );
     } catch (e: any) {
       console.error("call-library: loadMore failed", e);
-      setMoreError(e?.message || "Failed to load more calls.");
+      setMoreError(friendlyError(e, "Failed to load more calls."));
     } finally {
       setLoadingMore(false);
     }

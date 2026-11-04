@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -76,7 +77,7 @@ export default function UserEditorPage() {
         setActive(u.active ?? true)
         setTier(u.tier ?? 'SalesRep')
       })
-      .catch(e => setError(e.message))
+      .catch(e => setError(friendlyError(e, "Couldn’t load this user.")))
       .finally(() => setLoading(false))
   }, [id])
 
@@ -105,7 +106,7 @@ export default function UserEditorPage() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (e: any) {
-      setError(e?.message || 'Save failed')
+      setError(friendlyError(e, 'Save failed'))
     } finally {
       setSaving(false)
     }

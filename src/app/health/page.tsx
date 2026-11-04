@@ -1,4 +1,5 @@
 ﻿'use client';
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react';
 
 export default function HealthPage() {
@@ -51,7 +52,7 @@ export default function HealthPage() {
       }
     } catch (e: any) {
       setOk(false);
-      setDetail(e?.message || 'Network error');
+      setDetail(friendlyError(e, 'Network error'));
       setText('');
     } finally {
       setLoading(false);

@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -190,7 +191,7 @@ export default function UploadPage() {
         } catch (e: any) {
           setLastErrorStage("processing");
           setUploadStage("error");
-          setProcessingReason(String(e?.message || "unknown"));
+          setProcessingReason(friendlyError(e, "Something went wrong. Try again."));
           setMsg(null);
           return;
         }

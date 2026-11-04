@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -1228,7 +1229,7 @@ function CoachingPageInner() {
       }
       if (repData?.ok) setReporting(repData)
     } catch (e: any) {
-      setOverviewError(e?.message || 'Connection error')
+      setOverviewError(friendlyError(e, 'Connection error'))
     } finally {
       setOverviewLoading(false)
     }
@@ -1275,11 +1276,11 @@ function CoachingPageInner() {
         setReviewQueue(data.items ?? [])
       } else {
         setReviewQueue([])
-        setReviewQueueError(data?.error || 'Failed to load the review queue')
+        setReviewQueueError(friendlyError(data?.error, 'Failed to load the review queue'))
       }
     } catch (e: any) {
       setReviewQueue([])
-      setReviewQueueError(e?.message || 'Connection error')
+      setReviewQueueError(friendlyError(e, 'Connection error'))
     } finally {
       setReviewQueueLoading(false)
       setReviewQueueLoaded(true)
@@ -1538,7 +1539,7 @@ function CoachingPageInner() {
         setRecentSparring(data.items ?? [])
       } else {
         setRecentSparring([])
-        setSparringError(data?.error || 'Could not load recent sparring.')
+        setSparringError(friendlyError(data?.error, 'Could not load recent sparring.'))
       }
     } catch {
       setRecentSparring([])

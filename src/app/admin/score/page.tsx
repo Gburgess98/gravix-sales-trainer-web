@@ -1,6 +1,7 @@
 // src/app/admin/score/page.tsx
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -50,7 +51,7 @@ export default function AdminScoresAndForcePage() {
       }
       setResp(j);
     } catch (e: any) {
-      setErrForce(e?.message || "Failed to trigger scoring");
+      setErrForce(friendlyError(e, "Failed to trigger scoring"));
     } finally {
       setLoadingForce(false);
     }
@@ -98,7 +99,7 @@ export default function AdminScoresAndForcePage() {
       }));
       setItems(rows);
     } catch (e: any) {
-      setErrScores(e?.message || "Failed to load scores");
+      setErrScores(friendlyError(e, "Failed to load scores"));
       setItems([]);
     } finally {
       setLoadingScores(false);

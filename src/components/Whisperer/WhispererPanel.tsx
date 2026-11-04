@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 
 type WhispererTurn = {
@@ -109,7 +110,7 @@ export function WhispererPanel({
         }
 
         if (data && data.ok === false) {
-          setError(data.error || "Failed to load suggestions.");
+          setError(friendlyError(data.error, "Failed to load suggestions."));
           setSuggestions([]);
           return;
         }
@@ -132,7 +133,7 @@ export function WhispererPanel({
       } catch (e: any) {
         if (cancelled) return;
         console.error("[WhispererPanel] preview failed", e);
-        setError(e?.message || "Failed to load suggestions.");
+        setError(friendlyError(e, "Failed to load suggestions."));
         setSuggestions([]);
       } finally {
         if (cancelled) return;

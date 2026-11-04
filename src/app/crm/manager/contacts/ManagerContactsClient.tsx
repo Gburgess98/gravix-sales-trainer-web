@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { proxyFetch } from '@/lib/api'
@@ -160,7 +161,7 @@ export default function ManagerContactsClient() {
       })
       setContacts(items)
     } catch (e: any) {
-      setLoadError(e?.message || 'Failed to load contacts')
+      setLoadError(friendlyError(e, 'Failed to load contacts'))
     } finally {
       setLoading(false)
     }

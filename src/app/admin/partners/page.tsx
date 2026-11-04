@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react'
 import { proxyFetch } from '@/lib/api'
 import { LoadingText } from '@/components/ui/loading-skeleton'
@@ -30,7 +31,7 @@ export default function PartnersPage() {
         if (!d?.ok) throw new Error(d?.error || 'Failed to load partners')
         setPartners(d.partners ?? [])
       })
-      .catch((e: any) => setError(e?.message || 'Failed to load partners'))
+      .catch((e: any) => setError(friendlyError(e, 'Failed to load partners')))
       .finally(() => setLoading(false))
   }, [])
 

@@ -2,6 +2,7 @@
 
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 
@@ -122,7 +123,7 @@ export default function AdminPersonasPage() {
         console.error("Failed loading persona config", e);
 
         if (mounted) {
-          setSaveError(e?.message || "Failed to load persona config.");
+          setSaveError(friendlyError(e, "Failed to load persona config."));
         }
       } finally {
         if (mounted) {
@@ -216,7 +217,7 @@ export default function AdminPersonasPage() {
     } catch (e: any) {
       console.error("Failed saving persona config", e);
 
-      setSaveError(e?.message || "Failed to save persona config.");
+      setSaveError(friendlyError(e, "Failed to save persona config."));
     } finally {
       setSaving(false);
     }

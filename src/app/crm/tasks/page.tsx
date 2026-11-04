@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
@@ -94,7 +95,7 @@ export default function CrmTasksPage() {
 
       setTasks(Array.isArray(j?.items) ? (j.items as TaskItem[]) : []);
     } catch (e: any) {
-      setError(safeStr(e?.message || "tasks_fetch_failed"));
+      setError(friendlyError(e, "Couldn’t load tasks right now."));
       setTasks([]);
     } finally {
       setLoading(false);

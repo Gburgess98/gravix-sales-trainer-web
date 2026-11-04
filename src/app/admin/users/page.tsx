@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { proxyFetch } from '@/lib/api'
@@ -114,7 +115,7 @@ export default function UsersPage() {
         if (!d?.ok) throw new Error(d?.error || 'Failed to load users')
         setUsers(d.users ?? [])
       })
-      .catch((e: any) => setError(e?.message || 'Failed to load users'))
+      .catch((e: any) => setError(friendlyError(e, 'Failed to load users')))
       .finally(() => setLoading(false))
   }, [])
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { completeCrmAction, proxyFetch } from '@/lib/api';
@@ -161,7 +162,7 @@ export default function AssignmentsSummary(props: {
                       await completeCrmAction(a.id);
                       router.refresh();
                     } catch (e: any) {
-                      setErr(e?.message || 'Failed to complete');
+                      setErr(friendlyError(e, 'Failed to complete'));
                     }
                   });
                 }}

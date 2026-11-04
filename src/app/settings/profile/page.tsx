@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { proxyFetch } from '@/lib/api'
+import { friendlyError } from '@/lib/friendly-error'
 import { LoadingText } from '@/components/ui/loading-skeleton'
 import { PageContainer } from '@/components/layout/page-container'
 import { PageHeader } from '@/components/layout/page-header'
@@ -22,13 +23,6 @@ const TIMEZONES = [
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney',
 ]
-
-// Keep parser/transport errors out of the UI — show calm copy, raw detail on hover.
-function friendlyError(message: string, fallback: string) {
-  const raw = String(message ?? '')
-  const technical = /token|JSON|fetch|network|<!DOCTYPE|missing_user/i.test(raw)
-  return technical ? fallback : raw || fallback
-}
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -52,7 +46,7 @@ export default function ProfilePage() {
         setPhone(u.phone ?? '')
         setTimezone(u.timezone ?? 'UTC')
       })
-      .catch(e => setError(friendlyError(e?.message, 'Profile could not be loaded right now — please retry shortly.')))
+      .catch(e => setError(friendlyError(e, 'Profile could not be loaded right now — please retry shortly.')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -73,7 +67,7 @@ export default function ProfilePage() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (e: any) {
-      setError(friendlyError(e?.message, 'Save failed — please retry shortly.'))
+      setError(friendlyError(e, 'Save failed — please retry shortly.'))
     } finally {
       setSaving(false)
     }

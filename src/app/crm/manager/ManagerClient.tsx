@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import { proxyFetch } from "@/lib/api";
 import RunHistoryTable from "@/components/RunHistoryTable";
@@ -284,7 +285,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
       const j = r.data as TeamSettingsResp;
       if (!j?.ok || !j?.settings) {
-        setSettingsMsg(String(j?.error ?? "Failed to load manager settings"));
+        setSettingsMsg(friendlyError(j?.error, "Couldn’t load manager settings."));
         setSettingsBusy(false);
         return;
       }
@@ -377,7 +378,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
       await refresh();
     } catch (e: any) {
-      setMsg(e?.message ?? "Runner error");
+      setMsg(friendlyError(e, "Runner error"));
     } finally {
       setBusy(false);
     }
@@ -491,7 +492,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
 
       await refresh();
     } catch (e: any) {
-      setMsg(e?.message ?? "Execute error");
+      setMsg(friendlyError(e, "Execute error"));
     } finally {
       setBusy(false);
     }
@@ -538,7 +539,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
       setSettings(j.settings);
       setSettingsMsg("Manager settings saved.");
     } catch (e: any) {
-      setSettingsMsg(String(e?.message ?? "Failed to save manager settings"));
+      setSettingsMsg(friendlyError(e, "Failed to save manager settings"));
     } finally {
       setSettingsBusy(false);
     }
@@ -586,7 +587,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
         )}, failed ${Number(j.failed_count ?? 0)}.`
       );
     } catch (e: any) {
-      setBatchMsg(String(e?.message ?? "Batch assignment failed"));
+      setBatchMsg(friendlyError(e, "Batch assignment failed"));
     } finally {
       setBatchBusy(false);
     }
@@ -829,7 +830,7 @@ export default function ManagerClient({ initial }: { initial: any }) {
                   <span className="ml-2 text-neutral-400 font-normal">({apiError.status})</span>
                 ) : null}
               </div>
-              <div className="text-neutral-300 text-sm mt-1" title={apiError.error}>
+              <div className="text-neutral-300 text-sm mt-1">
                 {apiError.hint}
               </div>
             </div>

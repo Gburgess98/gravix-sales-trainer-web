@@ -188,8 +188,8 @@ export async function mockRepApi(page: Page, o: RepApiOpts = {}) {
     const url = route.request().url()
     const method = route.request().method()
     const forbidden = () => route.fulfill(json({ ok: false, error: 'forbidden_not_manager' }, 403))
-    if (/\/v1\/(team|manager|crm\/manager|assignments\/manager|admin\/config)/.test(url)) {
-      if (!url.includes('/v1/admin/config')) o.managerCalls?.push(url)
+    if (/\/v1\/(team|manager|crm\/manager|assignments\/manager|admin\/(config|partner\/health|super\/health))/.test(url)) {
+      if (!/\/v1\/admin\/(config|partner\/health|super\/health)/.test(url)) o.managerCalls?.push(url)
       return forbidden()
     }
     const uuids = (url.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []).filter((u) => u.toLowerCase() !== REP_UID)

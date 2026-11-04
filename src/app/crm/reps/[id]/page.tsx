@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -105,7 +106,7 @@ export default function RepProfilePage() {
       setOpenActions(shaped);
     } catch (e: any) {
       setOpenActions([]);
-      setOpenActionsErr(e?.message ?? "open_actions_failed");
+      setOpenActionsErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setLoadingOpenActions(false);
     }
@@ -137,7 +138,7 @@ export default function RepProfilePage() {
 
       await loadOpenActions(String(repId));
     } catch (e: any) {
-      setCreateErr(e?.message ?? "create_action_failed");
+      setCreateErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setCreatingFollowUp(false);
     }
@@ -163,7 +164,7 @@ export default function RepProfilePage() {
         if (intel?.ok) setIntelligence(intel);
       } catch {}
     } catch (e: any) {
-      setCompleteErr(e?.message ?? "action_complete_failed");
+      setCompleteErr(friendlyError(e, "Something went wrong. Try again."));
     } finally {
       setCompletingIds((m) => {
         const n = { ...m };

@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -740,7 +741,7 @@ export default function SparringSessionPage() {
       lastWhisperedBuyerTextRef.current = lastBuyerText;
     } catch (e: any) {
       console.error("[whisperer] preview failed", e);
-      setWhispererError(e?.message || "Whisperer preview failed");
+      setWhispererError(friendlyError(e, "Whisperer preview failed"));
       // keep last good suggestions instead of wiping the UI
     } finally {
       setWhispererLoading(false);
@@ -780,7 +781,7 @@ export default function SparringSessionPage() {
       } catch (e: any) {
         if (!active) return;
         console.error('Failed loading analytics', e);
-        setAnalyticsError(e?.message || 'Failed to load analytics');
+        setAnalyticsError(friendlyError(e, 'Failed to load analytics'));
       } finally {
         if (!active) return;
         setAnalyticsLoading(false);
@@ -895,7 +896,7 @@ export default function SparringSessionPage() {
         } catch (e: any) {
           console.error("[sparring/default] failed to create session", e);
           if (!alive) return;
-          setError(e?.message || "Failed to start sparring session.");
+          setError(friendlyError(e, "Failed to start sparring session."));
           setLoading(false);
         }
       })();
@@ -915,7 +916,7 @@ export default function SparringSessionPage() {
         }
 
         if (res.ok === false) {
-          setError(res.error || "Failed to load sparring session.");
+          setError(friendlyError(res.error, "Failed to load sparring session."));
           return;
         }
 
@@ -941,9 +942,7 @@ export default function SparringSessionPage() {
       .catch((err: any) => {
         console.error("Error loading sparring session:", err);
         if (!alive) return;
-        setError(
-          err?.message || "Something went wrong loading this sparring session."
-        );
+        setError(friendlyError(err, "Something went wrong loading this sparring session."));
       })
       .finally(() => {
         if (!alive) return;
@@ -1015,7 +1014,7 @@ export default function SparringSessionPage() {
         }
 
         console.error("Failed to load persona stats", e);
-        setPersonaStatsError(e?.message || "Failed to load persona stats.");
+        setPersonaStatsError(friendlyError(e, "Failed to load persona stats."));
       }
     })();
 
@@ -1203,7 +1202,7 @@ export default function SparringSessionPage() {
       }
     } catch (e: any) {
       console.error("[sparring] score click failed", e);
-      setScoreError(e?.message || "Failed to score this round.");
+      setScoreError(friendlyError(e, "Failed to score this round."));
       toast("Failed to score this round.");
     } finally {
       setScoringBusy(false);
@@ -1330,7 +1329,7 @@ export default function SparringSessionPage() {
 
       setInput("");
     } catch (e: any) {
-      setChatError(e?.message || "Failed to send message.");
+      setChatError(friendlyError(e, "Failed to send message."));
     } finally {
       setSending(false);
     }
@@ -1366,7 +1365,7 @@ export default function SparringSessionPage() {
       router.push(`/sparring/${encodeURIComponent(res.session.id)}`);
     } catch (e: any) {
       console.error("Replay session failed", e);
-      setError(e?.message || "Failed to restart this drill.");
+      setError(friendlyError(e, "Failed to restart this drill."));
     }
   }
 
@@ -1397,7 +1396,7 @@ export default function SparringSessionPage() {
       router.push(`/sparring/${encodeURIComponent(res.replay_session.id)}`);
     } catch (e: any) {
       console.error("Replay failure failed", e);
-      setReplayError(e?.message || "Failed to replay this moment.");
+      setReplayError(friendlyError(e, "Failed to replay this moment."));
     } finally {
       setReplayLoading(null);
     }

@@ -416,7 +416,7 @@ export default function RunHistoryTable({
             <div className="text-neutral-100 font-medium">
               {apiError.title} {apiError.status > 0 ? `(${apiError.status})` : ""}
             </div>
-            <div className="text-neutral-300 mt-1" title={apiError.error}>
+            <div className="text-neutral-300 mt-1">
               {apiError.hint}
             </div>
           </div>

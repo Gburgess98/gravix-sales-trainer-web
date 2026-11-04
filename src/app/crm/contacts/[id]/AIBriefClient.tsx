@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
 
 function errText(e: unknown): string {
@@ -56,7 +57,7 @@ export default function AIBriefClient({ contactId }: { contactId: string }) {
       if (!res.ok || !json?.ok) throw new Error(json?.error || `HTTP ${res.status}`);
       setBrief(json.brief || null);
     } catch (e: any) {
-      setErr(e?.message || "Failed to load AI brief");
+      setErr(friendlyError(e, "Couldn’t load the AI brief right now."));
       setBrief(null);
     } finally {
       setLoading(false);

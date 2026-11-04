@@ -1,6 +1,7 @@
 // web/src/app/calls/[id]/page.tsx
 'use client';
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -604,7 +605,7 @@ export default function CallPage() {
       await loadAssignments().catch(() => { });
       toast("Assignment saved.");
     } catch (e: any) {
-      setAssignError(e?.message || "Failed to save assignment.");
+      setAssignError(friendlyError(e, "Failed to save assignment."));
     } finally {
       setAssignSaving(false);
     }
@@ -728,7 +729,7 @@ export default function CallPage() {
           setCallMissing(true);
           setErr("Call not found or no longer available.");
         } else {
-          setErr(e?.message ?? 'Failed to load call');
+          setErr(friendlyError(e, 'Couldn’t load this call right now.'));
         }
       } finally {
         if (alive) setLoadingCall(false);
@@ -861,7 +862,7 @@ export default function CallPage() {
             // Day 23: Rep Feedback Loop — build post-action summary
             setPostAction(buildCallPostAction({ call: res.call }));
           } catch (e: any) {
-            if (!cancelled) setHistErr(e?.message || "Failed to load score history");
+            if (!cancelled) setHistErr(friendlyError(e, "Failed to load score history"));
           }
           // --- Auto-complete assignment on call review score (momentum loop)
           if (!autoCompletedRef.current && assignmentId) {
@@ -1088,7 +1089,7 @@ export default function CallPage() {
       setTimeout(() => setLinkMsg(null), 1500);
       setLinkEmail("");
     } catch (e: any) {
-      setLinkMsg(e?.message || "Failed");
+      setLinkMsg(friendlyError(e, "Failed"));
     } finally {
       setLinkLoading(false);
     }
@@ -1187,7 +1188,7 @@ export default function CallPage() {
         setIdx(0); // reset highlight to first result when results change
       } catch (e: any) {
         if (e?.name === "AbortError") return; // ignore aborted
-        setSearchErr(e?.message || "Search failed");
+        setSearchErr(friendlyError(e, "Search failed"));
       }
     }, 250);
   }
@@ -1221,7 +1222,7 @@ export default function CallPage() {
       setResults([]);
       setIdx(0);
     } catch (e: any) {
-      setSearchErr(e?.message || "Link failed");
+      setSearchErr(friendlyError(e, "Link failed"));
     } finally {
       setBusy(false);
     }
@@ -1253,7 +1254,7 @@ export default function CallPage() {
         setAccountResults(j.items || []);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
-        setSearchErr(e?.message || "Account search failed");
+        setSearchErr(friendlyError(e, "Account search failed"));
       }
     }, 250);
   }
@@ -1278,7 +1279,7 @@ export default function CallPage() {
       setAccountQ("");
       setAccountResults([]);
     } catch (e: any) {
-      setSearchErr(e?.message || "Account link failed");
+      setSearchErr(friendlyError(e, "Account link failed"));
     } finally {
       setBusy(false);
     }
@@ -2711,7 +2712,7 @@ export default function CallPage() {
                               setResults([]);
                               setIdx(0);
                             } catch (e: any) {
-                              setSearchErr(e?.message || "Create + link failed");
+                              setSearchErr(friendlyError(e, "Create + link failed"));
                             } finally {
                               setBusy(false);
                             }

@@ -59,7 +59,7 @@ test('every restricted navigation entry sits under a guard of at least its level
 test('every known manager/admin route is guarded (not just the ones in the nav)', () => {
   const managerRoutes = ['/coaching', '/team', '/intelligence', '/admin/settings', '/admin/personas', '/admin/reps', '/admin/assignments', '/admin/assignments/create', '/admin/assignments/queue', '/crm/analytics', '/crm/manager', '/crm/manager/contacts', '/crm/manager/nudges', '/crm/reps/x', '/crm/overview', '/crm/import', '/crm/contacts/import']
   const partnerRoutes = ['/admin/users', '/admin/users/x', '/admin/companies', '/admin/companies/x']
-  const superRoutes = ['/admin/partners', '/admin/score', '/admin/status']
+  const superRoutes = ['/admin/partners', '/admin/score', '/admin/status', '/health']
   for (const r of managerRoutes) assert.ok(ok(guardLevel(r), 'manager'), `${r} is not guarded`)
   for (const r of partnerRoutes) assert.ok(ok(guardLevel(r), 'partner'), `${r} needs a partner guard`)
   for (const r of superRoutes) assert.ok(ok(guardLevel(r), 'super'), `${r} needs a super guard`)

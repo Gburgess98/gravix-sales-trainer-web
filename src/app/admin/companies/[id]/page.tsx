@@ -1,5 +1,6 @@
 'use client'
 
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -57,7 +58,7 @@ export default function CompanyEditorPage() {
         setAddress(c.address ?? '')
         setActive(c.active ?? true)
       })
-      .catch(e => setError(e.message))
+      .catch(e => setError(friendlyError(e, "Couldn’t load this company.")))
       .finally(() => setLoading(false))
   }, [id])
 
@@ -78,7 +79,7 @@ export default function CompanyEditorPage() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (e: any) {
-      setError(e?.message || 'Save failed')
+      setError(friendlyError(e, 'Save failed'))
     } finally {
       setSaving(false)
     }

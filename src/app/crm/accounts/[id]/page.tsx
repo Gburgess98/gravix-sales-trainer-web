@@ -1,4 +1,5 @@
 'use client';
+import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -579,7 +580,7 @@ export default function AccountPage() {
         });
       } catch (e: any) {
         if (!alive) return;
-        setError(e?.message || 'load_failed');
+        setError(friendlyError(e, 'Something went wrong. Try again.'));
       } finally {
         if (alive) setLoading(false);
       }
