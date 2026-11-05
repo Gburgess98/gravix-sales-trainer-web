@@ -54,18 +54,18 @@ grep -q "'Manager queue'" "$ACCOUNTS" 2>/dev/null
 check "/crm/accounts shows readable 'Manager queue' fallback" $?
 
 # --- /upload: PageHeader adopted, two-column layout preserved ---
-grep -q "PageHeader" "$UPLOAD" 2>/dev/null
-check "/upload uses PageHeader" $?
+grep -q "PageHead" "$UPLOAD" 2>/dev/null
+check "/upload uses the design-system PageHead (upload redesign)" $?
 
-grep -q "max-w-5xl" "$UPLOAD" 2>/dev/null
-check "/upload keeps max-w-5xl wrapper (two-column layout preserved)" $?
+grep -q "<PageShell narrow>" "$UPLOAD" 2>/dev/null
+check "/upload uses the narrow single-column PageShell (upload redesign)" $?
 
-grep -q "lg:grid-cols-3" "$UPLOAD" 2>/dev/null
-check "/upload keeps two-column form/guidance grid" $?
+grep -q "Client account" "$UPLOAD" 2>/dev/null
+check "/upload keeps the optional client account link" $?
 
 # Upload primary CTA still calm indigo.
-grep -q "bg-indigo-500" "$UPLOAD" 2>/dev/null
-check "/upload primary CTA still calm indigo" $?
+grep -q "dsButton(\"primary\"" "$UPLOAD" 2>/dev/null
+check "/upload primary CTA uses the canonical primary button" $?
 
 # --- Preserved behaviour on /upload ---
 grep -q "Create new client" "$UPLOAD" 2>/dev/null
@@ -74,14 +74,14 @@ check "/upload preserves Create new client link" $?
 grep -q "signedInitUpload\|finalizeSignedUpload" "$UPLOAD" 2>/dev/null
 check "/upload preserves signed-upload flow" $?
 
-grep -q "onSelectRep" "$UPLOAD" 2>/dev/null
-check "/upload preserves rep picker" $?
+grep -q "The call will belong to you, the signed-in uploader" "$UPLOAD" 2>/dev/null
+check "/upload states the uploader owns the call (no rep selector: the finalise contract ignores it)" $?
 
 grep -q "listUploadAccounts" "$UPLOAD" 2>/dev/null
 check "/upload preserves account picker" $?
 
-grep -q "CALL_TYPES" "$UPLOAD" 2>/dev/null
-check "/upload preserves call type" $?
+! grep -q "profileLabel" "$UPLOAD" 2>/dev/null
+check "/upload sends no non-functional rep/label fields" $?
 
 grep -q "Open Review Queue" "$UPLOAD" 2>/dev/null
 check "/upload preserves post-upload actions" $?

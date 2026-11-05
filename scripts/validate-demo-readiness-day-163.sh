@@ -21,18 +21,18 @@ check() {
 
 echo "Demo Readiness Day 163 — own checks only (use validate-tier-2b-smoke for current smoke)"
 
-# ── /upload compact, structured flow ──
-grep -q "Upload a sales call" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Upload a sales call\"" $?
+# ── /upload structured flow (pins updated for the upload redesign; behaviour pins unchanged) ──
+grep -q "Upload a call" "$UPLOAD" 2>/dev/null
+check "/upload includes \"Upload a call\" (upload redesign)" $?
 
-grep -q "Link the recording to the right client, rep and review queue" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Link the recording to the right client, rep and review queue\"" $?
+grep -q "transcribes and scores it, then it appears in Calls" "$UPLOAD" 2>/dev/null
+check "/upload includes the redesigned subtitle" $?
 
-grep -q "Call ownership" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Call ownership\"" $?
+grep -q "Who owns this call" "$UPLOAD" 2>/dev/null
+check "/upload states who owns the call (the signed-in uploader)" $?
 
-grep -q "Call context" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Call context\"" $?
+grep -q "Who can see this call" "$UPLOAD" 2>/dev/null
+check "/upload states who can see the call" $?
 
 grep -q "Recording" "$UPLOAD" 2>/dev/null
 check "/upload includes \"Recording\"" $?
@@ -43,11 +43,11 @@ check "/upload includes \"Create new client\"" $?
 grep -q "Client not listed" "$UPLOAD" 2>/dev/null
 check "/upload includes \"Client not listed\"" $?
 
-grep -q "Upload and send to review queue" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Upload and send to review queue\"" $?
+grep -q ">Upload call<" "$UPLOAD" 2>/dev/null
+check "/upload includes the \"Upload call\" primary action" $?
 
-grep -q "Back to Command Centre" "$UPLOAD" 2>/dev/null
-check "/upload includes \"Back to Command Centre\"" $?
+grep -q "Back to Calls" "$UPLOAD" 2>/dev/null
+check "/upload includes \"Back to Calls\"" $?
 
 grep -q "Call uploaded\." "$UPLOAD" 2>/dev/null
 check "/upload includes \"Call uploaded.\"" $?

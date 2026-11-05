@@ -1,559 +1,673 @@
 "use client";
 
-import { friendlyError } from '@/lib/friendly-error';
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/layout/page-header";
+import { useRouter } from "next/navigation";
+import { clsx } from "clsx";
+import { PageShell, PageHead, Panel, dsButton, dsField } from "@/components/ds";
 import {
   signedInitUpload,
   finalizeSignedUpload,
   getJobStatus,
   getCallStatus,
-  listTeamUsers,
   listUploadAccounts,
-  type UploadRepOption,
+  proxyFetch,
   type UploadAccountOption,
 } from "@/lib/api";
+import {
+  ACCEPTED_TYPES_LABEL,
+  FILE_INPUT_ACCEPT,
+  MAX_SIZE_LABEL,
+  PENDING_KEY,
+  RUN_STAGES,
+  callIdFromPath,
+  describeFailure,
+  formatBytes,
+  missingForUpload,
+  parsePending,
+  serializePending,
+  stageAnnouncement,
+  stageStatus,
+  validateRecording,
+  type Failure,
+  type RunStage,
+} from "@/lib/upload-model";
 
-const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB client-side guardrail
+type View = "form" | "running" | "done" | "failed";
+type Outcome = "scored" | "processed" | "pending";
 
-const CALL_TYPES = ["Discovery", "Objection", "Closing", "Follow-up", "Other"] as const;
+/** Everything that must survive a retry without creating a second call. */
+type Session = {
+  init: { path: string; url: string } | null;
+  uploaded: boolean;
+  finalizeTried: boolean;
+  finalized: { callId: string; jobId: string | null } | null;
+  filename: string;
+};
+const freshSession = (): Session => ({ init: null, uploaded: false, finalizeTried: false, finalized: null, filename: "" });
 
-function formatMB(n: number) {
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function uploadWithProgress(url: string, file: File, contentType: string, onProgress?: (p: number) => void) {
-  return new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+function putFile(url: string, file: File, contentType: string, onProgress: (pct: number) => void) {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<void>((resolve, reject) => {
     xhr.open("PUT", url, true);
     xhr.setRequestHeader("Content-Type", contentType || "application/octet-stream");
     xhr.upload.onprogress = (evt) => {
       if (!evt.lengthComputable) return;
-      const pct = Math.min(100, Math.max(0, Math.round((evt.loaded / evt.total) * 100)));
-      onProgress?.(pct);
+      onProgress(Math.min(100, Math.max(0, Math.round((evt.loaded / evt.total) * 100))));
     };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      reject(new Error(`Upload failed with HTTP ${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`storage ${xhr.status}`)));
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.onabort = () => reject(new Error("cancelled"));
     xhr.send(file);
   });
+  return { done, abort: () => xhr.abort() };
 }
 
 export default function UploadPage() {
+  // ── form ──
   const [file, setFile] = useState<File | null>(null);
-  const [profileLabel, setProfileLabel] = useState("");
-  const [companyText, setCompanyText] = useState(""); // free-text account/company when no CRM accounts exist
-  const [companyTag, setCompanyTag] = useState(""); // tag / campaign label
-  const [callType, setCallType] = useState("");
-
-  // Day 162 — structured linking (fail-soft; free text still works if these are empty).
-  const [reps, setReps] = useState<UploadRepOption[]>([]);
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [accounts, setAccounts] = useState<UploadAccountOption[]>([]);
-  const [repId, setRepId] = useState("");
   const [accountId, setAccountId] = useState("");
 
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
-  const [progress, setProgress] = useState<number>(0);
-  const [lastFile, setLastFile] = useState<File | null>(null);
-  const [uploadStage, setUploadStage] = useState<"idle" | "init" | "put" | "finalize" | "processing" | "done" | "error">("idle");
-  const [lastErrorStage, setLastErrorStage] = useState<null | "init" | "put" | "finalize" | "processing">(null);
-  const [jobStatus, setJobStatus] = useState<string | null>(null);
-  const [processingReason, setProcessingReason] = useState<string | null>(null);
-  const [reviewReady, setReviewReady] = useState(false);
+  // ── run ──
+  const [view, setView] = useState<View>("form");
+  const [stage, setStage] = useState<RunStage>("preparing");
+  const [progress, setProgress] = useState(0);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [failedAt, setFailedAt] = useState<RunStage | null>(null);
+  const [outcome, setOutcome] = useState<Outcome>("pending");
+  const [announce, setAnnounce] = useState("");
+  const [isManager, setIsManager] = useState(false);
+  const [resumed, setResumed] = useState(false);
+
+  const session = useRef<Session>(freshSession());
+  const aborter = useRef<(() => void) | null>(null);
+  const cancelled = useRef(false);
+  const alive = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const resumeChecked = useRef(false);
+
+  const missing = missingForUpload({ hasFile: !!file });
+  const canUpload = view === "form" && !!file && !fileProblem && missing.length === 0;
+  const activeUpload = view === "running" && stage !== "processing";
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      aborter.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [r, a] = await Promise.all([listTeamUsers(), listUploadAccounts()]);
+      const a = await listUploadAccounts();
       if (!active) return;
-      setReps(r);
       setAccounts(a);
     })();
     return () => { active = false; };
   }, []);
 
-  const cleanProfileLabel = useMemo(() => profileLabel.trim(), [profileLabel]);
-  // Single free-text label for grouping/logging: combine the free-text company
-  // (used only when no CRM accounts exist) with the tag/campaign label.
-  const combinedCompanyTag = useMemo(
-    () => [companyText.trim(), companyTag.trim()].filter(Boolean).join(" · "),
-    [companyText, companyTag]
-  );
-  const fileTooLarge = !!file && file.size > MAX_FILE_BYTES;
-  const canUpload = !!file && !busy && !fileTooLarge && cleanProfileLabel.length > 0;
+  // Move focus to the new heading when the view changes, so keyboard and screen-reader users land on the result.
+  useEffect(() => {
+    if (view !== "form") headingRef.current?.focus();
+  }, [view]);
 
-  function onSelectRep(id: string) {
-    setRepId(id);
-    const rep = reps.find((x) => x.id === id);
-    if (rep) setProfileLabel(rep.name);
-  }
+  // Leave guard while the recording is still travelling (nothing is saved until finalising completes). Covers tab close and
+  // reload (beforeunload), in-app links, and browser Back. Back cannot be intercepted without a history entry, so ONE
+  // sentinel entry is pushed when the transfer starts and removed again when it stops being active: history depth is the
+  // same before and after, Staying re-arms exactly one entry (no growth, no loop), and once processing is resumable the
+  // guard is gone so Back leaves normally (a refresh resumes the call).
+  const router = useRouter();
+  const guardArmed = useRef(false);
+  const ignorePop = useRef(false);
+  const popWaiter = useRef<(() => void) | null>(null);
+  const leaving = useRef(false);
 
-  function friendlyUploadError(stage: "init" | "put" | "finalize" | "processing", err: any) {
-    const raw = String(err?.message || "Unknown upload error");
-    if (stage === "init") return `Could not start upload: ${raw}`;
-    if (stage === "put") return `File upload to storage failed: ${raw}`;
-    if (stage === "finalize") return `Upload finished but call creation failed: ${raw}`;
-    return `Upload completed but processing failed: ${raw}`;
-  }
+  const armGuard = useCallback(() => {
+    if (guardArmed.current) return;
+    // Keep Next's own history state so its popstate handler restores this page instead of reloading.
+    window.history.pushState({ ...(window.history.state ?? {}), gravixUploadGuard: true }, "", window.location.href);
+    guardArmed.current = true;
+  }, []);
 
-  async function waitForJob(jobId: string, maxMs = 20000) {
-    const started = Date.now();
-    while (Date.now() - started < maxMs) {
-      // Day 164 — poll through the authenticated proxy helper so job polling
-      // carries the same user context as init/finalize (a raw fetch had no
-      // auth headers, so the proxy returned missing_user).
-      const j: any = await getJobStatus(jobId);
-      const status = String(j?.status || j?.job?.status || "");
-      setJobStatus(status);
-      if (status === "succeeded") return j.job ?? j;
-      if (status === "failed") {
-        throw new Error(String(j?.job?.error || j?.error || "processing_failed"));
+  /** Remove the sentinel entry (silently) and resolve once the browser has popped it. */
+  const disarmGuard = useCallback(() => {
+    if (!guardArmed.current) return Promise.resolve();
+    guardArmed.current = false;
+    return new Promise<void>((resolve) => {
+      ignorePop.current = true;
+      popWaiter.current = resolve;
+      window.history.back();
+      setTimeout(() => { if (popWaiter.current === resolve) { ignorePop.current = false; popWaiter.current = null; resolve(); } }, 1000);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeUpload) return;
+    leaving.current = false;
+    armGuard();
+    const MESSAGE = "Your upload is still in progress. If you leave now it will be cancelled.";
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (a.origin !== window.location.origin) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!window.confirm(MESSAGE)) return;
+      leaving.current = true;
+      // Drop the sentinel first so the destination does not stack a duplicate entry for this page.
+      void disarmGuard().then(() => router.push(`${a.pathname}${a.search}${a.hash}`));
+    };
+    const onPopState = () => {
+      if (ignorePop.current) {
+        ignorePop.current = false;
+        popWaiter.current?.();
+        popWaiter.current = null;
+        return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-    }
-    return null;
-  }
-
-  // Day 165 — after transcription the call is "processed"; scoring runs next and
-  // only when the call reaches "scored" does it enter the manager Review Queue.
-  // Poll the call status so we can honestly say "ready for review" vs "processing".
-  async function waitForScored(callId: string, maxMs = 20000) {
-    const started = Date.now();
-    while (Date.now() - started < maxMs) {
-      try {
-        const { status } = await getCallStatus(callId);
-        if (status) setJobStatus(status);
-        if (status === "scored") return true;
-        if (status === "failed" || status === "error") return false;
-      } catch {
-        // transient — the row may still be settling; keep polling
+      if (!guardArmed.current) return;
+      guardArmed.current = false; // Back consumed the sentinel; we are on this page's real entry now
+      if (window.confirm(MESSAGE)) {
+        leaving.current = true;
+        window.removeEventListener("beforeunload", onBeforeUnload); // already confirmed: no second, browser-level prompt
+        window.history.back(); // one more step: to the page before this one
+      } else {
+        armGuard(); // stay: re-arm exactly one entry
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-    return false;
-  }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("popstate", onPopState);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onClick, true);
+      // Transfer ended (finalised, failed, cancelled): remove the sentinel. Not on unmount — the user is already leaving.
+      if (alive.current && !leaving.current) void disarmGuard();
+    };
+  }, [activeUpload, armGuard, disarmGuard, router]);
 
-  async function doUpload(f: File) {
-    setBusy(true);
-    setMsg(null);
-    setResult(null);
-    setProgress(0);
-    setJobStatus(null);
-    setLastErrorStage(null);
-    setProcessingReason(null);
-    setReviewReady(false);
-    setUploadStage("init");
-
-    try {
-      const meta = {
-        filename: f.name,
-        mime: f.type || "application/octet-stream",
-        size: f.size,
-        profileLabel: cleanProfileLabel,
-        companyTag: combinedCompanyTag || null,
-      };
-
-      // 1) Ask API for a signed PUT URL and target path
-      setUploadStage("init");
-      const init = await signedInitUpload(meta);
-
-      // 2) Upload file to storage (presigned URL) with progress
-      setUploadStage("put");
-      await uploadWithProgress(init.url, f, meta.mime, setProgress);
-
-      // 3) Finalize so API creates DB row and enqueues jobs
-      setUploadStage("finalize");
-      const fin = await finalizeSignedUpload({
-        path: init.path,
-        filename: meta.filename,
-        mime: meta.mime,
-        size: meta.size,
-        profileLabel: meta.profileLabel,
-        companyTag: meta.companyTag,
-        accountId: accountId || null,
-        callType: callType || null,
-      });
-
-      setResult(fin);
-      setProgress(100);
-
-      // 4) Wait briefly for processing so the user knows what is happening
-      if (fin?.jobId) {
-        try {
-          setUploadStage("processing");
-          setMsg("Upload complete. Processing call…");
-          await waitForJob(fin.jobId, 20000);
-        } catch (e: any) {
-          setLastErrorStage("processing");
-          setUploadStage("error");
-          setProcessingReason(friendlyError(e, "Something went wrong. Try again."));
-          setMsg(null);
-          return;
-        }
-      }
-
-      setUploadStage("done");
-      setMsg(null);
-
-      // Processing continues (scoring) after the transcribe job — poll the call
-      // so the success screen can flip to "ready for review" once it is scored.
-      if (fin?.callId) {
-        const scored = await waitForScored(fin.callId, 20000);
-        setReviewReady(scored);
-      }
-    } catch (e: any) {
-      const stage =
-        uploadStage === "put"
-          ? "put"
-          : uploadStage === "finalize"
-            ? "finalize"
-            : "init";
-      setLastErrorStage(stage);
-      setUploadStage("error");
-      setMsg(friendlyUploadError(stage, e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) return;
-    if (!cleanProfileLabel) {
-      setMsg("Please choose or type a rep before uploading.");
+  // ── file selection ──
+  function acceptFile(f: File | null | undefined) {
+    if (!f) return;
+    const problem = validateRecording(f);
+    if (problem) {
+      setFileProblem(problem.message); // an invalid pick never replaces a valid selection
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setMsg(`File too large: ${formatMB(file.size)} (max 100MB)`);
-      return;
-    }
-    setLastFile(file);
-    await doUpload(file);
+    setFileProblem(null);
+    setFile(f);
+    session.current = freshSession(); // a different file is a different upload
   }
 
-  function resetForAnother() {
+  function removeFile() {
     setFile(null);
-    setLastFile(null);
-    setResult(null);
-    setMsg(null);
-    setProgress(0);
-    setUploadStage("idle");
-    setJobStatus(null);
-    setProcessingReason(null);
-    setReviewReady(false);
+    setFileProblem(null);
+    session.current = freshSession();
+    if (inputRef.current) inputRef.current.value = "";
   }
 
-  const fieldClass = "w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600";
+  // ── pipeline ──
+  const go = useCallback((s: RunStage, pct = 0) => {
+    setStage(s);
+    setAnnounce(stageAnnouncement(s, pct));
+  }, []);
+
+  function persistPending(callId: string, jobId: string | null, filename: string) {
+    try {
+      window.sessionStorage.setItem(PENDING_KEY, serializePending({ callId, jobId, filename, at: Date.now() }));
+    } catch { /* storage unavailable — resume is a convenience only */ }
+  }
+  function clearPending() {
+    try { window.sessionStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+  }
+
+  /** Poll the transcribe job, then the call, for a bounded window. Throws only on a real processing failure. */
+  async function pollProcessing(callId: string, jobId: string | null, maxMs = 30000): Promise<Outcome> {
+    const started = Date.now();
+    let jobDone = !jobId;
+    let blips = 0;
+    while (alive.current && Date.now() - started < maxMs) {
+      try {
+        if (!jobDone && jobId) {
+          const j = await getJobStatus(jobId);
+          const status = String(j?.status || j?.job?.status || "");
+          if (status === "succeeded") jobDone = true;
+          else if (status === "failed") throw new Error("processing_failed");
+        } else {
+          const { status } = await getCallStatus(callId);
+          if (status === "scored") return "scored";
+          if (status === "failed" || status === "error") throw new Error("processing_failed");
+        }
+        blips = 0;
+      } catch (e) {
+        if (String((e as Error)?.message) === "processing_failed") throw e;
+        if (++blips >= 3) throw e; // a few transient errors are tolerated; a persistent one is real
+      }
+      await sleep(1500);
+    }
+    return jobDone ? "processed" : "pending";
+  }
+
+  async function settle() {
+    const fin = session.current.finalized;
+    if (!fin) return;
+    go("processing");
+    setView("running");
+    try {
+      const result = await pollProcessing(fin.callId, fin.jobId);
+      if (!alive.current) return;
+      if (result === "pending") {
+        setOutcome("pending");
+        setAnnounce("Call uploaded. Processing has started and is still running.");
+      } else {
+        clearPending();
+        setOutcome(result);
+        setAnnounce(result === "scored" ? "Call ready for review." : "Call uploaded. Scoring is still running.");
+      }
+      void probeManager();
+      setView("done");
+    } catch (e) {
+      if (!alive.current) return;
+      clearPending();
+      fail("processing", e);
+    }
+  }
+
+  function fail(at: RunStage, e: unknown) {
+    const f = describeFailure(at, e);
+    setFailure(f);
+    setFailedAt(at);
+    setAnnounce(`${f.title}. ${f.detail}`);
+    setView("failed");
+  }
+
+  async function probeManager() {
+    try {
+      const res = await proxyFetch("/v1/admin/config", { cache: "no-store" });
+      if (alive.current) setIsManager(res.ok);
+    } catch { /* fail closed: no manager-only link */ }
+  }
+
+  async function run() {
+    const f = file;
+    if (!f) return;
+    const s = session.current;
+    cancelled.current = false;
+    setFailure(null);
+    setFailedAt(null);
+    setView("running");
+    let at: RunStage = "preparing";
+    try {
+      if (!s.finalized) {
+        const mime = f.type || "application/octet-stream";
+        s.filename = f.name;
+
+        if (!s.uploaded) {
+          at = "preparing";
+          go(at);
+          setProgress(0);
+          s.init = await signedInitUpload({ filename: f.name, mime, size: f.size });
+          if (cancelled.current) return;
+
+          at = "uploading";
+          go(at, 0);
+          let lastQuarter = 0;
+          const up = putFile(s.init.url, f, mime, (pct) => {
+            setProgress(pct);
+            const q = Math.floor(pct / 25);
+            if (q > lastQuarter) { lastQuarter = q; setAnnounce(stageAnnouncement("uploading", pct)); }
+          });
+          aborter.current = up.abort;
+          await up.done;
+          aborter.current = null;
+          s.uploaded = true;
+          setProgress(100);
+        }
+
+        at = "finalising";
+        go(at);
+        const init = s.init!;
+        // Duplicate guard: if an earlier finalise reached the server (the response was lost), the call already exists
+        // under the id derived from the storage path — adopt it instead of creating a second one.
+        if (s.finalizeTried) {
+          try {
+            const existing = await getCallStatus(callIdFromPath(init.path));
+            if (existing.status) s.finalized = { callId: callIdFromPath(init.path), jobId: null };
+          } catch { /* not found — safe to finalise */ }
+        }
+        if (!s.finalized) {
+          s.finalizeTried = true;
+          const fin = await finalizeSignedUpload({
+            path: init.path,
+            filename: f.name,
+            mime,
+            size: f.size,
+            accountId: accountId || null,
+          });
+          s.finalized = { callId: fin.callId, jobId: fin.jobId ?? null };
+        }
+        persistPending(s.finalized.callId, s.finalized.jobId, f.name);
+      }
+      await settle();
+    } catch (e) {
+      aborter.current = null;
+      if (!alive.current) return;
+      if (cancelled.current || String((e as Error)?.message) === "cancelled") {
+        s.init = null; // a cancelled transfer is discarded; nothing was saved
+        s.uploaded = false;
+        setView("form");
+        setAnnounce("Upload cancelled. Nothing was saved.");
+        return;
+      }
+      fail(at, e);
+    }
+  }
+
+  function cancelUpload() {
+    cancelled.current = true;
+    aborter.current?.();
+  }
+
+  function retry() {
+    if (failedAt === "processing") void settle();
+    else void run();
+  }
+
+  function startNew() {
+    clearPending();
+    session.current = freshSession();
+    setFile(null);
+    setFileProblem(null);
+    setProgress(0);
+    setFailure(null);
+    setFailedAt(null);
+    setResumed(false);
+    setView("form");
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function backToForm() {
+    // Keep the chosen file and answers; discard any unfinished transfer (nothing is saved until finalising completes).
+    if (!session.current.finalized) session.current = freshSession();
+    setFailure(null);
+    setFailedAt(null);
+    setView("form");
+  }
+
+  // Refresh or return during processing: pick the call up where it was.
+  useEffect(() => {
+    if (resumeChecked.current) return;
+    resumeChecked.current = true;
+    let raw: string | null = null;
+    try { raw = window.sessionStorage.getItem(PENDING_KEY); } catch { /* ignore */ }
+    const p = parsePending(raw);
+    if (!p) { if (raw) clearPending(); return; }
+    session.current = { ...freshSession(), uploaded: true, finalizeTried: true, finalized: { callId: p.callId, jobId: p.jobId }, filename: p.filename };
+    setResumed(true);
+    void settle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── render ──
+  const savedName = session.current.filename || file?.name || "your recording";
+  const finalizedCallId = session.current.finalized?.callId ?? null;
+  const currentForList: RunStage | "completed" | "failed" = view === "failed" ? "failed" : view === "done" && outcome !== "pending" ? "completed" : stage;
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6 space-y-4">
-      {/* Header — shared PageHeader for shell consistency; the max-w-5xl wrapper
-          keeps the two-column form/guidance layout centred. */}
-      <PageHeader
-        glass
-        title="Upload a sales call"
-        subtitle="Link the recording to the right client, rep and review queue."
+    <PageShell narrow>
+      <PageHead
+        title="Upload a call"
+        subtitle="Add a recording. Gravix transcribes and scores it, then it appears in Calls."
+        actions={<Link href="/call-library?tab=upload" className={dsButton("quiet", "md")}>Upload history</Link>}
       />
 
-      {/* Two-column on desktop: form on the left, calm guidance on the right so the
-          page uses the available width instead of floating in the centre. */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Left column — form / success */}
-        <div className="min-w-0 lg:col-span-2">
-      {/* Success state */}
-      {uploadStage === "done" && result?.ok ? (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-3">
-          <div>
-            {reviewReady ? (
-              <>
-                <h2 className="text-base font-semibold text-emerald-200">Call ready for review.</h2>
-                <p className="mt-0.5 text-sm text-neutral-300">
-                  Scoring finished — open the Review Queue to score, spot weak skills and assign coaching.
+      {/* One polite announcer for the whole workflow; failures also use role="alert" in their own view. */}
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announce}</div>
+
+      {view === "form" && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); if (canUpload) void run(); }}
+          aria-label="Upload a call"
+          noValidate
+        >
+          <Panel className="divide-y divide-[var(--ds-border)]">
+            {/* 1 — recording */}
+            <section className="space-y-3 p-5 sm:p-6" aria-labelledby="up-file-h">
+              <div>
+                <h2 id="up-file-h" className="text-base font-semibold text-[var(--ds-text)]">Recording</h2>
+                <p id="up-file-help" className="mt-0.5 text-sm text-[var(--ds-text-3)]">
+                  {ACCEPTED_TYPES_LABEL}. Up to {MAX_SIZE_LABEL} per file.
                 </p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-base font-semibold text-emerald-200">Call uploaded. Processing has started.</h2>
-                <p className="mt-0.5 text-sm text-neutral-300">
-                  It will appear in the Review Queue once scoring finishes. This can take a few minutes{jobStatus ? ` — currently ${jobStatus}` : ""}.
-                </p>
-              </>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/coaching?tab=review"
-              className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
-            >
-              Open Review Queue
-            </Link>
-            <Link
-              href="/coaching"
-              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-            >
-              Open Manager Command Centre
-            </Link>
-            {result.callId && (
-              <Link
-                href={`/calls/${result.callId}`}
-                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-              >
-                View call
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={resetForAnother}
-              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-            >
-              Upload another
-            </button>
-          </div>
-        </div>
-      ) : (
-        <form onSubmit={onSubmit} className="space-y-4">
-          {/* Single compact card holds all three groups so the form fits without zooming out. */}
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-5">
-            {/* Group — call ownership */}
-            <div className="space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Call ownership</div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* Account / Company */}
-                <label className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-neutral-200">Account / Company</span>
-                    <Link
-                      href="/crm/accounts"
-                      target="_blank"
-                      className="text-[11px] font-medium text-indigo-300 hover:text-indigo-200"
-                    >
-                      Create new client
-                    </Link>
+              </div>
+
+              <input
+                ref={inputRef}
+                type="file"
+                hidden
+                accept={FILE_INPUT_ACCEPT}
+                data-testid="upload-input"
+                onChange={(e) => { acceptFile(e.target.files?.[0]); e.target.value = ""; }}
+              />
+
+              {file ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-white/[0.03] px-4 py-3" data-testid="upload-selected">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[var(--ds-text)]" title={file.name}>{file.name}</p>
+                    <p className="text-xs text-[var(--ds-text-3)]">{formatBytes(file.size)}</p>
                   </div>
-                  {accounts.length > 0 && (
-                    <select
-                      value={accountId}
-                      onChange={(e) => setAccountId(e.target.value)}
-                      className={fieldClass}
-                    >
-                      <option value="">Select an account…</option>
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {(accounts.length === 0 || !accountId) && (
-                    <input
-                      type="text"
-                      value={companyText}
-                      onChange={(e) => setCompanyText(e.target.value)}
-                      placeholder="e.g. Nike, Barclays, Demo Batch 1"
-                      className={fieldClass}
-                    />
-                  )}
-                  <div className="text-[11px] text-neutral-500">Client not listed? Add a temporary label{accounts.length > 0 ? " below" : ""}.</div>
-                </label>
-
-                {/* Rep */}
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-neutral-200">Rep <span className="text-red-300">*</span></span>
-                  {reps.length > 0 && (
-                    <select
-                      value={repId}
-                      onChange={(e) => onSelectRep(e.target.value)}
-                      className={fieldClass}
-                    >
-                      <option value="">Choose a rep…</option>
-                      {reps.map((r) => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  <input
-                    type="text"
-                    value={profileLabel}
-                    onChange={(e) => setProfileLabel(e.target.value)}
-                    placeholder="Rep or client name"
-                    className={fieldClass}
-                  />
-                  <div className="text-[11px] text-neutral-500">Free text still works for quick demos.</div>
-                </label>
-              </div>
-            </div>
-
-            {/* Group — call context */}
-            <div className="space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Call context</div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-neutral-200">Call type</span>
-                  <select
-                    value={callType}
-                    onChange={(e) => setCallType(e.target.value)}
-                    className={fieldClass}
-                  >
-                    <option value="">Optional</option>
-                    {CALL_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-neutral-200">Tag / Campaign</span>
-                  <input
-                    type="text"
-                    value={companyTag}
-                    onChange={(e) => setCompanyTag(e.target.value)}
-                    placeholder="e.g. Q3 outbound"
-                    className={fieldClass}
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* Group — recording */}
-            <div className="space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Recording</div>
-              <div
-                className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 px-4 py-3 text-sm"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) { setFile(f); setLastFile(f); }
-                }}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="file"
-                    aria-label="Call recording file"
-                    accept="audio/*,.wav,.mp3,.m4a,.webm,.json"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null;
-                      setFile(f);
-                      if (f) setLastFile(f);
-                    }}
-                    className="block text-sm"
-                  />
-                  <span className="text-[11px] text-neutral-600">or drag &amp; drop · audio or JSON · max 100MB</span>
+                  <div className="flex gap-2">
+                    <button type="button" className={dsButton("secondary", "sm")} onClick={() => inputRef.current?.click()} aria-label={`Replace ${file.name}`}>Replace</button>
+                    <button type="button" className={dsButton("quiet", "sm")} onClick={removeFile} aria-label={`Remove ${file.name}`}>Remove</button>
+                  </div>
                 </div>
-                {file && (
-                  <div className="mt-1.5 text-xs text-neutral-400">
-                    Selected: <span className="font-mono">{file.name}</span> ({formatMB(file.size)})
-                    {fileTooLarge && <span className="ml-2 text-red-300">(too large, max 100MB)</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+              ) : (
+                <div
+                  data-testid="upload-dropzone"
+                  onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
+                  onDrop={(e) => { e.preventDefault(); setDragging(false); acceptFile(e.dataTransfer.files?.[0]); }}
+                  className={clsx(
+                    "flex flex-col items-center gap-3 rounded-[var(--ds-radius-card)] border border-dashed px-5 py-10 text-center transition-colors motion-reduce:transition-none",
+                    dragging ? "border-[var(--ds-highlight)] bg-white/[0.07]" : "border-[var(--ds-border-strong)] bg-white/[0.02]",
+                  )}
+                >
+                  <p className="text-sm text-[var(--ds-text-2)]">{dragging ? "Drop to select this file" : "Drag a recording here"}</p>
+                  <button
+                    type="button"
+                    className={dsButton("secondary", "md")}
+                    onClick={() => inputRef.current?.click()}
+                    aria-describedby={clsx("up-file-help", fileProblem && "up-file-error")}
+                  >
+                    Choose a file
+                  </button>
+                </div>
+              )}
 
-          {/* Progress */}
-          {busy && (
-            <div className="space-y-1">
-              <div className="w-full h-2 bg-neutral-800 rounded overflow-hidden">
-                <div className="h-2 bg-indigo-400 transition-all" style={{ width: `${progress}%` }} />
-              </div>
-              <div className="text-xs text-neutral-400">
-                {uploadStage === "init" && "Starting upload…"}
-                {uploadStage === "put" && "Uploading file to storage…"}
-                {uploadStage === "finalize" && "Creating call record…"}
-                {uploadStage === "processing" && `Processing call${jobStatus ? ` (${jobStatus})` : "…"}`}
-              </div>
-            </div>
-          )}
+              {fileProblem && (
+                <p id="up-file-error" role="alert" className="text-sm text-red-200" data-testid="upload-file-error">{fileProblem}</p>
+              )}
+            </section>
 
-          {/* Actions */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={!canUpload}
-              className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400 disabled:opacity-50"
-            >
-              {busy ? "Uploading…" : "Upload and send to review queue"}
-            </button>
-            <Link
-              href="/coaching"
-              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-            >
-              Back to Command Centre
-            </Link>
-            {lastFile && !busy && lastErrorStage && cleanProfileLabel && (
-              <button
-                type="button"
-                onClick={() => doUpload(lastFile)}
-                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-              >
-                Retry {lastErrorStage}
-              </button>
+            {/* 2 — optional client account (the one optional field the API honours: it is stored as the call's account) */}
+            {accounts.length > 0 && (
+              <section className="space-y-2 p-5 sm:p-6" aria-labelledby="up-acct-h">
+                <h2 id="up-acct-h" className="text-base font-semibold text-[var(--ds-text)]">Client account <span className="text-sm font-normal text-[var(--ds-text-3)]">(optional)</span></h2>
+                <label htmlFor="up-account" className="sr-only">Link this call to a client account</label>
+                <select id="up-account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={dsField}>
+                  <option value="">No account</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <p className="text-xs text-[var(--ds-text-3)]">
+                  Client not listed?{" "}
+                  <Link href="/crm/accounts" target="_blank" rel="noopener" className="text-[var(--ds-highlight)] underline-offset-2 hover:underline">Create new client</Link>
+                  {" "}(opens in a new tab).
+                </p>
+              </section>
             )}
-          </div>
 
-          {!cleanProfileLabel && (
-            <div className="text-xs text-amber-300">Choose or type a rep before uploading.</div>
-          )}
+            {/* 3 — ownership and visibility (separate ideas), then submit */}
+            <section className="space-y-4 p-5 sm:p-6" aria-labelledby="up-vis-h">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--ds-text)]">Who owns this call</h2>
+                <p className="mt-1 text-sm text-[var(--ds-text-2)]" data-testid="upload-ownership">The call will belong to you, the signed-in uploader.</p>
+              </div>
+              <div>
+                <h2 id="up-vis-h" className="text-base font-semibold text-[var(--ds-text)]">Who can see this call</h2>
+                <p className="mt-1 text-sm leading-relaxed text-[var(--ds-text-2)]" data-testid="upload-visibility">
+                  You can always open calls you upload. Other people in your organisation can open it according to your organisation’s
+                  call-visibility setting (everyone, managers only, or nobody else). People outside your organisation never can.
+                </p>
+              </div>
 
-          {uploadStage === "error" && lastErrorStage === "processing" && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
-              <div>Call uploaded, but processing could not start.</div>
-              <div className="mt-0.5 text-xs text-neutral-400">Reason: {processingReason || "unknown"}</div>
-            </div>
-          )}
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="submit" disabled={!canUpload} aria-describedby="up-needs" className={dsButton("primary", "md")}>Upload call</button>
+                <Link href="/call-library" className={dsButton("quiet", "md")}>Back to Calls</Link>
+              </div>
+              <p id="up-needs" className="text-xs text-[var(--ds-text-3)]" data-testid="upload-needs">
+                {missing.length > 0 ? `To upload, add ${missing.join(" and ")}.` : fileProblem ? "Choose a supported file to continue." : "Ready to upload."}
+              </p>
+            </section>
+          </Panel>
 
-          {msg && (
-            <div
-              className={`text-sm ${
-                uploadStage === "processing"
-                  ? "text-amber-300"
-                  : uploadStage === "error"
-                    ? "text-red-300"
-                    : "text-neutral-300"
-              }`}
-            >
-              {msg}
-            </div>
-          )}
+          <p className="mt-4 px-1 text-sm text-[var(--ds-text-3)]">
+            What happens next: once the file is uploaded, Gravix transcribes and scores it in the background. The time varies, so you can leave
+            this page after it says the call is uploaded. Managers can then review it and assign coaching.
+          </p>
         </form>
       )}
-        </div>
 
-        {/* Right column — calm guidance, uses the desktop width instead of empty space */}
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">What happens next</h2>
-            <ol className="mt-3 space-y-2.5">
-              {[
-                "We upload the recording",
-                "Gravix sends it to the review queue",
-                "The manager reviews score, weak skills and coaching actions",
-              ].map((step, i) => (
-                <li key={step} className="flex gap-2.5 text-neutral-300">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neutral-700 text-[11px] text-neutral-400">{i + 1}</span>
-                  <span className="text-[13px] leading-5">{step}</span>
-                </li>
-              ))}
+      {view !== "form" && (
+        <Panel className="p-5 sm:p-6" as="section">
+          <div className="space-y-5" aria-live="off">
+            <div>
+              <h2
+                ref={headingRef}
+                tabIndex={-1}
+                className="text-lg font-semibold text-[var(--ds-text)] outline-none"
+                data-testid="upload-heading"
+              >
+                {view === "running" && (resumed && stage === "processing" ? "Checking on your upload" : stage === "processing" ? "Processing the call" : "Uploading your call")}
+                {view === "failed" && (failure?.title ?? "Something went wrong")}
+                {view === "done" && (outcome === "scored" ? "Call ready for review." : "Call uploaded. Processing has started.")}
+              </h2>
+              <p className="mt-0.5 truncate text-sm text-[var(--ds-text-3)]" title={savedName}>
+                {savedName}{file && session.current.filename === file.name ? ` · ${formatBytes(file.size)}` : ""}
+              </p>
+            </div>
+
+            <ol className="space-y-2" aria-label="Upload progress">
+              {RUN_STAGES.map((s) => {
+                const st = stageStatus(s.id, currentForList, failedAt);
+                return (
+                  <li key={s.id} aria-current={st === "current" ? "step" : undefined} className="flex items-center gap-3 text-sm">
+                    <span
+                      aria-hidden="true"
+                      className={clsx(
+                        "inline-block size-2.5 rounded-full",
+                        st === "done" && "bg-emerald-400",
+                        st === "current" && "bg-[var(--ds-highlight)] motion-safe:animate-pulse",
+                        st === "failed" && "bg-red-400",
+                        st === "upcoming" && "bg-white/20",
+                      )}
+                    />
+                    <span className={clsx(st === "upcoming" ? "text-[var(--ds-text-3)]" : "text-[var(--ds-text)]")}>{s.label}</span>
+                    <span className="sr-only">{st === "done" ? "complete" : st === "current" ? "in progress" : st === "failed" ? "failed" : "waiting"}</span>
+                  </li>
+                );
+              })}
             </ol>
-          </div>
 
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Need a new client?</h2>
-            <Link
-              href="/crm/accounts"
-              target="_blank"
-              className="mt-2 inline-block rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:text-white"
-            >
-              Create new client
-            </Link>
-            <p className="mt-2 text-[12px] text-neutral-500">Opens Accounts in a new tab so your upload stays here.</p>
-          </div>
+            {view === "running" && stage === "uploading" && (
+              <div className="space-y-1.5">
+                <progress max={100} value={progress} aria-label="Upload progress" className="h-2 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-white/10 [&::-webkit-progress-value]:bg-[var(--ds-primary)] [&::-moz-progress-bar]:bg-[var(--ds-primary)]" />
+                <p className="text-xs tabular-nums text-[var(--ds-text-3)]" data-testid="upload-percent">{progress}% uploaded</p>
+              </div>
+            )}
 
-        </aside>
-      </div>
-    </div>
+            {view === "running" && stage !== "processing" && (
+              <p className="text-sm text-[var(--ds-text-2)]">Keep this page open until the upload finishes. Leaving now will cancel it.</p>
+            )}
+            {view === "running" && stage === "processing" && (
+              <p className="text-sm text-[var(--ds-text-2)]">
+                Your recording is saved. Gravix is transcribing and scoring it. This runs in the background and can take a few minutes — you can leave this page.
+              </p>
+            )}
+
+            {view === "failed" && failure && (
+              <div role="alert" className="rounded-[var(--ds-radius-control)] border border-red-300/20 bg-red-400/[0.06] px-4 py-3 text-sm text-red-100">
+                {failure.detail}
+              </div>
+            )}
+
+            {view === "done" && (
+              <p className="text-sm text-[var(--ds-text-2)]">
+                {outcome === "scored"
+                  ? "Scoring has finished. Open the call to read the transcript and score."
+                  : outcome === "processed"
+                    ? "Transcription is done and scoring is still running. It will appear scored in Calls when it finishes."
+                    : "It’s still processing, which can take a few minutes. You can leave this page — the call will show its status under Uploads in Calls."}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              {view === "running" && stage === "uploading" && (
+                <button type="button" className={dsButton("secondary", "md")} onClick={cancelUpload}>Cancel upload</button>
+              )}
+
+              {view === "failed" && (
+                <>
+                  <button type="button" className={dsButton("primary", "md")} onClick={retry}>
+                    {failedAt === "processing" ? "Check again" : "Try again"}
+                  </button>
+                  {failure?.saved ? (
+                    <Link href="/call-library?tab=upload" className={dsButton("secondary", "md")}>See uploads in Calls</Link>
+                  ) : (
+                    <button type="button" className={dsButton("secondary", "md")} onClick={backToForm}>Edit details</button>
+                  )}
+                  {failure?.saved ? (
+                    <button type="button" className={dsButton("quiet", "md")} onClick={startNew}>Upload a different call</button>
+                  ) : (
+                    <button type="button" className={dsButton("quiet", "md")} onClick={startNew}>Start over</button>
+                  )}
+                </>
+              )}
+
+              {view === "done" && (
+                <>
+                  {finalizedCallId && (
+                    <Link href={`/calls/${finalizedCallId}`} className={dsButton("primary", "md")}>View call</Link>
+                  )}
+                  {outcome === "pending" && (
+                    <button type="button" className={dsButton("secondary", "md")} onClick={() => void settle()}>Check again</button>
+                  )}
+                  <Link href="/call-library" className={dsButton("secondary", "md")}>Back to Calls</Link>
+                  {isManager && outcome === "scored" && (
+                    <Link href="/coaching?tab=review" className={dsButton("secondary", "md")}>Open Review Queue</Link>
+                  )}
+                  <button type="button" className={dsButton("quiet", "md")} onClick={startNew}>Upload another</button>
+                </>
+              )}
+
+              {view === "running" && stage === "processing" && (
+                <Link href="/call-library?tab=upload" className={dsButton("quiet", "md")}>Leave and check later</Link>
+              )}
+            </div>
+          </div>
+        </Panel>
+      )}
+    </PageShell>
   );
 }
