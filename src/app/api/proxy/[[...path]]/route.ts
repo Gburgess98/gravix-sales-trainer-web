@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
 import { stripSpoofableIdentityHeaders, trustedHeaderUserId, resolveProxyUserId } from "@/lib/proxyIdentity";
+import { resolveProxyOrgId } from "@/lib/proxyOrg";
 
 // Ensure Node runtime so we can stream the request body
 
@@ -169,6 +170,35 @@ async function getOrgIdForUser(
       .eq("id", userId)
       .maybeSingle();
 
+    return String(data?.org_id ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The verified user's org_id, read with THEIR OWN Bearer session (RLS applies as that user), so it is the user's real
+ * membership and cannot be influenced by the browser. Used first; the cookie-session lookup above is the fallback for
+ * cookie-authenticated browsers. Returns "" when it cannot be read.
+ */
+async function getOrgIdForBearer(token: string, userId: string): Promise<string> {
+  if (!token || !userId) return "";
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data } = await supabase.from("reps").select("org_id").eq("id", userId).maybeSingle();
     return String(data?.org_id ?? "").trim();
   } catch {
     return "";
@@ -360,6 +390,9 @@ async function handle(req: NextRequest, context: any) {
     // verified bearer token or the Supabase cookie session only. In dev the
     // legacy header path stays available for curl/smoke tests and the demo.
     const isProdProxy = process.env.NODE_ENV === "production";
+    // The browser-supplied org (if any) is captured BEFORE stripping: it is never forwarded, but a value that differs from
+    // the verified membership is a tampering signal and is refused below (see @/lib/proxyOrg).
+    const clientOrgId = (headers.get("x-org-id") || "").trim();
     // Day 175 / Day 316 — strip browser-supplied identity headers in production
     // (see @/lib/proxyIdentity). No-op in dev.
     stripSpoofableIdentityHeaders(headers, isProdProxy);
@@ -433,10 +466,10 @@ async function handle(req: NextRequest, context: any) {
     headers.set("x-gravix-user-id", resolvedUserId);
     headers.set("x-forwarded-user-id", resolvedUserId);
 
-    // Org id priority:
-    //   1. Explicit x-org-id from the incoming request (rare — most pages don't set it)
-    //   2. User's actual org_id looked up from reps table (the correct per-user value)
-    //   3. Dev env fallback (backward compat for smoke tests / non-user requests)
+    // Org identity (see @/lib/proxyOrg): the org comes from the verified user's own membership — read with their Bearer
+    // session first, then the cookie session — never from the browser. A differing client-supplied x-org-id is refused.
+    // DEFAULT_ORG_ID-style values are only an explicit last resort (always off-prod; in production only when
+    // PROXY_ALLOW_DEFAULT_ORG=1). The API's own strict UUID validation is unchanged and still applies to whatever is sent.
     const devOrg = (
       process.env.DEV_ORG_ID ||
       process.env.PROXY_DEV_X_ORG_ID ||
@@ -446,17 +479,26 @@ async function handle(req: NextRequest, context: any) {
       ""
     ).trim();
 
-    // Day 175 — in production the client-supplied x-org-id was deleted above,
-    // so the org always comes from the server-side reps lookup (or env default).
-    const existingOrgId = (headers.get("x-org-id") || "").trim();
-    const repOrgId = await getOrgIdForUser(resolvedUserId, cookieList);
-    const finalOrgId = isProdProxy
-      ? (repOrgId || devOrg)
-      : (existingOrgId || repOrgId || devOrg);
+    const verifiedOrgId =
+      (bearerUserId && bearerUserId === resolvedUserId ? await getOrgIdForBearer(bearerToken, resolvedUserId) : "") ||
+      (await getOrgIdForUser(resolvedUserId, cookieList));
 
-    if (finalOrgId) {
-      headers.set("x-org-id", finalOrgId);
+    const orgDecision = resolveProxyOrgId({
+      isProd: isProdProxy,
+      clientOrgId,
+      verifiedOrgId,
+      fallbackOrgId: devOrg,
+      allowDefaultInProd: (process.env.PROXY_ALLOW_DEFAULT_ORG || "").trim() === "1",
+    });
+    if (!orgDecision.ok) {
+      return NextResponse.json(
+        { ok: false, error: orgDecision.error },
+        { status: orgDecision.status, headers: { "x-proxy-guardrail": "org_mismatch" } }
+      );
     }
+    headers.delete("x-org-id");
+    if (orgDecision.orgId) headers.set("x-org-id", orgDecision.orgId);
+    headers.set("x-proxy-org-source", orgDecision.source);
 
     // ---- Hierarchy-aware forwarding
 

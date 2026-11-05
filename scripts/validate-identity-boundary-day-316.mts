@@ -22,6 +22,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveProxyOrgId } from "../src/lib/proxyOrg.ts";
 import {
   SPOOFABLE_PROXY_IDENTITY_HEADERS,
   stripSpoofableIdentityHeaders,
@@ -143,6 +144,33 @@ ok("prod: dev fallback NOT allowed even with a dev uid set",
     /trustedHeaderUserId\(headers,\s*isProdProxy\)/.test(routeSrc));
   ok("route resolves identity via resolveProxyUserId({ isProd: isProdProxy, ... })",
     /resolveProxyUserId\(\{[\s\S]*isProd:\s*isProdProxy/.test(routeSrc));
+}
+
+// ── organisation identity (staging org repair): membership, not the browser ───
+{
+  const ORG = "00000000-2711-4000-8000-000000000002";
+  const OTHER = "99999999-9999-4999-8999-999999999999";
+  const base = { isProd: true, clientOrgId: "", verifiedOrgId: "", fallbackOrgId: "", allowDefaultInProd: false };
+  const own = resolveProxyOrgId({ ...base, verifiedOrgId: ORG });
+  ok("org: verified membership is what is forwarded", own.ok && own.orgId === ORG && own.source === "membership");
+  const tamper = resolveProxyOrgId({ ...base, verifiedOrgId: ORG, clientOrgId: OTHER });
+  ok("org: a different client-supplied org is refused (403 org_mismatch), not forwarded", !tamper.ok && tamper.status === 403);
+  const unverified = resolveProxyOrgId({ ...base, clientOrgId: OTHER });
+  ok("org: with no verified membership the client org is ignored", unverified.ok && unverified.orgId === "" && unverified.source === "none");
+  const prodDefault = resolveProxyOrgId({ ...base, fallbackOrgId: OTHER });
+  ok("org: the default org is NOT used in production unless explicitly allowed", prodDefault.ok && prodDefault.orgId === "");
+  const optIn = resolveProxyOrgId({ ...base, fallbackOrgId: OTHER, allowDefaultInProd: true });
+  ok("org: explicit opt-in enables the default org as a last resort", optIn.ok && optIn.orgId === OTHER && optIn.source === "fallback");
+
+  const here2 = path.dirname(fileURLToPath(import.meta.url));
+  const routeSrc2 = fs.readFileSync(path.join(here2, "..", "src", "app", "api", "proxy", "[[...path]]", "route.ts"), "utf8");
+  const stripAt = routeSrc2.indexOf("stripSpoofableIdentityHeaders(headers, isProdProxy)");
+  const captureAt = routeSrc2.indexOf('const clientOrgId = (headers.get("x-org-id")');
+  ok("route captures the client org BEFORE stripping it (so tampering is detectable in production)", captureAt > 0 && captureAt < stripAt);
+  ok("route resolves the org via resolveProxyOrgId and refuses a mismatch", /resolveProxyOrgId\(\{[\s\S]*isProd:\s*isProdProxy/.test(routeSrc2) && /!orgDecision\.ok[\s\S]{0,200}status:\s*orgDecision\.status/.test(routeSrc2));
+  ok("route reads the org with the user's own Bearer session first (getOrgIdForBearer)", /await getOrgIdForBearer\(bearerToken,\s*resolvedUserId\)/.test(routeSrc2));
+  ok("route no longer lets the browser's x-org-id through", !/existingOrgId/.test(routeSrc2) && /headers\.delete\("x-org-id"\)/.test(routeSrc2));
+  ok("route does not carry a UUID predicate of its own", !/\[1-5\]\[0-9a-f\]\{3\}-\[89ab\]/.test(routeSrc2.replace(/function isUuid[\s\S]*?\n\}/, "")));
 }
 
 console.log(`\n${failures === 0 ? "✅ PASS" : `❌ FAIL (${failures})`} — WEB proxy identity boundary guard\n`);
