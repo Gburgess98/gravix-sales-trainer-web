@@ -28,6 +28,10 @@ const MODEL = "src/lib/call-review-model.ts";
 const FIXTURE = "scripts/fixtures/call-review-requests-day-46.json";
 const BASELINE_SHA = "d8fe7458293a9b8b4db361cd114fe1cf206e6ab5";
 const read = (rel: string) => readFileSync(join(root, rel), "utf8");
+// The call-review redesign moved transcript / key-moment rendering into components + a pure model. They are part of the
+// workspace, so the transcript/moment contracts below are checked against page + those files.
+const PARTS = ["src/components/call-review/transcript-view.tsx", "src/components/call-review/key-moments.tsx", "src/lib/call-moments-model.ts"];
+const partsSrc = PARTS.map((f) => readFileSync(join(root, f), "utf8")).join("\n");
 
 // ── request extraction ───────────────────────────────────────────────────────
 const CALLEES = ["proxyFetch", "fetchJsonWithRetry", "getCallViaProxy", "listPins", "createPin", "deletePin", "getScoreHistory", "getAdminConfig"];
@@ -198,8 +202,8 @@ function runChecks(page: string, model: Model, disclosureSrc: string, fixture: R
   t("T2-processing-banner-announced", /role="status" aria-live="polite"[^>]*>\s*\{callMeta\.status !== "failed"/.test(main) && main.includes("callMeta && callMeta.status !== 'scored'"));
   t("T3-player-and-signed-audio", main.includes("<audio ref={audioRef}") && main.includes('title="Call recording"') && page.includes("signedAudioUrl") && page.includes("/signed-audio"));
   t("T4-pins-create-seek-delete", main.includes("onClick={onCreatePin}") && main.includes("onClick={() => onDelete(p.id)}") && main.includes("onClick={() => seek(p.t)}"));
-  t("T5-transcript-segments-text-and-empty", main.includes("transcript-seg-") && main.includes("{transcriptText}") && main.includes("No transcript has been generated for this call yet."));
-  t("T6-key-moments-kept", main.includes("analysisMoments.map") && main.includes("Key moments"));
+  t("T5-transcript-segments-text-and-empty", partsSrc.includes("transcript-seg-") && main.includes("text={transcriptText}") && partsSrc.includes("No transcript has been generated for this call yet."));
+  t("T6-key-moments-kept", main.includes("<KeyMoments moments={moments}") && main.includes("Key moments") && partsSrc.includes("rankMoments") && page.includes("normaliseMoments(callMeta?.analysis_json?.moments)"));
   t("T7-score-trend-and-history-kept", main.includes("<ScoreSparkline") && page.includes("getScoreHistory(callId, 8)"));
   t("T8-whisperer-outcomes-kept", ["used", "ignored", "not_relevant"].every((v) => main.includes(`value: "${v}"`)) && main.includes("markMomentOutcome"));
   t("T9-loading-skeleton-kept", /loadingCall \? \(\s*<span className="inline-block h-6 w-48/.test(main));

@@ -17,16 +17,16 @@ export function Disclosure({ title, hint, children, defaultOpen = false, classNa
   return (
     <details
       open={defaultOpen}
-      className={clsx('group rounded-xl border border-neutral-800/70 bg-neutral-950', className)}
+      className={clsx('group rounded-[var(--ds-radius-card)] border border-[var(--ds-border)] bg-white/[0.02]', className)}
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--ds-radius-card)] px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-highlight)] [&::-webkit-details-marker]:hidden">
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-white">{title}</span>
-          {hint && <span className="mt-0.5 block text-xs text-neutral-500">{hint}</span>}
+          <span className="block text-sm font-semibold text-[var(--ds-text)]">{title}</span>
+          {hint && <span className="mt-0.5 block text-xs text-[var(--ds-text-3)]">{hint}</span>}
         </span>
-        <span aria-hidden className="shrink-0 text-xs text-neutral-500 group-open:rotate-180 transition-transform motion-reduce:transition-none">▾</span>
+        <span aria-hidden className="shrink-0 text-xs text-[var(--ds-text-3)] group-open:rotate-180 transition-transform motion-reduce:transition-none">▾</span>
       </summary>
-      <div className="space-y-4 border-t border-neutral-800/70 p-5">{children}</div>
+      <div className="space-y-4 border-t border-[var(--ds-border)] p-5">{children}</div>
     </details>
   )
 }

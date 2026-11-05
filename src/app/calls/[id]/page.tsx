@@ -19,10 +19,14 @@ import { formatCallDisplayTitle, isRawCallLabel } from "@/lib/callDisplay";
 import { getScoringProvenance } from "@/lib/scoringProvenance";
 import { getScoringV2, buildScoringV2ViewModel } from "@/lib/scoringV2Client";
 import { ScoreV2Banner, StageCriteria, ObjectionMatches, ScoreV2Provenance } from "@/components/scoring-v2/ScoringV2Review";
-import { Button, buttonClasses, EmptyState } from "@/components/ui";
+import { Button, buttonClasses } from "@/components/ui";
 import { Disclosure } from "@/components/ui/disclosure";
 import { planReviewActions, type ReviewActionId } from "@/lib/call-review-model";
-import { Badge, Panel, PanelHeader, dsField } from "@/components/ds";
+import { Badge, EmptyPanel, LoadingRows, Panel, PanelHeader, dsField } from "@/components/ds";
+import { KeyMoments } from "@/components/call-review/key-moments";
+import { TranscriptView } from "@/components/call-review/transcript-view";
+import { CallLoadFailed } from "@/components/call-review/states";
+import { hasTimedSegments, humaniseSlug, looksLikeId, markersBySegment, normaliseMoments, normaliseSegments, safeLabel, segmentIndexAt, type Moment } from "@/lib/call-moments-model";
 import { callState, scoreTone, formatCallDate, coachingPriorities } from "@/lib/ds-model";
 
 import {
@@ -195,23 +199,20 @@ function CallUnavailable() {
     <div className="mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8">
       <Link
         href="/call-library"
-        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+        className="ds-focus inline-flex rounded text-sm text-[var(--ds-text-3)] transition-colors hover:text-[var(--ds-text)]"
       >
         ← Call Library
       </Link>
-      <div className="mx-auto mt-16 flex max-w-sm flex-col items-center justify-center text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-xl">
-          🔍
-        </div>
-        <h1 className="mt-4 text-lg font-semibold text-white">Call not found</h1>
-        <p className="mt-1.5 text-sm text-neutral-400">
+      <div className="ds-glass mx-auto mt-12 max-w-md rounded-[var(--ds-radius-card)] p-8 text-center">
+        <h1 className="text-lg font-semibold text-[var(--ds-text)]">Call not found</h1>
+        <p className="mt-1.5 text-sm text-[var(--ds-text-2)]">
           This call isn’t available. It may have been removed, never fully created, or the link is
           stale.
         </p>
         <div className="mt-6">
           <Link
             href="/call-library"
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors"
+            className="ds-focus inline-flex items-center justify-center rounded-[var(--ds-radius-control)] border border-[var(--ds-border-strong)] bg-white/[0.04] px-4 py-2 text-sm font-medium text-[var(--ds-text)] transition-colors hover:bg-white/[0.08]"
           >
             Back to Call Library
           </Link>
@@ -261,7 +262,7 @@ export default function CallPage() {
         setReviewNote(data?.review?.note ?? null);
         toast("Call marked as reviewed.");
       } else if (data?.error === "migration_required") {
-        toast(data?.hint || "Review history migration required.");
+        toast("Reviews can’t be recorded yet. Ask an administrator to finish the setup.");
       } else {
         toast("Could not mark this call as reviewed.");
       }
@@ -812,6 +813,7 @@ export default function CallPage() {
       setAssignments((xs) => xs.filter((x) => x.id !== id));
     } catch (e) {
       console.error("deleteAssignment", e);
+      toast("We couldn’t remove that assignment. It may be outside your team, or already removed.");
     }
   }
 
@@ -1015,7 +1017,9 @@ export default function CallPage() {
       el.removeEventListener('seeked', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
     };
-  }, [audioUrl]);
+    // loadingCall: the <audio> only mounts once loading ends, which can be after audioUrl is set — re-attach then,
+    // otherwise timeupdate never reaches this effect and the transcript/pins lose the playback position.
+  }, [audioUrl, loadingCall]);
 
   // Player: resign URL if it errors (TTL expiry)
   useEffect(() => {
@@ -1033,7 +1037,7 @@ export default function CallPage() {
 
     el.addEventListener('error', onError);
     return () => el.removeEventListener('error', onError);
-  }, [callId, audioUrl]);
+  }, [callId, audioUrl, loadingCall]);
 
   // ------- Actions -------
 
@@ -1138,7 +1142,7 @@ export default function CallPage() {
       toast(`${target} unlinked ✓`);
     } catch (e: any) {
       setLinkInfo(prev ?? null);
-      toast(e?.message || "Unlink failed");
+      toast(friendlyError(e, "Unlink failed"));
     }
   }
 
@@ -1501,15 +1505,15 @@ export default function CallPage() {
     const first = String(c?.first_name ?? c?.firstName ?? "").trim();
     const last = String(c?.last_name ?? c?.lastName ?? "").trim();
     const full = [first, last].filter(Boolean).join(" ").trim();
-    return full || String(c?.email ?? "").trim() || String(c?.id ?? "").trim() || null;
+    return full || String(c?.email ?? "").trim() || null;
   }
-  const contactChip = formatContactName(linkInfo?.contact);
+  const contactChip = linkInfo?.contact ? safeLabel(formatContactName(linkInfo.contact), "Linked contact") : null;
   const accountChip = linkInfo?.account
-    ? (linkInfo.account.name || linkInfo.account.domain || linkInfo.account.id)
+    ? safeLabel(linkInfo.account.name || linkInfo.account.domain, "Linked account")
     : null;
 
   const opportunityChip = linkInfo?.opportunity
-    ? (linkInfo.opportunity.name || linkInfo.opportunity.id)
+    ? safeLabel(linkInfo.opportunity.name, "Linked opportunity")
     : null;
 
   const durationLabel = formatCallDuration(callMeta);
@@ -1595,10 +1599,70 @@ export default function CallPage() {
   };
 
   const transcriptText = renderTranscriptText(callMeta);
-  const transcriptSegments = callMeta?.analysis_json?.transcript?.segments ?? null;
-  const analysisMoments = Array.isArray(callMeta?.analysis_json?.moments)
-    ? callMeta.analysis_json.moments
-    : [];
+
+  // Moments ↔ transcript. All derived from data the call already carries; nothing is invented.
+  const segments = useMemo(() => normaliseSegments(callMeta?.analysis_json?.transcript?.segments), [callMeta]);
+  const moments = useMemo(() => normaliseMoments(callMeta?.analysis_json?.moments), [callMeta]);
+  const segmentsTimed = hasTimedSegments(segments);
+  const markers = useMemo(() => markersBySegment(segments, moments, pins), [segments, moments, pins]);
+  const activeSegment = audioUrl && t > 0 ? segmentIndexAt(segments, t) : null;
+
+  const showSegment = useCallback((index: number | null) => {
+    if (index === null) return;
+    const el = document.getElementById(`transcript-seg-${index}`);
+    if (!el) return;
+    const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "center" });
+    try {
+      // Shareable anchor without stacking history entries (Back/Forward keep their meaning).
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#transcript-seg-${index}`);
+    } catch { /* anchor is a convenience only */ }
+  }, []);
+  const seekAndShow = useCallback((sec: number, index: number | null) => {
+    const el = audioRef.current;
+    if (el) {
+      el.currentTime = sec;
+      // Reflect the jump at once; the media element's own `seeked`/`timeupdate` events confirm it a moment later
+      // (they lag while the browser fetches the new range), so the highlighted line and "Pin at" never show the old position.
+      setT(sec);
+    }
+    showSegment(index);
+  }, [showSegment]);
+  const onSeekSegment = useCallback((sec: number, index: number) => seekAndShow(sec, index), [seekAndShow]);
+  const onJumpMoment = useCallback((m: Moment) => {
+    if (m.seconds === null) return;
+    seekAndShow(m.seconds, segmentIndexAt(segments, m.seconds));
+  }, [segments, seekAndShow]);
+
+  // A shared link to a transcript line (#transcript-seg-N) scrolls there once the transcript has rendered.
+  const hashHandled = useRef(false);
+  useEffect(() => {
+    if (hashHandled.current || segments.length === 0) return;
+    const m = /^#transcript-seg-(\d+)$/.exec(window.location.hash);
+    hashHandled.current = true;
+    if (m) requestAnimationFrame(() => document.getElementById(`transcript-seg-${m[1]}`)?.scrollIntoView({ block: "center" }));
+  }, [segments.length]);
+
+  // The drill shown for an assignment: the catalogue label, else a humanised slug — never a raw id.
+  const drillLabelFor = (a: Record<string, any>) => {
+    const raw = a.drill_id ?? a.title ?? a.type;
+    if (typeof raw !== "string" || !raw.trim() || looksLikeId(raw)) return "Coaching drill";
+    return drills.find((d) => d.id === raw)?.label ?? (raw.includes(" ") ? raw : humaniseSlug(raw));
+  };
+
+  // Drawers: move focus in on open, give it back on close (keyboard-only use).
+  const lastFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (crmOpen || coachOpen) {
+      if (!lastFocusRef.current) lastFocusRef.current = document.activeElement as HTMLElement | null;
+      if (assignOpen) return; // the Assign deep link focuses its own form
+      const dlg = document.querySelector<HTMLElement>(`[role="dialog"][aria-label="${coachOpen ? "Coach" : "CRM link"}"]`);
+      dlg?.querySelector<HTMLElement>("button, input, select, textarea")?.focus();
+    } else if (lastFocusRef.current) {
+      lastFocusRef.current.focus?.();
+      lastFocusRef.current = null;
+    }
+  }, [crmOpen, coachOpen, assignOpen]);
 
   // Day 290 — a call the manager can't see (unknown OR foreign-company: the API
   // returns not_found/403, callMeta stays null) renders a clean, gated
@@ -1612,6 +1676,16 @@ export default function CallPage() {
       </AuthGate>
     );
   }
+
+  // The call could not be loaded for a reason that is not "missing" (network, server): one calm retry, no review shell.
+  if (!callMeta && !loadingCall && err) {
+    return (
+      <AuthGate>
+        <CallLoadFailed onRetry={() => window.location.reload()} />
+      </AuthGate>
+    );
+  }
+  const initialLoading = loadingCall && !callMeta;
 
   return (
     <AuthGate>
@@ -1666,6 +1740,7 @@ export default function CallPage() {
 
         {/* Processing status banner */}
         {callMeta && callMeta.status !== 'scored' && (
+          <div className="space-y-2">
           <div role="status" aria-live="polite" className="ds-glass flex items-center gap-2 rounded-[var(--ds-radius-card)] px-5 py-3 text-sm text-[var(--ds-text)]">
             {callMeta.status !== "failed" && (
               <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-400 animate-pulse" />
@@ -1694,9 +1769,20 @@ export default function CallPage() {
               <span>Processing…</span>
             )}
           </div>
+          <p className="px-1 text-sm text-[var(--ds-text-3)]">
+            {callMeta.status === "failed"
+              ? <>We couldn’t finish processing this call, so there is no score or transcript to show. You can <Link href="/upload" className="text-[var(--ds-highlight)] underline-offset-2 hover:underline">upload the recording again</Link>.</>
+              : "This page updates by itself. You can leave and come back — the call keeps processing. Sections fill in as results arrive."}
+          </p>
+          </div>
         )}
 
 
+        {initialLoading ? (
+          <div className="ds-glass rounded-[var(--ds-radius-card)]" aria-busy="true">
+            <LoadingRows rows={4} label="Loading call" />
+          </div>
+        ) : (
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-6 lg:space-y-8">
         {/* 1 · Overall result and score */}
@@ -1726,9 +1812,19 @@ export default function CallPage() {
               <p className="max-w-2xl text-sm leading-relaxed text-[var(--ds-text-2)]">
                 {callMeta?.summary || "No summary has been generated for this call yet."}
               </p>
+              <p className="text-xs text-[var(--ds-text-3)]">
+                {callMeta?.summary ? "Summary written when the call was scored." : "Summaries are written when a call is scored."}
+                {displayOverall != null ? " Score is out of 100." : ""}
+              </p>
               {flags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {flags.map((flag) => <Badge key={flag}>{flag}</Badge>)}
+                </div>
+              )}
+              {trend && trend.length > 1 && (
+                <div className="flex items-center gap-2 pt-1 text-xs text-[var(--ds-text-3)]">
+                  <span>Scoring history for this call</span>
+                  <span className="text-[var(--ds-highlight)]"><ScoreSparkline scores={trend} /></span>
                 </div>
               )}
             </div>
@@ -1749,6 +1845,7 @@ export default function CallPage() {
               <p className="mt-0.5 text-sm text-[var(--ds-text-3)]">{scoredStages.some((st) => (st.score as number) < 70)
                   ? "Where to focus first, lowest-scoring stage first."
                   : "No stage fell below target on this call — these are the best places to keep improving."}</p>
+              <p className="mt-0.5 text-xs text-[var(--ds-text-3)]">Derived from this call’s stage scores — nothing extra is added.</p>
             </div>
             <ol className="divide-y divide-[var(--ds-border)]">
               {coachingPriorities(scoredStages.map((st) => ({ label: st.label, score: typeof st.score === "number" ? st.score : null, note: st.notes ?? null })), 3).map((st, i) => (
@@ -1866,124 +1963,22 @@ export default function CallPage() {
               })}
             </ul>
           ) : (
-            <EmptyState
-              message={overall != null ? "This call has an overall score but no stage breakdown." : "No scored rubric for this call yet."}
-              sub={overall != null ? "Re-score the call to generate a full audit." : "Stage-by-stage reasoning and evidence appear here once scoring completes."}
+            <EmptyPanel title={overall != null ? "This call has an overall score but no stage breakdown." : "No scored rubric for this call yet."}
+              body={overall != null ? "Re-score the call to generate a full audit." : "Stage-by-stage reasoning and evidence appear here once scoring completes."}
             />
+          )}
+          {/* Day 268 — Scoring v2 objection matches live with the stage breakdown they belong to (only for valid v2). */}
+          {scoreV2VM && scoreV2VM.objections.length > 0 && (
+            <ObjectionMatches objections={scoreV2VM.objections} jumps={v2Jumps} />
           )}
         </section>
-        <section id="transcript" className="ds-panel rounded-[var(--ds-radius-card)] px-5 py-5 sm:px-6">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--ds-text)]">Transcript</h2>
-            </div>
-            {transcriptText ? (
-              <span className="text-xs px-2 py-1 rounded border bg-emerald-600/10 text-emerald-300 border-emerald-500/20">
-                Available
-              </span>
-            ) : (
-              <span className="text-xs px-2 py-1 rounded border bg-zinc-600/20 text-zinc-300">
-                Not available yet
-              </span>
-            )}
+        {/* 4 · Key moments — the points that matter most, tied to timestamps */}
+        <section id="moments" aria-labelledby="moments-h" className="ds-panel rounded-[var(--ds-radius-card)]">
+          <div className="border-b border-[var(--ds-border)] px-5 py-4 sm:px-6">
+            <h2 id="moments-h" className="text-base font-semibold text-[var(--ds-text)]">Key moments</h2>
+            <p className="mt-0.5 text-sm text-[var(--ds-text-3)]">The points in this call that matter most for coaching.</p>
           </div>
-
-          {analysisMoments.length > 0 && (
-            <div className="mt-5 border-t border-neutral-800/70 pt-5">
-              <div className="mb-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Moments</div>
-                <h3 className="mt-1 text-base font-medium text-neutral-100">Key moments</h3>
-              </div>
-              <div className="space-y-2">
-                {analysisMoments.map((moment: any, i: number) => {
-                  const ts = typeof moment?.timestamp === "number" ? moment.timestamp : null;
-                  const type = String(moment?.type || "moment");
-                  const text = String(moment?.text || "");
-                  const severity = String(moment?.severity || "medium");
-
-                  return (
-                    <div
-                      key={`${type}-${ts ?? i}-${i}`}
-                      className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-200">
-                            {ts !== null ? fmt(ts) : "—"}
-                          </span>
-                          <span className="capitalize text-neutral-300">{type.replace(/_/g, " ")}</span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 capitalize ${severity === "high"
-                              ? "bg-red-500/10 text-red-300"
-                              : severity === "medium"
-                                ? "bg-amber-500/10 text-amber-300"
-                                : "bg-neutral-800 text-neutral-300"
-                              }`}
-                          >
-                            {severity}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-neutral-200">{text}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          {transcriptSegments && Array.isArray(transcriptSegments) && transcriptSegments.length > 0 ? (
-            <div className="mt-5 border-t border-neutral-800/70 pt-5">
-              <div className="mb-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
-                <h3 className="mt-1 text-base font-medium text-neutral-100">Full transcript</h3>
-              </div>
-              <div className="max-h-[420px] overflow-auto space-y-3">
-                {transcriptSegments.map((seg: any, i: number) => {
-                  const speaker = seg?.speaker || "Unknown";
-                  const text = seg?.text || "";
-                  const start = typeof seg?.start_sec === "number" ? seg.start_sec : null;
-
-                  return (
-                    <div key={i} id={`transcript-seg-${i}`} className="flex gap-3 text-sm scroll-mt-24">
-                      <div className="w-20 shrink-0 text-neutral-400 underline-offset-2 hover:text-neutral-200">
-                        {start !== null ? fmt(start) : ""}
-                      </div>
-
-                      <div className="flex-1">
-                        <span
-                          className={`font-semibold mr-2 ${speaker === "Rep"
-                            ? "text-indigo-300"
-                            : "text-neutral-300"
-                            }`}
-                        >
-                          {speaker}:
-                        </span>
-                        <span className="text-neutral-200">{text}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : transcriptText ? (
-            <div className="mt-5 border-t border-neutral-800/70 pt-5">
-              <div className="mb-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Conversation</div>
-                <h3 className="mt-1 text-base font-medium text-neutral-100">Full transcript</h3>
-              </div>
-              <div className="max-h-[420px] overflow-auto">
-                <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-200 font-sans">
-                  {transcriptText}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <EmptyState
-              className="mt-2"
-              message="No transcript has been generated for this call yet."
-              sub="The transcript appears here automatically once processing completes."
-            />
-          )}
+          <KeyMoments moments={moments} onJump={onJumpMoment} canJump={segmentsTimed || !!audioUrl} />
         </section>
 
         {/* Player */}
@@ -2036,13 +2031,46 @@ export default function CallPage() {
                 </div>
               </div>
             ) : (
-              <EmptyState
-                message="No audio available for this call."
-                sub="The recording may still be uploading, or this call was logged without audio."
+              <EmptyPanel title="No audio available for this call."
+                body={["queued", "processing", "processed", "scoring"].includes(String(callMeta?.status))
+                  ? "The recording is still being prepared and will appear here when processing finishes."
+                  : "The recording may still be uploading, or this call was logged without audio. The score and transcript are unaffected."}
               />
             )}
             </div>
           </Panel>
+        </section>
+
+        {/* 6 · Transcript — one reading column, pins and moments marked where they happened */}
+        <section id="transcript" aria-labelledby="transcript-h" className="ds-panel rounded-[var(--ds-radius-card)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ds-border)] px-5 py-4 sm:px-6">
+            <div>
+              <h2 id="transcript-h" className="text-base font-semibold text-[var(--ds-text)]">Transcript</h2>
+              <p className="mt-0.5 text-sm text-[var(--ds-text-3)]">
+                {segmentsTimed ? (audioUrl ? "Select a time to play the recording from there." : "Times are shown; there is no recording to play.") : "Read the call in order."}
+              </p>
+            </div>
+            {transcriptText || segments.length > 0 ? (
+              <span className="text-xs px-2 py-1 rounded border bg-emerald-600/10 text-emerald-300 border-emerald-500/20">
+                Available
+              </span>
+            ) : (
+              <span className="rounded border border-[var(--ds-border)] bg-white/[0.04] px-2 py-1 text-xs text-[var(--ds-text-3)]">
+                Not available yet
+              </span>
+            )}
+          </div>
+          <div className="px-5 py-5 sm:px-6">
+            <TranscriptView
+              segments={segments}
+              text={transcriptText}
+              activeIndex={activeSegment}
+              markers={markers}
+              onSeek={onSeekSegment}
+              canSeek={!!audioUrl}
+              status={callMeta?.status}
+            />
+          </div>
         </section>
 
         {/* Pins */}
@@ -2054,27 +2082,38 @@ export default function CallPage() {
             {loadingPins ? (
               <p className="text-sm text-[var(--ds-text-3)]">Loading pins…</p>
             ) : pins.length === 0 ? (
-              <EmptyState
-                message="No pinned coaching notes yet."
-                sub="Pin a moment from the player to build a coaching timeline for this call."
+              <EmptyPanel title="No pinned coaching notes yet."
+                body="Pin a moment from the player to build a coaching timeline for this call."
               />
             ) : (
               <ul className="divide-y divide-[var(--ds-border)] rounded-[var(--ds-radius-control)] border border-[var(--ds-border)]">
                 {pins.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between px-3 py-2">
-                    <div className="text-sm">
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2.5">
+                    <div className="min-w-0 text-sm">
                       <button
                         onClick={() => seek(p.t)}
                         className="ds-focus rounded tabular-nums text-[var(--ds-highlight)] underline underline-offset-2 hover:text-[var(--ds-text)]"
                         title="Jump"
+                        aria-label={`Play from ${fmt(p.t)}`}
                       >
                         {fmt(p.t)}
                       </button>
-                      {p.note && <span className="ml-2 text-[var(--ds-text-3)]">— {p.note}</span>}
+                      {p.note && <span className="ml-2 text-[var(--ds-text-2)] [overflow-wrap:anywhere]">{p.note}</span>}
                     </div>
-                    <Button onClick={() => onDelete(p.id)}>
-                      Delete
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {segmentsTimed && (
+                        <button
+                          type="button"
+                          onClick={() => showSegment(segmentIndexAt(segments, p.t))}
+                          className="ds-focus rounded text-sm text-[var(--ds-text-2)] underline-offset-2 hover:text-[var(--ds-text)] hover:underline"
+                        >
+                          Show in transcript
+                        </button>
+                      )}
+                      <Button onClick={() => onDelete(p.id)}>
+                        Delete
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -2091,9 +2130,8 @@ export default function CallPage() {
             {whispererMomentsError ? (
               <div className="text-sm text-red-200">Could not load Whisperer moments.</div>
             ) : whispererMoments.length === 0 ? (
-              <EmptyState
-                message="No Whisperer moments linked to this call yet."
-                sub="Live coaching moments appear here when this call ran with the Whisperer."
+              <EmptyPanel title="No Whisperer moments linked to this call yet."
+                body="Live coaching moments appear here when this call ran with the Whisperer."
               />
             ) : (
               <div className="space-y-2">
@@ -2127,7 +2165,7 @@ export default function CallPage() {
                       {m.detectedAt && <span>{new Date(m.detectedAt).toLocaleString("en-GB")}</span>}
                       {typeof m.latencyMs === "number" && <span>{m.latencyMs}ms</span>}
                     </div>
-                    {/* Day 122: suggestion outcome — show current + allow manager to mark on review */}
+                    {/* Day 122: suggestion outcome — the API allows the session owner or an in-hierarchy manager; it answers 403 otherwise, so the control is not hidden here */}
                     <div className="flex items-center gap-1.5 pt-0.5">
                       {([
                         { value: "used", label: "Used" },
@@ -2162,9 +2200,8 @@ export default function CallPage() {
             <PanelHeader title="Coach assignments" meta={assignmentsLoading ? "Loading…" : `${assignments.length} item${assignments.length === 1 ? "" : "s"}`} />
             <div className="px-5 py-5 sm:px-6">
             {(!Array.isArray(assignments) || assignments.filter(Boolean).length === 0) && !assignmentsLoading && (
-              <EmptyState
-                message="No coaching assignments for this call yet."
-                sub="Drills assigned from this review appear here."
+              <EmptyPanel title="No coaching assignments for this call yet."
+                body="Drills assigned from this review appear here."
               />
             )}
 
@@ -2174,22 +2211,28 @@ export default function CallPage() {
                   .filter((a): a is Record<string, any> => !!a && typeof a === "object")
                   .map((a, idx) => {
                     const id = String(a.id ?? `assignment-${idx}`);
-                    const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+                    const drillLabel = drillLabelFor(a);
                     const notes = typeof a.notes === "string" && a.notes.trim() ? a.notes.trim() : null;
 
                     return (
                       <li key={id} className="py-2 flex items-center justify-between gap-3">
-                        <div className="text-sm">
-                          <div className="font-medium text-[var(--ds-text)]">{drillLabel}</div>
+                        <div className="min-w-0 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-[var(--ds-text)]">{drillLabel}</span>
+                            {a.status === "completed" ? <Badge tone="good">Completed</Badge> : a.status === "open" ? <Badge>Open</Badge> : null}
+                          </div>
                           {notes && (
                             <div className="mt-0.5 text-xs text-[var(--ds-text-3)]">{notes}</div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button onClick={() => deleteAssignment(id)}>
-                            Delete
-                          </Button>
-                        </div>
+                        {/* The API (DELETE /v1/coach/assignments/:id) is manager-only and tenant-scoped; the control follows that policy. */}
+                        {managerCheckDone && isManager && (
+                          <div className="flex items-center gap-2">
+                            <Button onClick={() => deleteAssignment(id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        )}
                       </li>
                     );
                   })}
@@ -2337,12 +2380,12 @@ export default function CallPage() {
         </section>
 
         {coachOpen && assignOpen && (
-          <div className="rounded border border-indigo-400/30 bg-indigo-500/10 p-3 text-sm text-indigo-200">
+          <div className="rounded-[var(--ds-radius-card)] border border-[var(--ds-border-strong)] bg-white/[0.04] px-5 py-3 text-sm text-[var(--ds-text-2)]">
             Coach panel opened via deep link — “Assign Drill” preset is active.
           </div>
         )}
         {err && (
-          <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          <div role="alert" className="rounded-[var(--ds-radius-card)] border border-red-300/20 bg-red-400/[0.06] px-5 py-3 text-sm text-red-100">
             {err === "invalid callId"
               ? "This is a demo placeholder call. No full metadata or audio is stored for this ID."
               : err === "Call not found or no longer available."
@@ -2368,10 +2411,7 @@ export default function CallPage() {
             {callMeta?.ai_model && <div><dt className="text-[var(--ds-text-3)]">AI model</dt><dd className="text-[var(--ds-text)]">{callMeta.ai_model}</dd></div>}
             {rawFileLabel && <div className="min-w-0"><dt className="text-[var(--ds-text-3)]">File</dt><dd className="truncate text-[var(--ds-text)]" title={rawFileLabel}>{rawFileLabel}</dd></div>}
           </dl>
-          {/* Day 268 — Scoring v2 objection matches + provenance detail (only for valid v2). */}
-          {scoreV2VM && scoreV2VM.objections.length > 0 && (
-            <ObjectionMatches objections={scoreV2VM.objections} jumps={v2Jumps} />
-          )}
+          {/* Day 268 — Scoring v2 provenance detail (only for valid v2). */}
           {scoreV2VM && <ScoreV2Provenance rows={scoreV2VM.provenanceRows} />}
 
           {/* Voice Personality Score — supporting signal, collapsed until wanted */}
@@ -2381,19 +2421,19 @@ export default function CallPage() {
           >
             {reviewBot.hasData ? (
               <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-4">
+                <div className="rounded-xl border border-[var(--ds-border)] bg-white/[0.03] p-4 space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <ReviewTagChip
                       ok={!reviewBot.weakClose}
                       label={reviewBot.weakClose ? "Weak close detected" : "Close looks healthy"}
                     />
-                    <span className="inline-flex items-center rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200">
+                    <span className="inline-flex items-center rounded-full border border-[var(--ds-border-strong)] px-2.5 py-1 text-xs text-[var(--ds-text)]">
                       Filler count: {reviewBot.fillerCount}
                     </span>
                   </div>
 
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Filler words found</div>
+                    <div className="text-xs uppercase tracking-wide text-[var(--ds-text-3)] mb-2">Filler words found</div>
                     {reviewBot.fillerWords.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {reviewBot.fillerWords.map((word: string) => (
@@ -2406,32 +2446,32 @@ export default function CallPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-neutral-400">No filler words tagged on this review.</div>
+                      <div className="text-sm text-[var(--ds-text-3)]">No filler words tagged on this review.</div>
                     )}
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500 mb-3">Voice rubric</div>
+                <div className="rounded-xl border border-[var(--ds-border)] bg-white/[0.03] p-4">
+                  <div className="text-xs uppercase tracking-wide text-[var(--ds-text-3)] mb-3">Voice rubric</div>
                   {reviewBot.rubricRows.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {reviewBot.rubricRows.map((item) => (
                         <div
                           key={item.key}
-                          className="min-w-[110px] rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
+                          className="min-w-[110px] rounded-lg border border-[var(--ds-border)] bg-white/[0.03] px-3 py-2"
                         >
-                          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{item.label}</div>
-                          <div className="mt-1 text-lg font-semibold text-neutral-100">{item.value}</div>
+                          <div className="text-[11px] uppercase tracking-wide text-[var(--ds-text-3)]">{item.label}</div>
+                          <div className="mt-1 text-lg font-semibold text-[var(--ds-text)]">{item.value}</div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-neutral-400">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
+                    <div className="text-sm text-[var(--ds-text-3)]">Voice breakdown will appear once a scored review includes clarity, confidence, filler density, and pace data.</div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-neutral-400">
+              <div className="text-sm text-[var(--ds-text-3)]">
                 No voice and delivery breakdown has been generated for this call yet.
               </div>
             )}
@@ -2443,9 +2483,9 @@ export default function CallPage() {
               the original default-rubric wording. */}
           <Disclosure title="Scoring transparency" hint="Rubric, scorecard and model used for this score">
             {provenance.hasCustomScorecard ? (
-              <p className="text-sm leading-6 text-neutral-300">
+              <p className="text-sm leading-6 text-[var(--ds-text-2)]">
                 This call was scored with{" "}
-                <span className="font-medium text-neutral-100">{provenance.scorecardLabel}</span> — your company
+                <span className="font-medium text-[var(--ds-text)]">{provenance.scorecardLabel}</span> — your company
                 scorecard, applied within the same fixed call stages (
                 {(rubricStages.length > 0
                   ? rubricStages.map((s) => s.label)
@@ -2454,9 +2494,9 @@ export default function CallPage() {
                 ), each scored out of 100 with evidence notes.
               </p>
             ) : (
-              <p className="text-sm leading-6 text-neutral-300">
+              <p className="text-sm leading-6 text-[var(--ds-text-2)]">
                 Calls are scored with the{" "}
-                <span className="font-medium text-neutral-100">Gravix default rubric</span> — a fixed set of call
+                <span className="font-medium text-[var(--ds-text)]">Gravix default rubric</span> — a fixed set of call
                 stages (
                 {(rubricStages.length > 0
                   ? rubricStages.map((s) => s.label)
@@ -2468,31 +2508,31 @@ export default function CallPage() {
 
             <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
               <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Rubric used</dt>
-                <dd className="text-neutral-300 sm:mt-0.5" title={provenance.detailTitle ?? undefined}>
+                <dt className="text-[var(--ds-text-3)]">Rubric used</dt>
+                <dd className="text-[var(--ds-text-2)] sm:mt-0.5" title={provenance.detailTitle ?? undefined}>
                   {provenance.scorecardLabel}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Scorecard source</dt>
-                <dd className="text-neutral-300 sm:mt-0.5">{provenance.scorecardSourceLabel}</dd>
+                <dt className="text-[var(--ds-text-3)]">Scorecard source</dt>
+                <dd className="text-[var(--ds-text-2)] sm:mt-0.5">{provenance.scorecardSourceLabel}</dd>
               </div>
               <div className="flex justify-between gap-3 sm:block">
-                <dt className="text-neutral-500">Company context</dt>
-                <dd className="text-neutral-300 sm:mt-0.5">
+                <dt className="text-[var(--ds-text-3)]">Company context</dt>
+                <dd className="text-[var(--ds-text-2)] sm:mt-0.5">
                   {provenance.contextLabel ?? "Not applied"}
                 </dd>
               </div>
               {provenance.modelLabel && (
                 <div className="flex justify-between gap-3 sm:block">
-                  <dt className="text-neutral-500">Scoring model:</dt>
-                  <dd className="text-neutral-300 sm:mt-0.5">{provenance.modelLabel}</dd>
+                  <dt className="text-[var(--ds-text-3)]">Scoring model:</dt>
+                  <dd className="text-[var(--ds-text-2)] sm:mt-0.5">{provenance.modelLabel}</dd>
                 </div>
               )}
             </dl>
 
             {!provenance.hasCustomScorecard && (
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-[var(--ds-text-3)]">
                 Custom scorecards will appear here once activated.
               </p>
             )}
@@ -2501,18 +2541,6 @@ export default function CallPage() {
           </div>
           <aside aria-label="Call summary" className="hidden lg:block">
             <div className="sticky top-6 space-y-4">
-              <div className="ds-glass rounded-[var(--ds-radius-card)] p-5">
-                <p className="text-xs font-medium text-[var(--ds-text-3)]">Overall score</p>
-                <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-[var(--ds-text)]">{displayOverall != null ? displayOverall : "—"}</p>
-                <dl className="mt-4 space-y-2 text-sm">
-                  <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Status</dt><dd className="capitalize text-[var(--ds-text)]">{callMeta?.status ?? "queued"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Duration</dt><dd className="text-[var(--ds-text)]">{durationLabel}</dd></div>
-                  {weakestStage && <div className="flex justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Focus</dt><dd className="text-[var(--ds-text)]">{weakestStage.label}</dd></div>}
-                  {trend && trend.length > 1 && (
-                    <div className="flex items-center justify-between gap-3"><dt className="text-[var(--ds-text-3)]">Trend</dt><dd className="text-[var(--ds-highlight)]"><ScoreSparkline scores={trend} /></dd></div>
-                  )}
-                </dl>
-              </div>
               <nav aria-label="Call review sections" className="ds-glass rounded-[var(--ds-radius-card)] p-2">
                 {[
                   { id: "summary", label: "Result" },
@@ -2537,6 +2565,7 @@ export default function CallPage() {
             </div>
           </aside>
         </div>
+        )}
       </div>{/* /review-shell */}
 
       {/* === CRM DRAWER === */}
@@ -2554,23 +2583,23 @@ export default function CallPage() {
           role="dialog"
           aria-modal="true"
           aria-label="CRM link"
-          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform motion-reduce:transition-none ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
+          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-[var(--ds-panel)] border-l border-[var(--ds-border)] shadow-2xl shadow-black/50 text-[var(--ds-text)] p-5 transform transition-transform motion-reduce:transition-none ${crmOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">CRM Link</h2>
-            <button onClick={closeCrm} className="ml-auto min-h-9 px-2 opacity-70 hover:opacity-100 underline text-sm">
+            <button onClick={closeCrm} className="ml-auto min-h-9 px-2 ds-focus rounded opacity-80 hover:opacity-100 underline text-sm">
               Close
             </button>
           </div>
 
           <div className="mt-4 space-y-3 text-sm">
             {/* Current links */}
-            <div className="rounded-xl border border-neutral-800 p-3">
+            <div className="rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] p-3">
               <div className="opacity-70 text-xs mb-2">Current links</div>
 
               <div className="flex flex-wrap gap-2">
                 {contactChip ? (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] inline-flex items-center gap-2">
                     <button
                       type="button"
                       onClick={openContact}
@@ -2593,11 +2622,11 @@ export default function CallPage() {
                     </button>
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Contact: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border)] bg-white/[0.02] text-[var(--ds-text-3)]">Contact: none</span>
                 )}
 
                 {accountChip ? (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 inline-flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] inline-flex items-center gap-2">
                     <button
                       type="button"
                       onClick={openAccount}
@@ -2620,18 +2649,18 @@ export default function CallPage() {
                     </button>
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Account: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border)] bg-white/[0.02] text-[var(--ds-text-3)]">Account: none</span>
                 )}
 
                 {opportunityChip ? (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-200">Opportunity: {opportunityChip}</span>
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] text-[var(--ds-text)]">Opportunity: {opportunityChip}</span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500">Opportunity: none</span>
+                  <span className="px-2 py-0.5 rounded-full border border-[var(--ds-border)] bg-white/[0.02] text-[var(--ds-text-3)]">Opportunity: none</span>
                 )}
               </div>
             </div>
 
-            <div className="border-t border-neutral-800 pt-3 mt-2" />
+            <div className="border-t border-[var(--ds-border)] pt-3 mt-2" />
 
             {/* Link by email */}
             <div className="space-y-2">
@@ -2647,7 +2676,7 @@ export default function CallPage() {
                   value={linkEmail}
                   onChange={(e) => setLinkEmail(e.target.value)}
                   placeholder="name@company.com"
-                  className="flex-1 rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
+                  className="flex-1 ds-focus rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-bg)] px-3 py-2 text-sm text-[var(--ds-text)]"
                 />
                 <Button
                   type="submit"
@@ -2667,7 +2696,7 @@ export default function CallPage() {
               <div className="opacity-80 text-xs">Search contacts</div>
               <input
                 placeholder="Type name or email…"
-                className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
+                className="w-full ds-focus rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-bg)] px-3 py-2 text-sm text-[var(--ds-text)]"
                 value={q}
                 onChange={(e) => debouncedSearchContacts(e.target.value)}  // debounced now
                 onKeyDown={onSearchKeyDown}                       // ↑/↓/Enter
@@ -2677,7 +2706,7 @@ export default function CallPage() {
               {searchErr && <div className="text-xs text-red-400">{searchErr}</div>}
               {q && (
                 <div
-                  className="rounded-xl border border-neutral-800 divide-y divide-neutral-800 max-h-56 overflow-auto"
+                  className="rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] divide-y divide-[var(--ds-border)] max-h-56 overflow-auto"
                   role="listbox"
                   aria-label="Contacts"
                 >
@@ -2718,7 +2747,7 @@ export default function CallPage() {
                             }
                           }}
                           disabled={busy}
-                          className="w-full text-left p-3 hover:bg-neutral-900 border-t border-neutral-800 text-indigo-300"
+                          className="w-full text-left p-3 hover:bg-white/[0.05] border-t border-[var(--ds-border)] text-indigo-300"
                         >
                           Create contact: {q}
                         </button>
@@ -2740,12 +2769,12 @@ export default function CallPage() {
                           aria-selected={selected}
                           onMouseEnter={() => setIdx(i)}
                           onClick={() => linkContactId(c.id)}
-                          className={`w-full text-left p-3 ${selected ? "bg-white/10" : "hover:bg-neutral-900"
+                          className={`w-full text-left p-3 ${selected ? "bg-white/10" : "hover:bg-white/[0.05]"
                             }`}
                           disabled={busy}
                         >
                           <div className="text-sm">
-                            {name || c.email || c.id}
+                            {name || c.email || "Unnamed contact"}
                           </div>
                           {c.email && (
                             <div className="text-xs opacity-70">
@@ -2765,23 +2794,23 @@ export default function CallPage() {
               <div className="opacity-80 text-xs">Search accounts</div>
               <input
                 placeholder="Type company or domain…"
-                className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 outline-none"
+                className="w-full ds-focus rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-bg)] px-3 py-2 text-sm text-[var(--ds-text)]"
                 value={accountQ}
                 onChange={(e) => debouncedSearchAccounts(e.target.value)}
               />
               {accountQ && (
-                <div className="rounded-xl border border-neutral-800 divide-y divide-neutral-800 max-h-56 overflow-auto">
+                <div className="rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] divide-y divide-[var(--ds-border)] max-h-56 overflow-auto">
                   {accountResults.length === 0 ? (
                     <div className="p-3 text-xs opacity-70">No account results</div>
                   ) : (
                     accountResults.map((a) => {
-                      const label = a.name || a.domain || a.id;
+                      const label = a.name || a.domain || "Unnamed account";
                       const linked = linkInfo?.account?.id === a.id;
                       return (
                         <button
                           key={a.id}
                           onClick={() => linkAccountId(a.id)}
-                          className="w-full text-left p-3 hover:bg-neutral-900 disabled:opacity-60"
+                          className="w-full text-left p-3 hover:bg-white/[0.05] disabled:opacity-60"
                           disabled={busy || linked}
                         >
                           <div className="flex items-center justify-between gap-3">
@@ -2827,11 +2856,11 @@ export default function CallPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Coach"
-          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-neutral-950 border-l border-neutral-800 shadow-2xl shadow-black/50 p-5 transform transition-transform motion-reduce:transition-none ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
+          className={`absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto overscroll-contain bg-[var(--ds-panel)] border-l border-[var(--ds-border)] shadow-2xl shadow-black/50 text-[var(--ds-text)] p-5 transform transition-transform motion-reduce:transition-none ${coachOpen ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">Coach</h2>
-            <button onClick={closeCoach} className="ml-auto min-h-9 px-2 opacity-70 hover:opacity-100 underline text-sm">
+            <button onClick={closeCoach} className="ml-auto min-h-9 px-2 ds-focus rounded opacity-80 hover:opacity-100 underline text-sm">
               Close
             </button>
           </div>
@@ -2840,13 +2869,13 @@ export default function CallPage() {
             .slice(0, 3)
             .map((a, idx) => {
               const id = String(a.id ?? `coach-drawer-assignment-${idx}`);
-              const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+              const drillLabel = drillLabelFor(a);
               const createdLabel = a.created_at ? new Date(a.created_at).toLocaleString() : "";
 
               return (
                 <span
                   key={id}
-                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs opacity-80"
+                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-[var(--ds-border-strong)] bg-white/[0.05] px-2 py-0.5 text-xs opacity-80"
                 >
                   <span>{drillLabel}</span>
                   <span className="opacity-60">· {createdLabel}</span>
@@ -2862,7 +2891,7 @@ export default function CallPage() {
                 <label className="block text-sm opacity-80">Assignee</label>
                 <select
                   aria-label="Assignee"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                  className="w-full ds-focus bg-[var(--ds-bg)] border border-[var(--ds-border)] rounded-[var(--ds-radius-control)] p-2 text-[var(--ds-text)]"
                   value={assigneeUserId}
                   onChange={e => setAssigneeUserId(e.target.value)}
                   disabled={usersLoading}
@@ -2878,7 +2907,7 @@ export default function CallPage() {
                 </select>
 
                 <label className="block text-sm opacity-80">Drill</label>
-                <select aria-label="Drill" className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                <select aria-label="Drill" className="w-full ds-focus bg-[var(--ds-bg)] border border-[var(--ds-border)] rounded-[var(--ds-radius-control)] p-2 text-[var(--ds-text)]"
                   value={drillId} onChange={e => setDrillId(e.target.value)}>
                   {drills.length ? (
                     drills.map(d => <option key={d.id} value={d.id}>{d.label}</option>)
@@ -2893,7 +2922,7 @@ export default function CallPage() {
                 </select>
 
                 <label className="block text-sm opacity-80">Notes</label>
-                <textarea className="w-full bg-neutral-900 border border-neutral-700 rounded p-2"
+                <textarea className="w-full ds-focus bg-[var(--ds-bg)] border border-[var(--ds-border)] rounded-[var(--ds-radius-control)] p-2 text-[var(--ds-text)]"
                   rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
 
                 {assignError && <ErrorBox msg={assignError} />}
@@ -2910,17 +2939,17 @@ export default function CallPage() {
             )}
 
             {/* Assignments list (remove) */}
-            <div className="rounded-xl border border-neutral-800 p-3 space-y-2">
+            <div className="rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] p-3 space-y-2">
               <h3 className="font-medium">Assignments</h3>
               {assignments.length === 0 ? (
                 <div className="text-sm opacity-70">No assignments yet.</div>
               ) : (
-                <ul className="divide-y divide-neutral-800">
+                <ul className="divide-y divide-[var(--ds-border)]">
                   {(Array.isArray(assignments) ? assignments : [])
                     .filter((a): a is Record<string, any> => !!a && typeof a === "object")
                     .map((a, idx) => {
                       const id = String(a.id ?? `assignment-${idx}`);
-                      const drillLabel = String(a.drill_id ?? a.title ?? a.type ?? "Untitled drill");
+                      const drillLabel = drillLabelFor(a);
                       const createdLabel = a.created_at ? new Date(a.created_at).toLocaleString() : "";
                       return (
                         <li key={id} className="py-2 flex items-center justify-between text-sm">
@@ -2928,20 +2957,22 @@ export default function CallPage() {
                             <span className="font-medium">{drillLabel}</span>
                             <span className="opacity-60">{createdLabel}</span>
                           </div>
-                          <Button
-                            variant="danger"
-                            onClick={async () => {
-                              try {
-                                await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
-                                await loadAssignments();
-                                toast("Assignment removed.");
-                              } catch (e: any) {
-                                toast(e?.message || "Failed to remove.");
-                              }
-                            }}
-                          >
-                            Remove
-                          </Button>
+                          {managerCheckDone && isManager && (
+                            <Button
+                              variant="danger"
+                              onClick={async () => {
+                                try {
+                                  await fetchJsonWithRetry(`/api/proxy/v1/coach/assignments/${a.id}`, { method: "DELETE" });
+                                  await loadAssignments();
+                                  toast("Assignment removed.");
+                                } catch (e: any) {
+                                  toast(friendlyError(e, "Failed to remove."));
+                                }
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          )}
                         </li>
                       );
                     })}
@@ -2953,13 +2984,13 @@ export default function CallPage() {
           </div>
 
           {/* Coaching notes */}
-          <div className="rounded-xl border border-neutral-800 p-3">
+          <div className="rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] p-3">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-medium">Notes</h3>
               {notesSaving && <span className="text-xs opacity-70">Saving…</span>}
             </div>
             <textarea
-              className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 min-h-[100px]"
+              className="w-full ds-focus w-full rounded-[var(--ds-radius-control)] border border-[var(--ds-border)] bg-[var(--ds-bg)] px-3 py-2 min-h-[100px] text-sm text-[var(--ds-text)]"
               placeholder="Add quick guidance for the rep…"
               value={coachNotes}
               onChange={(e) => setCoachNotes(e.target.value)}
@@ -2973,7 +3004,7 @@ export default function CallPage() {
                   });
                   toast("Saved");
                 } catch (e: any) {
-                  toast(e?.message || "Failed to save");
+                  toast(friendlyError(e, "Failed to save"));
                 } finally {
                   setNotesSaving(false);
                 }

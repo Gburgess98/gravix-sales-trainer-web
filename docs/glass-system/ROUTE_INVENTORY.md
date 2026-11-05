@@ -23,7 +23,7 @@ Visual: **Redesigned** (shared glass primitives) · **Partially redesigned** · 
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `/dashboard` | Home / My Dashboard | rep (manager: More → My Dashboard) | Nav: Home | Next action, 3 metrics, recent calls | Redesigned | Live: /v1/assignments, /v1/calls/paged, voice-score-trend; XP via /v1/reps/me is always 0 (endpoint has no xp) | Any signed-in user | Overlaps /progress (shared model) — intentional | Points read from the wrong endpoint (shows 0) | Yes | No action |
 | `/call-library` | Calls · Practice · Call Uploads | shared | Nav: Calls / Practice (?tab=sparring); login landing | Browse scored calls, practice sessions, uploads | Redesigned | Live: /v1/calls/paged, sparring sessions/personas, assignments by-target | Any signed-in user; Company toggle decided per caller by the API | ?tab=upload overlaps /upload (list vs create); ?tab=sparring overlaps /sparring | None seen | Yes | No action |
-| `/calls/[id]` | Call review | shared | Rows in Calls, Reviews, assignments, replay links | Transcript, score, pins, whisperer, coaching, CRM link | Partially redesigned | Live: /v1/calls/:id, scores, pins, assignments; manager extras behind a manager check | Any signed-in user; API enforces ownership/scope | /review/[callId]/timeline redirects here | Remaining sections (transcript, score blocks) still legacy styled | Yes (core flow) | Must redesign before release |
+| `/calls/[id]` | Call review | shared | Rows in Calls, Reviews, assignments, replay links | Transcript, score, pins, whisperer, coaching, CRM link | **Redesigned** (call-review redesign) | Live: /v1/calls/:id, scores, pins, assignments; manager extras behind a manager check | Any signed-in user; API enforces ownership/scope | /review/[callId]/timeline redirects here | Transcript, key moments, drawers and states moved to the glass system; see CALL_REVIEW.md | Yes (core flow) | Real staging verification outstanding (mocked Playwright only) |
 | `/upload` | Upload a call | shared (utility) | Nav: Upload Call (all roles) + buttons everywhere | Signed-upload → finalize → job/call polling (contracts unchanged) | **Redesigned** (upload redesign) | Live: /v1/upload/signed, /finalize, jobs/:id, calls/:id | Any signed-in user; call is owned by the uploader (stated on the page); visibility per org setting, shown before submit | Only create-upload screen; `/call-library?tab=upload` is the history. Header "Upload" link in HeaderClient remains: it renders for signed-in users on non-shell routes (`/health`, `/dev/*`) so it could not be proven unused | Glass design system; single workflow, staged progress, resume after refresh | Yes (core flow) | Real staging verification outstanding (mocked Playwright only) |
 | `/assignments` | Coaching / My Assignments | rep (manager: More → My Assignments) | Nav: Coaching (rep) | Own coaching queue, priority, completion | Redesigned | Live: /v1/assignments, daily-feed; local snooze | Any signed-in user (own rows only) | Manager equivalent is /coaching?tab=assignments (different workflow); /admin/assignments is the manager lane | Link /assignments/${id} on /crm/overview has no route (404) | Yes | No action |
 | `/progress` | Progress | rep (manager: More → My Progress) | Nav: Progress | Trend, skills, completed, points/streak | Redesigned | Derived: weakness-trends (latest 100 calls), voice trend (repId=self); live: assignments, /assignments/me | Any signed-in user; own id only in UI; API scope gap (org-only) noted | Home shows the same model | — | Yes | No action |
@@ -147,7 +147,7 @@ Separate commit; no UUID migration, proxy change, redesign or CRM decision inclu
 
 **Old rewards, gamification, admin and diagnostics.** `/rewards` → `/dashboard` (fine). Still live: `/health` (raw proxy probe), `/dev/scoring-v2-preview` (fixture page reachable in production), `/probe` (a **pages-router** diagnostic, publicly reachable without a session; the project also carries a dead `src/app/page/probe.tsx` and a stray `src/login/page.tsx` outside `app/`), `/admin/status`, `/admin/score`, and the public `/api/env` which returns `OPEN_ROUTES` and `NODE_ENV` to anyone.
 
-**Dynamic routes.** `/calls/[id]` (redesigned in part), `/crm/reps/[id]`, `/crm/accounts/[id]`, `/crm/contacts/[id]`, `/admin/users/[id]`, `/admin/companies/[id]`, `/sparring/[id]`, `/reps/[id]` and `/review/[callId]/timeline` (redirects). Rep and sparring ids are validated by the API; the pages show calm not-found/“couldn’t load” states except `/admin/users/[id]`, whose entire body for a rep is the raw string `forbidden_not_manager`.
+**Dynamic routes.** `/calls/[id]` (redesigned), `/crm/reps/[id]`, `/crm/accounts/[id]`, `/crm/contacts/[id]`, `/admin/users/[id]`, `/admin/companies/[id]`, `/sparring/[id]`, `/reps/[id]` and `/review/[callId]/timeline` (redirects). Rep and sparring ids are validated by the API; the pages show calm not-found/“couldn’t load” states except `/admin/users/[id]`, whose entire body for a rep is the raw string `forbidden_not_manager`.
 
 **Filesystem routes absent from navigation (reachable only by link or URL):** `/crm/overview`, `/crm/pipeline`, `/crm/tasks`, `/crm/import`, `/crm/manager/nudges`, `/whisperer` (listed in the product nav in CLAUDE.md but not in `navigation.ts`), `/sparring`, `/admin/reps`, `/admin/personas`, `/admin/score`, `/admin/status`, `/admin/assignments*`, `/health`, `/dev/*`, `/probe`, all redirect stubs.
 
@@ -181,9 +181,9 @@ Reclassified because their only open problem was the missing guard: `/team` and 
 
 | Visual system | Routes |
 |---|---|
-| Redesigned | 7 (`/dashboard`, `/call-library`, `/assignments`, `/progress`, `/team`, `/crm/analytics`, `/admin/settings`) |
-| Partially redesigned | 4 (`/coaching`, `/calls/[id]`, `/crm/reps/[id]`, `/sparring`) |
-| Legacy | 33 |
+| Redesigned | 9 (`/dashboard`, `/call-library`, `/assignments`, `/progress`, `/team`, `/crm/analytics`, `/admin/settings`, `/upload`, `/calls/[id]`) |
+| Partially redesigned | 3 (`/coaching`, `/crm/reps/[id]`, `/sparring`) |
+| Legacy | 32 |
 | Redirect stub | 13 |
 | Diagnostic | 3 (`/health`, `/dev/scoring-v2-preview`, `/probe`) |
 
