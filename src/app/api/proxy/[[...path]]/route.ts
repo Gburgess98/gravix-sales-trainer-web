@@ -1,10 +1,92 @@
 // src/app/api/proxy/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync, brotliDecompressSync, inflateSync } from 'zlib';
+import { stripSpoofableIdentityHeaders, trustedHeaderUserId, resolveProxyUserId } from "@/lib/proxyIdentity";
+import { resolveProxyOrgId } from "@/lib/proxyOrg";
 
 // Ensure Node runtime so we can stream the request body
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Guardrail: this proxy should ONLY forward to our API surface.
+// Prevents accidental open-proxy behaviour if someone hits /api/proxy/<random>.
+
+
+const ALLOWED_FIRST_SEGMENTS = new Set(["v1"]);
+const MAX_PROXY_SEGMENTS = 20;
+const MAX_PROXY_SEGMENT_LEN = 200;
+
+// Helper: parse legacy ?path= query param into safe path parts
+function sanitizeProxyPathFromQueryParam(req: NextRequest): string[] | null {
+  const raw = (req.nextUrl.searchParams.get("path") || "").trim();
+  if (!raw) return null;
+
+  // Accept inputs like "/v1/crm/manager/overview" or "v1/crm/manager/overview"
+  const cleanedRaw = raw.replace(/^\/+/, "");
+  if (!cleanedRaw) return null;
+
+  const parts = cleanedRaw.split("/").filter(Boolean);
+  return sanitizeProxyPathParts(parts);
+}
+
+function sanitizeProxyPathParts(pathParts: string[] | undefined): string[] | null {
+  if (!Array.isArray(pathParts) || pathParts.length === 0) return null;
+  if (pathParts.length > MAX_PROXY_SEGMENTS) return null;
+
+  const cleaned: string[] = [];
+  for (const raw of pathParts) {
+    const seg = String(raw ?? "").trim();
+    if (!seg) return null;
+    if (seg.length > MAX_PROXY_SEGMENT_LEN) return null;
+    // Block path traversal / odd encodings
+    if (seg === "." || seg === ".." || seg.includes("..") || seg.includes("\\")) return null;
+    // Disallow accidental absolute URLs / schemes
+    if (/^[a-zA-Z]+:/.test(seg)) return null;
+    cleaned.push(seg);
+  }
+  return cleaned;
+}
+
+
+function isAllowedProxyPath(pathParts: string[] | undefined): boolean {
+  const cleaned = sanitizeProxyPathParts(pathParts);
+  if (!cleaned || cleaned.length === 0) return false;
+  const first = cleaned[0];
+  return ALLOWED_FIRST_SEGMENTS.has(first);
+}
+
+function isProxyDebugAllowed(req: NextRequest): boolean {
+  // In dev, allow without token.
+  if (process.env.NODE_ENV !== "production") return true;
+
+  // In prod, require an explicit token.
+  const token = (process.env.PROXY_DEBUG_TOKEN || "").trim();
+  if (!token) return false;
+
+  const hdr = (req.headers.get("x-proxy-debug-token") || "").trim();
+  return !!hdr && hdr === token;
+}
+
+function decodeJwtSub(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "===".slice((b64.length + 3) % 4);
+    const json = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    const sub = typeof json?.sub === "string" ? json.sub : null;
+    return sub && sub.length > 10 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function isUuid(v: string): boolean {
+  const s = (v || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
 
 function getBackendBase(): string {
   const target = (process.env.API_PROXY_TARGET || "").trim();
@@ -20,58 +102,449 @@ function buildTargetUrl(base: string, path: string[] | undefined, req: NextReque
   return `${base.replace(/\/$/, '')}${suffix}${qs ? `?${qs}` : ''}`;
 }
 
+async function getUserIdFromSupabaseCookies(
+  _req: NextRequest,
+  cookieList: Array<{ name: string; value: string }>
+): Promise<string> {
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createServerClient } = await import("@supabase/ssr");
+
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() {
+          // IMPORTANT: use the cookie list captured once in the route handler
+          return cookieList;
+        },
+        setAll(_cookies) {
+          // Proxy must never mutate auth cookies
+          // (No-op by design)
+        },
+      },
+    });
+
+    const { data } = await supabase.auth.getUser();
+    return (data?.user?.id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Look up the authenticated user's org_id from the reps table.
+ * Returns the org_id string, or "" if the user has no reps row or the
+ * lookup fails. Falls back cleanly so callers can still use the env default.
+ */
+async function getOrgIdForUser(
+  userId: string,
+  cookieList: Array<{ name: string; value: string }>
+): Promise<string> {
+  if (!userId) return "";
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createServerClient } = await import("@supabase/ssr");
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() { return cookieList; },
+        setAll() {},
+      },
+    });
+
+    const { data } = await supabase
+      .from("reps")
+      .select("org_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    return String(data?.org_id ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The verified user's org_id, read with THEIR OWN Bearer session (RLS applies as that user), so it is the user's real
+ * membership and cannot be influenced by the browser. Used first; the cookie-session lookup above is the fallback for
+ * cookie-authenticated browsers. Returns "" when it cannot be read.
+ */
+async function getOrgIdForBearer(token: string, userId: string): Promise<string> {
+  if (!token || !userId) return "";
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data } = await supabase.from("reps").select("org_id").eq("id", userId).maybeSingle();
+    return String(data?.org_id ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function getUserIdFromAuthorizationHeader(req: NextRequest): Promise<string> {
+  try {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+    const anonKey = (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ""
+    ).trim();
+    if (!url || !anonKey) return "";
+
+    const auth = (req.headers.get("authorization") || "").trim();
+    if (!auth.toLowerCase().startsWith("bearer ")) return "";
+    const token = auth.slice(7).trim();
+    if (!token) return "";
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error) return "";
+    return (data?.user?.id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function handle(req: NextRequest, context: any) {
   try {
     const base = getBackendBase();
-    const target = buildTargetUrl(base, context?.params?.path as string[] | undefined, req);
 
-    // Optional debug: /api/proxy/v1/health?debug=1
-    if (req.nextUrl.searchParams.get("debug") === "1") {
-      return NextResponse.json({ ok: true, base, target });
+    // Next.js App Router: treat params as async-safe and only read once
+    const params = context?.params ? await Promise.resolve(context.params as any) : undefined;
+    const rawPathParts = (params as any)?.path as string[] | undefined;
+    const pathParts = sanitizeProxyPathParts(rawPathParts) ?? sanitizeProxyPathFromQueryParam(req);
+
+    // ---- Known-good proxy debug route (never forwards upstream)
+    // GET /api/proxy/__debug  (dev: open, prod: requires x-proxy-debug-token)
+    if (req.method === "GET" && Array.isArray(pathParts) && pathParts[0] === "__debug") {
+      if (!isProxyDebugAllowed(req)) {
+        const res = NextResponse.json({ ok: false, error: "debug_forbidden" }, { status: 403 });
+        res.headers.set("x-proxy-guardrail", "debug_forbidden");
+        return res;
+      }
+
+      const cookieList = (req.cookies.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+
+      const hdrs = new Headers(req.headers);
+      const headerUserId = (hdrs.get("x-user-id") || "").trim();
+
+      const authHeader = (hdrs.get("authorization") || hdrs.get("Authorization") || "").trim();
+      const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+      const bearerUserId = decodeJwtSub(bearerToken) || "";
+
+      const cookieUserId = (!headerUserId && !bearerUserId)
+        ? await getUserIdFromSupabaseCookies(req, cookieList)
+        : "";
+
+      const devUidRaw = (
+        process.env.PROXY_DEV_X_USER_ID ||
+        process.env.NEXT_PUBLIC_DEV_USER_ID ||
+        process.env.DEV_TEST_UID ||
+        ""
+      ).trim();
+
+      const devUid = isUuid(devUidRaw) ? devUidRaw : "";
+
+      const allowDevFallback = process.env.NODE_ENV !== "production" && !!devUid;
+
+      const resolvedUserId =
+        headerUserId ||
+        bearerUserId ||
+        cookieUserId ||
+        (allowDevFallback ? devUid : "");
+
+      const usedDevUid =
+        !headerUserId && !bearerUserId && !cookieUserId && allowDevFallback && !!devUid;
+
+      const authSource = headerUserId
+        ? "header"
+        : bearerUserId
+          ? "bearer"
+          : cookieUserId
+            ? "cookie"
+            : usedDevUid
+              ? "dev"
+              : "none";
+
+      const hasCookieHeader = !!req.headers.get("cookie");
+      const hasNextCookies = cookieList.length > 0;
+
+      const hasSupabaseEnv = !!(
+        (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) &&
+        (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)
+      );
+
+      return NextResponse.json(
+        {
+          ok: true,
+          now: new Date().toISOString(),
+          method: req.method,
+          pathParts,
+          pathVia: Array.isArray(rawPathParts) ? "params" : (req.nextUrl.searchParams.get("path") ? "query" : "none"),
+          base: getBackendBase(),
+          auth: {
+            resolvedUserId: resolvedUserId || "",
+            authSource,
+            hasBearer: !!bearerToken,
+            hasXUserIdHeader: !!headerUserId,
+            allowDevFallback,
+          },
+          cookies: {
+            hasCookieHeader,
+            cookieCount: cookieList.length,
+            hasNextCookies,
+          },
+          env: {
+            hasSupabaseEnv,
+            nodeEnv: process.env.NODE_ENV,
+          },
+        },
+        { status: 200 }
+      );
     }
 
-    // Clone headers, ensure x-user-id for test flows; never forward hop-by-hop headers
+    // Guardrail: only allow forwarding to /v1/*
+    if (!isAllowedProxyPath(pathParts ?? undefined)) {
+      // If sanitize failed, treat it as a bad request (someone is probing)
+      if (!pathParts) {
+        return NextResponse.json(
+          { ok: false, error: "proxy_path_invalid" },
+          {
+            status: 400,
+            headers: {
+              "x-proxy-guardrail": "path_invalid",
+            },
+          }
+        );
+      }
+      return NextResponse.json(
+        { ok: false, error: "proxy_path_not_allowed" },
+        {
+          status: 404,
+          headers: {
+            "x-proxy-guardrail": "path_not_allowed",
+          },
+        }
+      );
+    }
+
+    // Route handler: use request cookies
+    const cookieList = (req.cookies.getAll() || []).map((c) => ({ name: c.name, value: c.value }));
+
+    const target = buildTargetUrl(base, pathParts ?? undefined, req);
+
+    // Optional debug: /api/proxy/v1/*?debug=1 (DEV ONLY)
+    if (req.nextUrl.searchParams.get("debug") === "1") {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { ok: false, error: "debug_disabled" },
+          { status: 404, headers: { "x-proxy-guardrail": "debug_disabled" } }
+        );
+      }
+      return NextResponse.json(
+        {
+          ok: true,
+          base,
+          target,
+          pathParts,
+          via: Array.isArray(rawPathParts) ? "params" : (req.nextUrl.searchParams.get("path") ? "query" : "none"),
+        },
+        { status: 200 }
+      );
+    }
+
+    // Clone headers; never forward hop-by-hop headers
     const headers = new Headers(req.headers);
     headers.delete("host");
 
-    // Always inject a concrete user + org so backend never 400s
-    const devUid =
+    // Day 175 — in production, identity headers arriving from the browser are
+    // never trusted or forwarded: identity is resolved server-side from the
+    // verified bearer token or the Supabase cookie session only. In dev the
+    // legacy header path stays available for curl/smoke tests and the demo.
+    const isProdProxy = process.env.NODE_ENV === "production";
+    // The browser-supplied org (if any) is captured BEFORE stripping: it is never forwarded, but a value that differs from
+    // the verified membership is a tampering signal and is refused below (see @/lib/proxyOrg).
+    const clientOrgId = (headers.get("x-org-id") || "").trim();
+    // Day 175 / Day 316 — strip browser-supplied identity headers in production
+    // (see @/lib/proxyIdentity). No-op in dev.
+    stripSpoofableIdentityHeaders(headers, isProdProxy);
+
+    // ---- Resolve user id (priority)
+    // 1) Explicit x-user-id header (curl/dev — ignored in production)
+    // 2) Authorization: Bearer <jwt> (verified against Supabase in production;
+    //    local decode in dev to keep offline smoke tests working)
+    // 3) Supabase cookie session (real browser)
+    // 4) Dev fallback (explicit opt-in only, never in production)
+    const headerUserId = trustedHeaderUserId(headers, isProdProxy);
+    const authHeader = (headers.get("authorization") || headers.get("Authorization") || "").trim();
+    const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+    const bearerUserId = bearerToken
+      ? (isProdProxy ? await getUserIdFromAuthorizationHeader(req) : decodeJwtSub(bearerToken) || "")
+      : "";
+
+    const cookieUserId = (!headerUserId && !bearerUserId)
+      ? await getUserIdFromSupabaseCookies(req, cookieList)
+      : "";
+
+    const devUidRaw = (
+      process.env.PROXY_DEV_X_USER_ID ||
       process.env.NEXT_PUBLIC_DEV_USER_ID ||
       process.env.DEV_TEST_UID ||
-      "00000000-0000-4000-8000-000000000001"; // valid v4-shaped UUID fallback
+      ""
+    ).trim();
 
-    let usedDevUid = false;
+    // Production hotfix: never carry (or echo in debug headers) a dev identity in production, whatever env vars exist.
+    const devUid = !isProdProxy && isUuid(devUidRaw) ? devUidRaw : "";
 
-    const existingUserId = headers.get("x-user-id");
-    const finalUserId =
-      existingUserId && existingUserId.trim().length > 0
-        ? existingUserId
-        : devUid;
+    // Day 316/317 — single source of truth for the resolution order decision
+    // (header > bearer > cookie > dev, dev only outside production). See
+    // @/lib/proxyIdentity and scripts/validate-identity-boundary-day-316.mts.
+    const { userId: resolvedUserId, source: authSource } = resolveProxyUserId({
+      isProd: isProdProxy,
+      headerUserId,
+      bearerUserId,
+      cookieUserId,
+      devUid,
+    });
 
-    if (!existingUserId || existingUserId.trim().length === 0) {
-      usedDevUid = true;
+    const usedDevUid = authSource === "dev";
+
+    // Debug headers
+    headers.set("x-proxy-auth-source", authSource);
+    headers.set("x-proxy-user-id", resolvedUserId || "");
+    headers.set("x-proxy-dev-uid", devUid || "");
+    headers.set("x-proxy-bearer", bearerToken ? "1" : "");
+
+    if (!resolvedUserId) {
+      const res = NextResponse.json({ ok: false, error: "missing_user" }, { status: 401 });
+      try { res.headers.set("x-proxy-auth-source", authSource); } catch { }
+      try { res.headers.set("x-proxy-user-id", resolvedUserId || ""); } catch { }
+      try { res.headers.set("x-proxy-dev-uid", devUid || ""); } catch { }
+      try { res.headers.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
+      try {
+        const hasCookieHeader = !!req.headers.get("cookie");
+        const hasNextCookies = cookieList.length > 0;
+        res.headers.set("x-proxy-has-cookie", hasCookieHeader ? "1" : "");
+        // keep header name for compatibility, but source is the single cookie list
+        res.headers.set("x-proxy-has-req-cookies", hasNextCookies ? "1" : "");
+        res.headers.set("x-proxy-has-next-cookies", hasNextCookies ? "1" : "");
+      } catch { }
+      try { res.headers.set("x-proxy-has-x-user-id", headerUserId ? "1" : ""); } catch { }
+      try { res.headers.set("x-proxy-has-supabase-env", (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) && (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY) ? "1" : ""); } catch { }
+      return res;
     }
 
-    // Normalise all the user-id style headers to the same value
-    headers.set("x-user-id", finalUserId);
-    headers.set("x-gravix-user-id", finalUserId);
-    headers.set("x-forwarded-user-id", finalUserId);
+    // Inject identity headers for API
+    headers.set("x-user-id", resolvedUserId);
+    headers.set("x-gravix-user-id", resolvedUserId);
+    headers.set("x-forwarded-user-id", resolvedUserId);
 
-    // Org id: prefer explicit header, then env fallbacks
-    const devOrg =
+    // Org identity (see @/lib/proxyOrg): the org comes from the verified user's own membership — read with their Bearer
+    // session first, then the cookie session — never from the browser. A differing client-supplied x-org-id is refused.
+    // DEFAULT_ORG_ID-style values are only an explicit last resort (always off-prod; in production only when
+    // PROXY_ALLOW_DEFAULT_ORG=1). The API's own strict UUID validation is unchanged and still applies to whatever is sent.
+    const devOrg = (
+      process.env.DEV_ORG_ID ||
+      process.env.PROXY_DEV_X_ORG_ID ||
       process.env.NEXT_PUBLIC_TEST_ORG_ID ||
       process.env.NEXT_PUBLIC_DEFAULT_ORG_ID ||
       process.env.DEFAULT_ORG_ID ||
-      "";
+      ""
+    ).trim();
 
-    const existingOrgId = headers.get("x-org-id");
-    const finalOrgId =
-      existingOrgId && existingOrgId.trim().length > 0
-        ? existingOrgId
-        : devOrg;
+    const verifiedOrgId =
+      (bearerUserId && bearerUserId === resolvedUserId ? await getOrgIdForBearer(bearerToken, resolvedUserId) : "") ||
+      (await getOrgIdForUser(resolvedUserId, cookieList));
 
-    if (finalOrgId) {
-      headers.set("x-org-id", finalOrgId);
+    const orgDecision = resolveProxyOrgId({
+      isProd: isProdProxy,
+      clientOrgId,
+      verifiedOrgId,
+      fallbackOrgId: devOrg,
+      allowDefaultInProd: (process.env.PROXY_ALLOW_DEFAULT_ORG || "").trim() === "1",
+    });
+    if (!orgDecision.ok) {
+      return NextResponse.json(
+        { ok: false, error: orgDecision.error },
+        { status: orgDecision.status, headers: { "x-proxy-guardrail": "org_mismatch" } }
+      );
+    }
+    headers.delete("x-org-id");
+    if (orgDecision.orgId) headers.set("x-org-id", orgDecision.orgId);
+    headers.set("x-proxy-org-source", orgDecision.source);
+
+    // ---- Hierarchy-aware forwarding
+
+    const existingCompanyId = (
+      headers.get("x-company-id") || ""
+    ).trim();
+
+    if (existingCompanyId) {
+      headers.set("x-company-id", existingCompanyId);
+    }
+
+    const activeOfficeId = (
+      headers.get("x-active-office-id") || ""
+    ).trim();
+
+    if (activeOfficeId) {
+      headers.set("x-active-office-id", activeOfficeId);
+    }
+
+    // ---- Support impersonation forwarding
+
+    const impersonatedUserId = (
+      headers.get("x-impersonated-user-id") || ""
+    ).trim();
+
+    if (impersonatedUserId) {
+      headers.set(
+        "x-impersonated-user-id",
+        impersonatedUserId
+      );
+    }
+
+    // Preserve real authenticated user lineage for audit logging
+    headers.set("x-real-user-id", resolvedUserId);
+
+    // Day 175 — proxy trust boundary. When PROXY_SHARED_SECRET is configured
+    // (server-side env, never exposed to the browser), stamp each upstream
+    // request so the API can distinguish proxy-injected identity headers from
+    // direct callers. The API ignores x-user-id without a matching secret.
+    const proxySharedSecret = (process.env.PROXY_SHARED_SECRET || "").trim();
+    if (proxySharedSecret) {
+      headers.set("x-proxy-secret", proxySharedSecret);
+    } else {
+      // Never forward a client-supplied value for the trust header.
+      headers.delete("x-proxy-secret");
     }
 
     // Ensure a request id for tracing
@@ -79,11 +552,21 @@ async function handle(req: NextRequest, context: any) {
       if (!headers.get("x-request-id") && typeof crypto !== "undefined" && (crypto as any).randomUUID) {
         headers.set("x-request-id", (crypto as any).randomUUID());
       }
-    } catch {}
+    } catch { }
 
     // Strip hop-by-hop / unsafe
     headers.delete("connection");
     headers.delete("content-length"); // important when we stream
+
+    // Day 228 — this proxy is a server-to-server client of the API, so the
+    // browser's Origin/Referer must not leak through. Browsers attach Origin
+    // to every POST/PUT (even same-origin), and the API's CORS allow-list
+    // only knows the configured WEB_ORIGIN — any other port or host (dev
+    // previews, alternate deploys) made every mutation 500 while GETs
+    // sailed through. The API treats an absent Origin as a trusted
+    // server-to-server call, which is exactly what this is.
+    headers.delete("origin");
+    headers.delete("referer");
 
     // Force plain text/JSON from origin (avoid gzipped bytes leaking through)
     headers.set("accept-encoding", "identity");
@@ -93,7 +576,10 @@ async function handle(req: NextRequest, context: any) {
       req.method === "GET" || req.method === "HEAD" ? undefined : (req as any).body ?? req.body;
 
     // Build fetch init with a plain headers object to avoid weird header serialization
-    const init: RequestInit = {
+    // `duplex` is required by undici/Node when streaming a request body, but is
+    // not yet in the DOM `RequestInit` lib type — widen locally. `next` is the
+    // Next.js fetch extension (revalidate hint), likewise absent from the DOM type.
+    const init: RequestInit & { duplex?: "half"; next?: { revalidate?: number } } = {
       method: req.method,
       headers: {
         ...Object.fromEntries(headers.entries()),
@@ -106,21 +592,60 @@ async function handle(req: NextRequest, context: any) {
       },
       body,
       cache: 'no-store',
-      // @ts-ignore - Next.js request hints
       next: { revalidate: 0 },
       redirect: "manual",
       // Node.js streaming hint; prevents full buffering of multipart/form-data
-      duplex: "half" as any,
+      duplex: "half",
     };
 
     const r = await fetch(target, init);
 
     // Pass backend response straight through so the frontend can read raw error text
     const outHeaders = new Headers(r.headers);
+    try {
+      const hasCookieHeader = !!req.headers.get("cookie");
+      const hasNextCookies = cookieList.length > 0;
+      outHeaders.set("x-proxy-has-cookie", hasCookieHeader ? "1" : "");
+      outHeaders.set("x-proxy-has-req-cookies", hasNextCookies ? "1" : "");
+      outHeaders.set("x-proxy-has-next-cookies", hasNextCookies ? "1" : "");
+    } catch { }
 
     // Add debug headers so we can verify what the proxy used at runtime
-    try { outHeaders.set("x-proxy-api-base", base); } catch {}
-    try { if (usedDevUid && devUid) outHeaders.set("x-proxy-dev-uid", devUid); } catch {}
+    try { outHeaders.set("x-proxy-api-base", base); } catch { }
+    try { outHeaders.set("x-proxy-dev-uid", devUid); } catch { }
+    try { outHeaders.set("x-proxy-user-id", resolvedUserId); } catch { }
+    try { outHeaders.set("x-proxy-api-fallback", usedDevUid ? "1" : ""); } catch { }
+    try { outHeaders.set("x-proxy-auth-source", authSource); } catch { }
+    try { outHeaders.set("x-proxy-bearer", bearerToken ? "1" : ""); } catch { }
+    try { outHeaders.set("x-proxy-org-id", (headers.get("x-org-id") || "").trim()); } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-company-id",
+        (headers.get("x-company-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-active-office-id",
+        (headers.get("x-active-office-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-impersonated-user-id",
+        (headers.get("x-impersonated-user-id") || "").trim()
+      );
+    } catch { }
+
+    try {
+      outHeaders.set(
+        "x-proxy-real-user-id",
+        (headers.get("x-real-user-id") || "").trim()
+      );
+    } catch { }
 
     // Preserve set-cookie if API sets any (auth later)
     const setCookie = r.headers.get("set-cookie");
@@ -128,7 +653,9 @@ async function handle(req: NextRequest, context: any) {
 
     // Read upstream body as raw bytes
     const rawBuf = await r.arrayBuffer();
-    let bodyBytes = Buffer.from(rawBuf);
+    // Annotate as the wide `Buffer` (ArrayBufferLike) so the gzip/brotli/deflate
+    // reassignments below type-check under the generic Buffer types.
+    let bodyBytes: Buffer = Buffer.from(rawBuf);
 
     // Respect Content-Encoding if provided
     const enc = (r.headers.get('content-encoding') || '').toLowerCase();
@@ -153,12 +680,12 @@ async function handle(req: NextRequest, context: any) {
 
     // Heuristic: if it still looks binary and no JSON token found, attempt decompression guesses
     if (!/[\{\[]/.test(bodyText)) {
-      try { bodyText = gunzipSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+      try { bodyText = gunzipSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       if (!/[\{\[]/.test(bodyText)) {
-        try { bodyText = brotliDecompressSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+        try { bodyText = brotliDecompressSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       }
       if (!/[\{\[]/.test(bodyText)) {
-        try { bodyText = inflateSync(Buffer.from(rawBuf)).toString('utf8'); } catch {}
+        try { bodyText = inflateSync(Buffer.from(rawBuf)).toString('utf8'); } catch { }
       }
     }
 
@@ -189,8 +716,8 @@ async function handle(req: NextRequest, context: any) {
     }
 
     // Helpful debug headers
-    try { outHeaders.set("x-proxy-api-base", base); } catch {}
-    try { outHeaders.set("x-proxy-api-fallback", ""); } catch {}
+    try { outHeaders.set("x-proxy-api-base", base); } catch { }
+    try { outHeaders.set("x-proxy-api-fallback", usedDevUid ? "1" : ""); } catch { }
 
     // Final cleanup to strip any leftover binary prefix characters
     if (/^[^\x20-\x7E\r\n]+\{/.test(bodyText)) {

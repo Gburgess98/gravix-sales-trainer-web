@@ -200,8 +200,8 @@ const linkCall = useCallback(async (contactId: string) => {
   // --- ADD: Assign form state ---
 const [assignSaving, setAssignSaving] = useState(false);
 const [assignError, setAssignError] = useState<string | null>(null);
-const DEV_UID = process.env.NEXT_PUBLIC_DEV_USER_ID || "11111111-1111-1111-8111-111111111111";
-const [assigneeUserId, setAssigneeUserId] = useState(DEV_UID);
+// No dev/test identity default: the assignee is chosen (or filled from the call owner) by the user.
+const [assigneeUserId, setAssigneeUserId] = useState("");
 const [drillId, setDrillId] = useState("intro-basics");
 const [notes, setNotes] = useState("");
 

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import HeaderClient from "@/components/HeaderClient";
+import ProxyAuthShim from "@/components/ProxyAuthShim";
 import { ToastProvider } from "@/components/Toast";
 import { headers } from 'next/headers';
 
@@ -40,6 +41,7 @@ export default function RootLayout({
             __html: `(function(){try{var b=document.body;if(!b)return;var isOpen=b.dataset.openRoute==='1';if(!isOpen)return;var qs=new URLSearchParams(location.search);var r=qs.get('redirect');if(r && r[0]==='/'){if(location.pathname!==r){location.replace(r);}else{history.replaceState(null,'',r);}}}catch(e){}})();`,
           }}
         />
+        <ProxyAuthShim />
         <HeaderClient />
         <ToastProvider>
           <div className="max-w-5xl mx-auto px-4">{children}</div>
