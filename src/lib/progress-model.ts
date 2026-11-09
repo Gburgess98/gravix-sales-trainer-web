@@ -2,12 +2,25 @@
 // Moved verbatim from the dashboard page (no behaviour change) so the two screens
 // can never disagree about streaks, levels, trend direction or skill status.
 
+// /v1/reps/me is an identity endpoint (id, name, tier, company/partner ids). It carries NO points: use xpFromResponse below.
 export type RepMe = {
   id: string
   name?: string | null
   tier?: string | null
-  xp_total?: number | null
-  xp_today?: number | null
+}
+
+// ── Points (the one contract every screen must share) ─────────────────────────────────────────────────────────
+// Live endpoint: GET /v1/reps/:id/xp -> { ok, repId, total_xp: number, last_event_at: ISO|null, warning?: string }   (API src/routes/reps.ts)
+// - The API answers ok:true with `warning` (and total_xp 0) when it could not read the points table: that is "unavailable", not 0 points.
+// - No endpoint returns a points-today figure, so `today` is always null and must not be displayed.
+// - /v1/assignments/me does NOT exist on the live API and /v1/reps/me returns no points.
+export type Xp = { total: number; today: number | null }
+export const xpPath = (repId: string) => `/v1/reps/${encodeURIComponent(repId)}/xp`
+/** Parse the points response. null = unavailable (failed request, ok:false, warning, or a non-finite/missing total). */
+export function xpFromResponse(d: unknown): Xp | null {
+  const o = d as { ok?: unknown; total_xp?: unknown; warning?: unknown } | null
+  if (!o || typeof o !== 'object' || o.ok === false || o.warning) return null
+  return typeof o.total_xp === 'number' && Number.isFinite(o.total_xp) ? { total: o.total_xp, today: null } : null
 }
 
 export type Assignment = {

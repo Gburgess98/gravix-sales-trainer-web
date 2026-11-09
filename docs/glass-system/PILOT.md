@@ -213,7 +213,8 @@ Route and nav are unchanged: rep **Progress** → `/progress` (a manager reaches
 | Voice score | `GET /v1/dashboard/voice-score-trend?days=…&repId=<self>` (daily average from `call_scores.rubric`) | derived; direction via the existing `trendDirection` |
 | Recently completed, completion counts, open count | `GET /v1/assignments` | live |
 | Streak | `computeStreak` over `completed_at` (consecutive local days with a completed assignment) | derived client-side from live rows; not the old localStorage streak |
-| Points, points today | `GET /v1/assignments/me` (`reps.xp`, `rep_xp_events`) | live |
+| Points | `GET /v1/reps/:id/xp` → `{ ok, repId, total_xp, last_event_at, warning? }` (sum of `xp_events`), parsed by the shared `xpFromResponse` | live; a `warning` (API could not read the table) or a non-finite total shows "unavailable", never 0 |
+| Points today | **none** — no live endpoint returns it | not shown |
 | Level name | `xpLevel` (100 points per level; names are cosmetic) | derived; labelled "calculated from points" |
 | Suggested call / drill | `GET /v1/reps/:id/daily-feed` (`recommended_replay`, `recommended_drill`) | derived from the **latest call only**, rule-based text (not an LLM); the drill is shown only when its weakest area agrees with the period view |
 | `gst:completedDays`, `gst:streakState`, snoozes | browser localStorage | local only — **not used** on this screen |
@@ -221,7 +222,7 @@ Route and nav are unchanged: rep **Progress** → `/progress` (a manager reaches
 | Demo/cached flags, team rankings | none exist | not shown |
 
 ### Findings (not all fixed)
-1. **Points were always 0 on the web.** `/v1/reps/me` returns `{id,name,tier,…}` with no `xp_*`; the web read `.me.xp_total` from it (Home, the old Progress and the old My Assignments). Progress now reads the existing `/v1/assignments/me`, which does return `xp_total`/`xp_today`. **Home still has the old read** (out of scope) and will keep showing 0 points.
+1. **Points were wrong on the web, and this document had the contract wrong.** `/v1/reps/me` is identity only (`{id,name,tier,company_id,office_id,partner_id}`), so any read of `.xp_total` from it is always empty. An earlier version of this section said XP lives at `/v1/assignments/me`; that is **false**: the handler is in `repsRoutes()` (assignments.ts), which the API never mounts, so the live answer is 404, and the mocked tests copied the same wrong contract. The real endpoint is `GET /v1/reps/:id/xp` (`total_xp`, `last_event_at`, tolerant `warning`). Progress uses it through the shared `xpFromResponse`/`xpPath` helpers (`src/lib/progress-model.ts`). **Home (`/dashboard`) does not show points** (verified: it reads `/v1/reps/me` for identity only); if a points tile is added it must use the same helpers. There is no points-today value anywhere, so none is shown.
 2. **Voice trend was team-scoped for managers.** Without `repId` the endpoint returns the whole tenant for manager tiers; for a rep it is self only. Progress now always passes `repId=<self>`.
 3. **API: `weakness-trends` and `daily-feed` authorise by organisation only** (`assertOrgScopeOr403` checks the requester and the target are in the same org, not that the requester is that rep or their manager), so a rep could request a colleague's series by id. The UI only ever requests the signed-in rep's id. Needs an API fix (self-or-manager); not changed here.
 4. The old "Confidence" skill row was never a scored stage and is gone; stage slugs (`objection_handling`) are now mapped to labels everywhere, including the My Assignments weakest-area line (a real-data bug from the previous commit: the mock used display names).

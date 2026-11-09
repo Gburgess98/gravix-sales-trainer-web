@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { proxyFetch } from '@/lib/api'
 import { PageShell, PageHead, dsButton } from '@/components/ds'
 import { ProgressView, type Section } from '@/components/rep/progress-view'
-import type { DailyFeed, TrendPoint } from '@/lib/progress-model'
+import { xpFromResponse, xpPath, type DailyFeed, type TrendPoint, type Xp } from '@/lib/progress-model'
 import type { MyAssignment } from '@/lib/my-assignments-model'
 import type { Range, WeaknessTrends } from '@/lib/progress-view-model'
 
@@ -35,7 +35,7 @@ export default function ProgressPage() {
   const [fatal, setFatal] = useState(false)
   const [trends, setTrends] = useState<Section<WeaknessTrends>>(none())
   const [assignments, setAssignments] = useState<Section<MyAssignment[]>>(none())
-  const [xp, setXp] = useState<Section<{ total: number; today: number | null }>>(none())
+  const [xp, setXp] = useState<Section<Xp>>(none())
   const [voice, setVoice] = useState<Section<{ trend: TrendPoint[]; latest: number | null }>>(none())
   const [feed, setFeed] = useState<DailyFeed | null>(null)
   const repIdRef = useRef<string | null>(null)
@@ -70,15 +70,14 @@ export default function ProgressPage() {
     const [t, a, x, f] = await Promise.all([
       getJson(`/v1/reps/${encodeURIComponent(repId)}/weakness-trends`),
       getJson('/v1/assignments'),
-      getJson(`/v1/reps/${encodeURIComponent(repId)}/xp`),
+      getJson(xpPath(repId)),
       getJson(`/v1/reps/${encodeURIComponent(repId)}/daily-feed`),
     ])
     setTrends(t?.trends ? { data: t.trends as WeaknessTrends, error: false } : { data: null, error: true })
     setAssignments(a ? { data: (a.assignments ?? a.items ?? []) as MyAssignment[], error: false } : { data: null, error: true })
-    // Real contract: { ok, repId, total_xp: number, last_event_at: ISO|null, warning?: string }. The API answers ok:true with a
-    // `warning` (and total 0) when it could not read the points table, so that is "unavailable", not zero points. There is no
-    // points-today field on any live endpoint, so today stays null and is not displayed.
-    setXp(x && typeof x.total_xp === 'number' && Number.isFinite(x.total_xp) && !x.warning ? { data: { total: x.total_xp, today: null }, error: false } : { data: null, error: true })
+    // Shared contract (see xpFromResponse): total_xp only, a warning or bad total is "unavailable", never zero; no points-today exists.
+    const xpData = xpFromResponse(x)
+    setXp(xpData ? { data: xpData, error: false } : { data: null, error: true })
     setFeed(f && (f.coaching_summary || f.weakest_area || f.recommended_drill || f.recommended_replay) ? (f as DailyFeed) : null)
     await loadVoice(rangeRef.current)
     setLoading(false)

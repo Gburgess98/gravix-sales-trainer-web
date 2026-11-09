@@ -13,18 +13,16 @@ const code = (f: string) => readFileSync(join(ROOT, f), 'utf8').replace(/\/\*[\s
 
 test('the page requests /v1/reps/<self>/xp through proxyFetch and never /v1/assignments/me', () => {
   const src = code('src/app/progress/page.tsx')
-  assert.match(src, /getJson\(`\/v1\/reps\/\$\{encodeURIComponent\(repId\)\}\/xp`\)/)
+  assert.match(src, /getJson\(xpPath\(repId\)\)/)
   assert.doesNotMatch(src, /assignments\/me/)
   assert.match(src, /proxyFetch\(path/)
   assert.doesNotMatch(src, /(?<![A-Za-z0-9_$.])fetch\(/)
 })
 
-test('only real fields are mapped: total_xp (number, no warning); no xp_today / xp_total / rep.* invention', () => {
+test('points are parsed by the shared helper only (no per-page field mapping, no invented xp_today / xp_total / rep.*)', () => {
   const src = code('src/app/progress/page.tsx')
-  assert.match(src, /typeof x\.total_xp === 'number'/)
-  assert.match(src, /!x\.warning/)
-  assert.match(src, /today: null/)
-  assert.doesNotMatch(src, /xp_today|xp_total|x\.rep\b/)
+  assert.match(src, /xpFromResponse\(x\)/)
+  assert.doesNotMatch(src, /total_xp|xp_today|xp_total|x\.rep\b/)
 })
 
 test('the view shows a points-today line only for a real number', () => {

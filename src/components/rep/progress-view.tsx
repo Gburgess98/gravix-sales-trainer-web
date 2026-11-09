@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge, GlassCard, Panel, PanelHeader, Segmented, ErrorPanel, LoadingRows, dsButton } from '@/components/ds'
 import { RAG_META, ragFromScore } from '@/lib/manager-model'
-import { xpLevel, computeStreak, trendDirection, type DailyFeed, type TrendPoint } from '@/lib/progress-model'
+import { xpLevel, computeStreak, trendDirection, type DailyFeed, type TrendPoint, type Xp } from '@/lib/progress-model'
 import type { MyAssignment } from '@/lib/my-assignments-model'
 import {
   chartPoints,
@@ -41,7 +41,7 @@ type Props = {
   onRetry: () => void
   trends: Section<WeaknessTrends>
   assignments: Section<MyAssignment[]>
-  xp: Section<{ total: number; today: number | null }>
+  xp: Section<Xp>
   voice: Section<{ trend: TrendPoint[]; latest: number | null }>
   feed: DailyFeed | null
   now?: Date
