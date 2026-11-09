@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase-browser";
+import { safeNextPath, POST_LOGIN_KEY, DEFAULT_AFTER_LOGIN } from "@/lib/oauthRedirect";
 
 export default function CallbackClient() {
   const router = useRouter();
@@ -34,7 +35,13 @@ export default function CallbackClient() {
           }
         }
 
-        router.replace("/recent-calls");
+        let dest = DEFAULT_AFTER_LOGIN;
+        try {
+          const stored = safeNextPath(window.sessionStorage.getItem(POST_LOGIN_KEY));
+          window.sessionStorage.removeItem(POST_LOGIN_KEY);
+          if (stored) dest = stored;
+        } catch { /* default destination */ }
+        router.replace(dest);
       } catch (e: any) {
         setMsg(`Auth error: ${e?.message ?? "Unknown"}`);
       }
