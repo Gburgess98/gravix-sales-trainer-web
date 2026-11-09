@@ -1,21 +1,21 @@
 "use client";
 
 import { supabase } from "@/lib/supabase-browser";
-
-// Minimal local replacement for getSiteUrl (avoids missing '@/lib/site')
-function getSiteUrl() {
-  const env = process.env.NEXT_PUBLIC_WEB_BASE || process.env.NEXT_PUBLIC_WEB_ORIGIN;
-  if (env) return env.replace(/\/$/, "");
-  if (typeof window !== "undefined") return window.location.origin;
-  return "http://localhost:3000"; // fallback for SSR/build
-}
+import { buildOAuthRedirectTo, safeNextPath, POST_LOGIN_KEY } from "@/lib/oauthRedirect";
 
 export default function LoginPage() {
   async function login() {
-    const redirectTo = `${getSiteUrl()}/auth/callback`;
+    // The redirect is the origin of THIS page only (preview -> preview, production -> production, localhost only on localhost).
+    const redirectTo = buildOAuthRedirectTo(window.location.origin);
+    // Keep a validated same-site destination (?next=/path) for after the callback; it is never put in redirectTo itself.
+    try {
+      const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+      if (next) window.sessionStorage.setItem(POST_LOGIN_KEY, next);
+      else window.sessionStorage.removeItem(POST_LOGIN_KEY);
+    } catch { /* storage unavailable: fall back to the default destination */ }
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo }
+      options: { redirectTo, queryParams: { prompt: "select_account" } },
     });
   }
   return (
