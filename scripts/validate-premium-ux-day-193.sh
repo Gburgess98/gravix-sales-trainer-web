@@ -48,8 +48,8 @@ check "/reps/[id]/sparring legacy list removed (stub is small)" $?
 check "active /crm/reps/[id] preserved" $?
 [[ -f "$SRC/app/admin/reps/page.tsx" ]]
 check "active /admin/reps preserved (kept, documented)" $?
-grep -q 'href="/admin/reps"' "$SRC/components/HomeLanding.tsx" 2>/dev/null
-check "/admin/reps still linked from HomeLanding (manager journey intact)" $?
+! grep -q 'href="/admin/reps"' "$SRC/components/HomeLanding.tsx" 2>/dev/null
+check "/admin/reps NOT linked from HomeLanding (withheld from the 2026-11 release; see src/config/release-hidden.ts)" $?
 
 # --- No stray inbound page links to the retired /reps/[id] routes ---
 # (Only the redirect stubs themselves may mention /crm/reps/; nothing should

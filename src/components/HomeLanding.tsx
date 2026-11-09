@@ -91,18 +91,6 @@ export default function HomeLanding() {
               </div>
             </Link>
 
-            <Link
-              href="/admin/reps"
-              className="block"
-              data-testid="nav-admin-reps"
-            >
-              <div className="w-full rounded-lg border border-white/20 px-4 py-3 hover:bg-white/5">
-                Admin · Reps
-                <div className="text-xs text-white/60 mt-1">
-                  Manage team members and roles
-                </div>
-              </div>
-            </Link>
           </>
         )}
 

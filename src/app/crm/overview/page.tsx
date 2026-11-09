@@ -895,9 +895,6 @@ export default function CrmOverviewPage() {
             <Link href="/crm/manager" className={buttonClasses('ghost')}>
               Manager
             </Link>
-            <Link href="/crm/manager/nudges" className={buttonClasses('ghost')}>
-              View all
-            </Link>
           </>
         }
         padded
@@ -1081,9 +1078,6 @@ export default function CrmOverviewPage() {
           <div>
             Nudges update automatically as you log notes, complete actions, and touch contacts.
           </div>
-          <Link href="/crm/manager/nudges" className="hover:text-neutral-300 transition-colors">
-            Open full nudges →
-          </Link>
         </div>
       </SectionCard>
 
