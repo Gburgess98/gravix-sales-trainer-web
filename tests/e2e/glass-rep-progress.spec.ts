@@ -83,7 +83,8 @@ for (const vp of VIEWPORTS) {
       await expect(done.nth(1)).not.toContainText('score')
       // gamification is present but secondary and labelled
       await expect(page.getByText('1,240')).toBeVisible()
-      await expect(page.getByText('+30 today · from your account')).toBeVisible()
+      await expect(page.getByText('from your account', { exact: true })).toBeVisible() // total only: no per-day points exist, so none is invented
+      await expect(page.getByText('today ·', { exact: false })).toHaveCount(0)
       await expect(page.getByText('Advanced III')).toBeVisible()
       await expect(page.getByText('calculated from points')).toBeVisible()
       await expect(page.getByText('consecutive days with a completed assignment')).toBeVisible()
@@ -111,7 +112,7 @@ for (const vp of VIEWPORTS) {
     })
 
     test('new user: no invented trend, strongest/weakest or completion; clear first steps', async ({ page }) => {
-      await setup(page, { trends: TRENDS_NONE, assignments: [], feed: null, xp: { xp_total: 0, xp_today: 0 } })
+      await setup(page, { trends: TRENDS_NONE, assignments: [], feed: null, xp: { total_xp: 0 } })
       await page.goto('/progress')
       const s = summary(page)
       await expect(s).toContainText('No scored calls yet', { timeout: 15000 })
@@ -132,6 +133,26 @@ for (const vp of VIEWPORTS) {
       await expect(summary(page)).toContainText('No scored calls in the last 30 days', { timeout: 15000 })
       await expect(summary(page)).not.toContainText('No scored calls yet')
       await noHorizontalOverflow(page)
+    })
+
+    test('points: requests the real endpoint (/v1/reps/<self>/xp), never /v1/assignments/me, and renders only its total', async ({ page }) => {
+      const urls: string[] = []
+      page.on('request', (r) => { if (r.url().includes('/api/proxy/')) urls.push(new URL(r.url()).pathname.replace('/api/proxy', '')) })
+      await setup(page, { xp: { total_xp: 1240 } })
+      await page.goto('/progress')
+      await expect(page.getByText('1,240')).toBeVisible({ timeout: 15000 })
+      await expect.poll(() => urls.filter((u) => u === `/v1/reps/${REP_UID}/xp`).length).toBeGreaterThan(0) // (dev StrictMode may run the loader twice)
+      expect(urls.filter((u) => u.includes('/v1/assignments/me'))).toEqual([])
+      await expect(page.getByText('today ·', { exact: false })).toHaveCount(0)
+    })
+
+    test('points: the API\u2019s tolerant warning answer reads as unavailable, never as zero points', async ({ page }) => {
+      await setup(page, { xp: { total_xp: 0, warning: 'relation "xp_events" does not exist' } })
+      await page.goto('/progress')
+      await expect(summary(page)).toContainText('Your call score is up', { timeout: 15000 })
+      await expect(page.getByText('unavailable right now').first()).toBeVisible()
+      await expect(page.getByText('Foundation')).toHaveCount(0) // the level is only shown when points are known
+      expect(await page.locator('body').innerText()).not.toContain('relation')
     })
 
     test('partial errors: sections fail independently with a retry', async ({ page }) => {

@@ -165,7 +165,8 @@ export type RepApiOpts = {
   trends?: unknown
   meStatus?: number
   trendsStatus?: number
-  xp?: { xp_total: number; xp_today: number }
+  /** Real contract of GET /v1/reps/:id/xp. `warning` mirrors the API's tolerant ok:true answer when the points table is unreadable. */
+  xp?: { total_xp: number; warning?: string }
   xpStatus?: number
   voiceStatus?: number
   /** Any UUID in a request URL that is not the signed-in rep's (must stay empty: no other-rep data). */
@@ -198,9 +199,9 @@ export async function mockRepApi(page: Page, o: RepApiOpts = {}) {
       if (o.trendsStatus && o.trendsStatus !== 200) return route.fulfill(json({ ok: false, error: 'server_error' }, o.trendsStatus))
       return route.fulfill(json({ ok: true, rep_id: REP_UID, trends: o.trends ?? TRENDS_IMPROVING }))
     }
-    if (url.includes('/v1/assignments/me')) {
+    if (/\/v1\/reps\/[^/]+\/xp/.test(url)) {
       if (o.xpStatus && o.xpStatus !== 200) return route.fulfill(json({ ok: false }, o.xpStatus))
-      return route.fulfill(json({ ok: true, rep: { id: REP_UID, name: 'Riley Chen', tier: 'SalesRep', ...(o.xp ?? { xp_total: 1240, xp_today: 30 }) } }))
+      return route.fulfill(json({ ok: true, repId: REP_UID, total_xp: (o.xp ?? { total_xp: 1240 }).total_xp, last_event_at: '2026-11-05T10:00:00.000Z', ...(o.xp?.warning ? { warning: o.xp.warning } : {}) }))
     }
     if (url.includes('/v1/dashboard/voice-score-trend')) {
       o.voiceUrls?.push(url)

@@ -41,7 +41,7 @@ type Props = {
   onRetry: () => void
   trends: Section<WeaknessTrends>
   assignments: Section<MyAssignment[]>
-  xp: Section<{ total: number; today: number }>
+  xp: Section<{ total: number; today: number | null }>
   voice: Section<{ trend: TrendPoint[]; latest: number | null }>
   feed: DailyFeed | null
   now?: Date
@@ -262,7 +262,7 @@ export function ProgressView(p: Props) {
           <div>
             <dt className="text-xs text-[var(--ds-text-3)]">Points</dt>
             <dd className="mt-0.5 text-lg font-semibold tabular-nums text-[var(--ds-text)]">{p.xp.data ? p.xp.data.total.toLocaleString('en-GB') : '—'}</dd>
-            <dd className="text-[11px] text-[var(--ds-text-3)]">{p.xp.data ? `${p.xp.data.today > 0 ? `+${p.xp.data.today} today · ` : ''}from your account` : p.xp.error ? 'unavailable right now' : ''}</dd>
+            <dd className="text-[11px] text-[var(--ds-text-3)]">{p.xp.data ? `${typeof p.xp.data.today === 'number' && p.xp.data.today > 0 ? `+${p.xp.data.today} today · ` : ''}from your account` : p.xp.error ? 'unavailable right now' : ''}</dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ds-text-3)]">Level</dt>

@@ -14,7 +14,7 @@ SRC="$WEB_ROOT/src"
 MGR="$SRC/app/crm/manager/page.tsx"
 MGRCLIENT="$SRC/app/crm/manager/ManagerClient.tsx"
 CONTACTS="$SRC/app/crm/manager/contacts/ManagerContactsClient.tsx"
-NUDGES="$SRC/app/crm/manager/nudges/page.tsx"
+NUDGES="$SRC/withheld/crm-manager-nudges-page.tsx"  # withheld from the 2026-11 release
 OVERVIEW="$SRC/app/crm/overview/page.tsx"
 PIPELINE="$SRC/app/crm/pipeline/page.tsx"
 

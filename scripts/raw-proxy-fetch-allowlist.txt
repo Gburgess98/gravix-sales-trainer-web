@@ -4,5 +4,5 @@ src/lib/api.ts
 src/lib/fetchJsonwithretry.ts
 # The proxy route handler (server-to-API, not a browser call):
 src/app/api/proxy/[[...path]]/route.ts
-# Withheld from the 2026-11 release (src/config/release-hidden.ts); server-side fetch, never rendered:
-src/app/crm/manager/nudges/page.tsx
+# Withheld from the 2026-11 release (src/config/release-hidden.ts); moved out of src/app, imported by nothing (asserted in tests):
+src/withheld/crm-manager-nudges-page.tsx

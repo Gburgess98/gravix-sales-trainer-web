@@ -51,8 +51,8 @@ check "NEXT_PUBLIC_API_BASE never on a fetch() line" $?
 # --- Safe proxy-bound patterns preserved (not accidentally broken) ---
 grep -q 'API_URL = "/api/proxy"' "$SRC/lib/Admin/adminConfig.ts" 2>/dev/null
 check "adminConfig still proxy-bound (API_URL=/api/proxy)" $?
-grep -q '/api/proxy' "$SRC/app/crm/manager/nudges/page.tsx" 2>/dev/null
-check "nudges page still hits own /api/proxy" $?
+grep -q '/api/proxy' "$SRC/withheld/crm-manager-nudges-page.tsx" 2>/dev/null
+check "nudges page (withheld from the 2026-11 release, kept in src/withheld) still hits own /api/proxy" $?
 grep -q '/api/proxy' "$SRC/app/crm/contacts/[id]/page.tsx" 2>/dev/null
 check "contacts detail still hits own /api/proxy" $?
 

@@ -45,6 +45,22 @@ test('direct access: each hidden route has a layout that renders the unavailable
   assert.doesNotMatch(strip(ui), /fetch\(|proxyFetch|useEffect/, 'the unavailable result makes no requests')
 })
 
+test('the withheld Nudges route cannot execute its old fetch: inert prerendered page, original out of the route tree and imported by nothing', () => {
+  const page = strip(read('src/app/crm/manager/nudges/page.tsx'))
+  assert.match(page, /export const dynamic = 'force-static'/)
+  assert.match(page, /<UnavailableRoute\s*\/>/)
+  assert.doesNotMatch(page, /fetch\(|headers\(|INTERNAL_API_BASE_URL|localhost|"use server"|async function|await /, 'no server or browser work in the route page')
+  const old = read('src/withheld/crm-manager-nudges-page.tsx')
+  assert.match(old, /INTERNAL_API_BASE_URL/, 'the original is preserved for re-enabling')
+  const importers: string[] = []
+  for (const f of walk(SRC)) {
+    if (relative(ROOT, f).startsWith('src/withheld')) continue
+    if (/withheld\/crm-manager-nudges-page|ManagerNudgesPage/.test(readFileSync(f, 'utf8'))) importers.push(relative(ROOT, f))
+  }
+  assert.deepEqual(importers, [], 'nothing may import the withheld page')
+  assert.ok(!existsSync(join(SRC, 'app', 'crm', 'manager', 'nudges', 'ManagerNudgesPage.tsx')))
+})
+
 test('navigation: no entry, link or href points at a hidden route', () => {
   const flat = JSON.stringify(navigation)
   for (const r of RELEASE_HIDDEN_ROUTES) assert.ok(!flat.includes(r), `navigation config mentions ${r}`)

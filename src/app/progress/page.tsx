@@ -4,7 +4,7 @@
 //   /v1/reps/me                      identity (id) — live
 //   /v1/reps/:id/weakness-trends     per-stage + overall score series, latest 100 calls — derived on request
 //   /v1/assignments                  completed work, streak (derived client-side), open count — live
-//   /v1/assignments/me               points (reps.xp) and points today — live
+//   /v1/reps/:id/xp                  total points → { ok, repId, total_xp, last_event_at, warning? } — live (no per-day figure exists, so none is shown)
 //   /v1/dashboard/voice-score-trend  daily voice average, requested with repId=<self> — derived
 //   /v1/reps/:id/daily-feed          rule-based suggestions from the latest call — derived
 // The range (30/90 days) only changes how the series are windowed (current vs previous period).
@@ -35,7 +35,7 @@ export default function ProgressPage() {
   const [fatal, setFatal] = useState(false)
   const [trends, setTrends] = useState<Section<WeaknessTrends>>(none())
   const [assignments, setAssignments] = useState<Section<MyAssignment[]>>(none())
-  const [xp, setXp] = useState<Section<{ total: number; today: number }>>(none())
+  const [xp, setXp] = useState<Section<{ total: number; today: number | null }>>(none())
   const [voice, setVoice] = useState<Section<{ trend: TrendPoint[]; latest: number | null }>>(none())
   const [feed, setFeed] = useState<DailyFeed | null>(null)
   const repIdRef = useRef<string | null>(null)
@@ -70,12 +70,15 @@ export default function ProgressPage() {
     const [t, a, x, f] = await Promise.all([
       getJson(`/v1/reps/${encodeURIComponent(repId)}/weakness-trends`),
       getJson('/v1/assignments'),
-      getJson('/v1/assignments/me'),
+      getJson(`/v1/reps/${encodeURIComponent(repId)}/xp`),
       getJson(`/v1/reps/${encodeURIComponent(repId)}/daily-feed`),
     ])
     setTrends(t?.trends ? { data: t.trends as WeaknessTrends, error: false } : { data: null, error: true })
     setAssignments(a ? { data: (a.assignments ?? a.items ?? []) as MyAssignment[], error: false } : { data: null, error: true })
-    setXp(x?.rep ? { data: { total: Number(x.rep.xp_total) || 0, today: Number(x.rep.xp_today) || 0 }, error: false } : { data: null, error: true })
+    // Real contract: { ok, repId, total_xp: number, last_event_at: ISO|null, warning?: string }. The API answers ok:true with a
+    // `warning` (and total 0) when it could not read the points table, so that is "unavailable", not zero points. There is no
+    // points-today field on any live endpoint, so today stays null and is not displayed.
+    setXp(x && typeof x.total_xp === 'number' && Number.isFinite(x.total_xp) && !x.warning ? { data: { total: x.total_xp, today: null }, error: false } : { data: null, error: true })
     setFeed(f && (f.coaching_summary || f.weakest_area || f.recommended_drill || f.recommended_replay) ? (f as DailyFeed) : null)
     await loadVoice(rangeRef.current)
     setLoading(false)
