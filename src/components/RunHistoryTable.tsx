@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 // ------------------------------
 // Status-aware API error helpers (local)
@@ -151,7 +152,7 @@ export default function RunHistoryTable({
     setBusy(true);
     setApiError(null);
     try {
-      const r = await fetch(`/api/proxy/v1/crm/manager/auto-assign/runs?limit=${safeLimit}`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/manager/auto-assign/runs?limit=${safeLimit}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -171,7 +172,7 @@ export default function RunHistoryTable({
       let rows = Array.isArray(j?.items) ? j.items : [];
 
       if (rows.length === 0) {
-        const latestRes = await fetch(`/api/proxy/v1/crm/manager/auto-assign/runs/latest`, {
+        const latestRes = await proxyFetch(`/api/proxy/v1/crm/manager/auto-assign/runs/latest`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
         });
@@ -233,7 +234,7 @@ export default function RunHistoryTable({
     setApiError(null);
 
     try {
-      const r = await fetch(`/api/proxy/v1/crm/manager/auto-assign/execute-from-preview`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/manager/auto-assign/execute-from-preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preview_run_id: runId }),
@@ -290,7 +291,7 @@ export default function RunHistoryTable({
 
     setDetailBusy((m) => ({ ...m, [runId]: true }));
     try {
-      const r = await fetch(`/api/proxy/v1/crm/manager/auto-assign/runs/${runId}`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/manager/auto-assign/runs/${runId}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });

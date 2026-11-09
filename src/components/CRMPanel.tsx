@@ -9,6 +9,7 @@ type ContactHealth = {
 
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 type LinkInfo = {
   contact: { id: string; first_name?: string | null; last_name?: string | null; email?: string | null } | null;
@@ -60,7 +61,7 @@ export default function CRMPanel({
     setLoading(true);
     setErr(null);
     try {
-      const r = await fetch(`/api/proxy/v1/crm/calls/${encodeURIComponent(callId)}/link`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/calls/${encodeURIComponent(callId)}/link`, {
         method: "GET",
         cache: "no-store",
       });
@@ -70,7 +71,7 @@ export default function CRMPanel({
 
       if (j.link?.contact?.id) {
         try {
-          const hr = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(j.link.contact.id)}/health`);
+          const hr = await proxyFetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(j.link.contact.id)}/health`);
           const hj = await hr.json();
           if (hr.ok && hj.ok) {
             setHealth(hj.health);
@@ -99,7 +100,7 @@ export default function CRMPanel({
     setQ(term);
     if (!term) { setResults([]); return; }
     try {
-      const r = await fetch(`/api/proxy/v1/crm/contacts?query=${encodeURIComponent(term)}&limit=12`);
+      const r = await proxyFetch(`/api/proxy/v1/crm/contacts?query=${encodeURIComponent(term)}&limit=12`);
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       const items = Array.isArray(j.items) ? [...j.items] : [];
@@ -121,7 +122,7 @@ export default function CRMPanel({
     setAccountQ(term);
     if (!term) { setAccountResults([]); return; }
     try {
-      const r = await fetch(`/api/proxy/v1/crm/accounts?query=${encodeURIComponent(term)}&limit=12`);
+      const r = await proxyFetch(`/api/proxy/v1/crm/accounts?query=${encodeURIComponent(term)}&limit=12`);
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       const items = Array.isArray(j.items) ? [...j.items] : [];
@@ -139,7 +140,7 @@ export default function CRMPanel({
   async function linkAccountId(accountId: string) {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      const r = await fetch(`/api/proxy/v1/crm/link-call`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/link-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -184,7 +185,7 @@ export default function CRMPanel({
         opportunityId: null,
       };
 
-      const r = await fetch(`/api/proxy/v1/crm/unlink`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/unlink`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -204,7 +205,7 @@ export default function CRMPanel({
   async function linkByEmail(email: string) {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      const r = await fetch(`/api/proxy/v1/crm/link-call`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/link-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callId, email }),
@@ -242,7 +243,7 @@ export default function CRMPanel({
     setErr(null);
     setMsg(null);
     try {
-      const r = await fetch(
+      const r = await proxyFetch(
         `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/auto-assign`,
         {
           method: "POST",
@@ -270,7 +271,7 @@ export default function CRMPanel({
     setErr(null);
     setMsg(null);
     try {
-      const r = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/auto-assign`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/auto-assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -283,7 +284,7 @@ export default function CRMPanel({
       // If this contact is currently linked, refresh its health (non-blocking)
       if (link?.contact?.id && link.contact.id === contactId) {
         try {
-          const hr = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/health`);
+          const hr = await proxyFetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/health`);
           const hj = await hr.json();
           if (hr.ok && hj.ok) setHealth(hj.health);
         } catch {

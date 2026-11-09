@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { proxyFetch } from "@/lib/api";
 
 export type AssignmentItem = {
   id: string;
@@ -14,7 +15,7 @@ export type AssignmentItem = {
 };
 
 async function patchAssignment(id: string, status: 'open' | 'completed') {
-  const r = await fetch(`/api/proxy/v1/coach/assignments/${id}`, {
+  const r = await proxyFetch(`/api/proxy/v1/coach/assignments/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ status }),

@@ -1,0 +1,8 @@
+# Files allowed to call the proxy without proxyFetch. One repo-relative path per line; '#' starts a comment.
+# The authenticated helpers themselves:
+src/lib/api.ts
+src/lib/fetchJsonwithretry.ts
+# The proxy route handler (server-to-API, not a browser call):
+src/app/api/proxy/[[...path]]/route.ts
+# Withheld from the 2026-11 release (src/config/release-hidden.ts); server-side fetch, never rendered:
+src/app/crm/manager/nudges/page.tsx

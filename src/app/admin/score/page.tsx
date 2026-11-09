@@ -4,6 +4,7 @@
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { proxyFetch } from "@/lib/api";
 
 // ---------- Types ----------
 type ApiResp = { ok: boolean; callId?: string; jobId?: string; result?: any; error?: string };
@@ -41,7 +42,7 @@ export default function AdminScoresAndForcePage() {
     }
     try {
       setLoadingForce(true);
-      const r = await fetch(`/api/proxy/v1/admin/force-score/${encodeURIComponent(callId)}`, {
+      const r = await proxyFetch(`/api/proxy/v1/admin/force-score/${encodeURIComponent(callId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -85,7 +86,7 @@ export default function AdminScoresAndForcePage() {
       qs.set("limit", String(limit));
       if (model) qs.set("model", model);
       if (rubric) qs.set("rubric", rubric);
-      const r = await fetch(`/api/proxy/v1/admin/scores?${qs.toString()}`, { cache: "no-store" });
+      const r = await proxyFetch(`/api/proxy/v1/admin/scores?${qs.toString()}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       const rows: ScoreRow[] = (j.items || []).map((x: any) => ({

@@ -2,6 +2,7 @@
 
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useMemo, useState } from "react";
+import { proxyFetch } from "@/lib/api";
 
 type WhispererTurn = {
   id: string;
@@ -17,17 +18,8 @@ type WhispererPanelProps = {
   disabled?: boolean;
 };
 
-// Small helper: in dev on localhost, hit the API directly;
-// otherwise use the Next.js proxy route.
-function getWhispererUrl() {
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:4000/v1/whisperer/preview";
-    }
-  }
-  return "/api/proxy/v1/whisperer/preview";
-}
+// Always through the Next.js proxy (it attaches the verified identity); a direct localhost call bypassed it and carried no auth.
+const WHISPERER_PREVIEW_PATH = "/api/proxy/v1/whisperer/preview";
 
 export function WhispererPanel({
   personaId,
@@ -71,13 +63,13 @@ export function WhispererPanel({
 
     (async () => {
       try {
-        const url = getWhispererUrl();
+        const url = WHISPERER_PREVIEW_PATH;
         console.log("[WhispererPanel] calling", url, {
           personaId,
           transcriptLen: transcriptPayload.length,
         });
 
-        const res = await fetch(url, {
+        const res = await proxyFetch(url, {
           method: "POST",
           headers: {
             "content-type": "application/json",

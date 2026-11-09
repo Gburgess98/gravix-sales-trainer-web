@@ -1,6 +1,7 @@
 ﻿'use client';
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from 'react';
+import { proxyFetch } from "@/lib/api";
 
 export default function HealthPage() {
   const [text, setText] = useState<string>('');
@@ -14,7 +15,7 @@ export default function HealthPage() {
   async function run() {
     setLoading(true);
     try {
-      const r = await fetch(`/api/proxy/v1/health?debug=1&t=${Date.now()}`, {
+      const r = await proxyFetch(`/api/proxy/v1/health?debug=1&t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
           accept: 'application/json, text/plain;q=0.9, */*;q=0.8',

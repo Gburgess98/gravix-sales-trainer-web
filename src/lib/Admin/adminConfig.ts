@@ -1,3 +1,4 @@
+import { proxyFetch } from "@/lib/api";
 const API_URL = "/api/proxy";
 
 export type AdminConfig = {
@@ -8,7 +9,7 @@ export type AdminConfig = {
 };
 
 export async function getAdminConfig(): Promise<AdminConfig> {
-  const res = await fetch(`${API_URL}/v1/admin/config`, {
+  const res = await proxyFetch(`${API_URL}/v1/admin/config`, {
     cache: "no-store",
     credentials: "include",
   });
@@ -20,7 +21,7 @@ export async function getAdminConfig(): Promise<AdminConfig> {
 export async function patchAdminConfig(patch: Partial<Pick<AdminConfig,
   "streak_threshold" | "xp_multiplier" | "comeback_bonus"
 >>): Promise<AdminConfig> {
-  const res = await fetch(`${API_URL}/v1/admin/config`, {
+  const res = await proxyFetch(`${API_URL}/v1/admin/config`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

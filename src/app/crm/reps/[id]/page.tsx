@@ -128,7 +128,7 @@ export default function RepProfilePage() {
       };
       if (!payload.contact_id) throw new Error("Select a contact first");
 
-      const r = await fetch(`/api/proxy/v1/crm/actions`, {
+      const r = await proxyFetch(`/api/proxy/v1/crm/actions`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify(payload),
@@ -149,7 +149,7 @@ export default function RepProfilePage() {
     setCompleteErr(null);
     setCompletingIds((m) => ({ ...m, [actionId]: true }));
     try {
-      const r = await fetch(
+      const r = await proxyFetch(
         `/api/proxy/v1/crm/actions/${encodeURIComponent(actionId)}/complete`,
         { method: "POST", headers: { accept: "application/json" } }
       );
