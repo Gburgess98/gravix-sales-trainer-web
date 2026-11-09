@@ -2,6 +2,7 @@
 
 import { friendlyError } from '@/lib/friendly-error';
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { proxyFetch } from '@/lib/api';
 
 function errText(e: unknown): string {
   if (!e) return "";
@@ -48,7 +49,7 @@ const ContactAssignmentsClient = forwardRef<
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(
+      const res = await proxyFetch(
         `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/actions`,
         {
           cache: "no-store",
@@ -70,7 +71,7 @@ const ContactAssignmentsClient = forwardRef<
   async function completeAction(actionId: string) {
     setErr(null);
     try {
-      const res = await fetch(`/api/proxy/v1/crm/actions/${actionId}/complete`, {
+      const res = await proxyFetch(`/api/proxy/v1/crm/actions/${actionId}/complete`, {
         method: "POST",
         cache: "no-store",
       });

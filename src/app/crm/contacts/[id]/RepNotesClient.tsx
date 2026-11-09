@@ -2,6 +2,7 @@
 
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
+import { proxyFetch } from '@/lib/api';
 
 function errText(e: unknown): string {
   if (!e) return "";
@@ -43,7 +44,7 @@ export default function RepNotesClient({
     setErr(null);
     setLoading(true);
     try {
-      const res = await fetch(
+      const res = await proxyFetch(
         `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/notes`,
         { method: "GET", headers: { "cache-control": "no-cache" } }
       );
@@ -77,7 +78,7 @@ export default function RepNotesClient({
     setSaving(true);
 
     try {
-      const res = await fetch(
+      const res = await proxyFetch(
         `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/notes`,
         {
           method: "POST",

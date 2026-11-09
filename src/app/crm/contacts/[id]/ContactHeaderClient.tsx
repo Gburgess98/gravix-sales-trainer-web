@@ -4,6 +4,7 @@ import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { proxyFetch } from '@/lib/api';
 
 type CrmContact = {
   id: string;
@@ -113,7 +114,7 @@ export default function ContactHeaderClient({
         setLoading(true);
         setErr(null);
 
-        const r = await fetch(`/api/proxy/v1/crm/contacts/${contactId}`, {
+        const r = await proxyFetch(`/api/proxy/v1/crm/contacts/${contactId}`, {
           method: "GET",
           cache: "no-store",
           headers: { accept: "application/json" },
@@ -206,7 +207,7 @@ export default function ContactHeaderClient({
     try {
       setMarking(true);
 
-      const res = await fetch(
+      const res = await proxyFetch(
         `/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/mark-contacted`,
         {
           method: "POST",

@@ -1,117 +1,58 @@
+"use client";
+
+// Production release: this page used to fetch its data on the SERVER via `${INTERNAL_API_BASE_URL ?? "http://localhost:3000"}/api/proxy/...`
+// with no user session (the browser holds the Supabase session, not the server), so on any hosted deployment it hit localhost and
+// the health/activity panels were silently empty. It is now a client page: the data comes from the authenticated /api/proxy
+// (Bearer attached by proxyFetch), exactly like the other client panels on this page.
+
 import Link from "next/link";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 
 import ContactHeaderClient from "./ContactHeaderClient";
 import ContactAssignmentsClient from "./ContactAssignmentsClient";
 import RepNotesClient from "./RepNotesClient";
 import AIBriefClient from "./AIBriefClient";
 import { PageHeader } from "@/components/layout/page-header";
+import { proxyFetch } from "@/lib/api";
 
-async function autoAssign(formData: FormData) {
-  "use server";
+export default function ContactPage() {
+  const routeParams = useParams<{ id: string }>();
+  const sp = useSearchParams();
+  const contactId = String(routeParams?.id ?? "");
 
-  const contactId = String(formData.get("contactId") || "").trim();
-  const dryRun = String(formData.get("dryRun") || "") === "1";
-  if (!contactId) return;
+  // Contact health + recent activity (authenticated, via the proxy). Failures are non-blocking, as before.
+  const [health, setHealth] = useState<any>(null);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [loadingPanels, setLoadingPanels] = useState(true);
 
-  await fetch(
-    `${process.env.INTERNAL_API_BASE_URL ?? "http://localhost:3000"}/api/proxy/v1/crm/contacts/${encodeURIComponent(
-      contactId
-    )}/auto-assign`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(dryRun ? { dry_run: true } : {}),
-      cache: "no-store",
-    }
-  );
-
-  if (!dryRun) {
-    redirect(`/crm/contacts/${encodeURIComponent(contactId)}?autoAssigned=1`);
-  }
-}
-
-export default async function ContactPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  const p = await params;
-  const sp = searchParams ? await searchParams : undefined;
-  const contactId = p.id;
-
-  const base = process.env.INTERNAL_API_BASE_URL ?? "http://localhost:3000";
-
-  // Fetch contact (and health) server-side
-  let health: any = null;
-  try {
-    const h = await headers();
-    const res = await fetch(
-      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}`,
-      {
-        headers: {
-          // NOTE: proxy attaches auth; keep this header for legacy/dev support
-          "x-user-id": h.get("x-user-id") ?? "",
-        },
-        cache: "no-store",
-      }
-    );
-    const json = await res.json();
-    if (res.ok && json?.ok) {
-      // schema-tolerant: API may return `health` top-level or nested
-      health = json.health ?? json.contact?.health ?? null;
-    }
-  } catch {
-    // non-blocking
-  }
-
-  // Fetch contact actions (server-side)
-  let actions: { open: any[]; completed: any[] } | null = null;
-  try {
-    const h = await headers();
-    const res = await fetch(
-      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/actions?limit=50`,
-      {
-        headers: {
-          "x-user-id": h.get("x-user-id") ?? "",
-        },
-        cache: "no-store",
-      }
-    );
-    const json = await res.json();
-    if (res.ok && json?.ok) {
-      actions = {
-        open: json.open ?? [],
-        completed: json.completed ?? [],
+  useEffect(() => {
+    if (!contactId) return;
+    let alive = true;
+    (async () => {
+      setLoadingPanels(true);
+      const get = async (path: string) => {
+        try {
+          const res = await proxyFetch(path);
+          const json = await res.json().catch(() => null);
+          return res.ok && json?.ok ? json : null;
+        } catch {
+          return null;
+        }
       };
-    }
-  } catch {
-    // non-blocking
-  }
-
-  // Fetch contact activity (server-side)
-  let activity: any[] = [];
-  try {
-    const h = await headers();
-    const res = await fetch(
-      `${base}/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/activity?limit=25`,
-      {
-        headers: {
-          "x-user-id": h.get("x-user-id") ?? "",
-        },
-        cache: "no-store",
-      }
-    );
-    const json = await res.json();
-    if (res.ok && json?.ok) {
-      activity = Array.isArray(json.items) ? json.items : [];
-    }
-  } catch {
-    // non-blocking
-  }
+      const enc = encodeURIComponent(contactId);
+      const [c, a] = await Promise.all([
+        get(`/api/proxy/v1/crm/contacts/${enc}`),
+        get(`/api/proxy/v1/crm/contacts/${enc}/activity?limit=25`),
+      ]);
+      if (!alive) return;
+      // schema-tolerant: API may return `health` top-level or nested
+      setHealth(c ? (c.health ?? c.contact?.health ?? null) : null);
+      setActivity(Array.isArray(a?.items) ? a.items : []);
+      setLoadingPanels(false);
+    })();
+    return () => { alive = false; };
+  }, [contactId]);
 
   const fmtRel = (iso?: string | null) => {
     if (!iso) return "—";
@@ -264,7 +205,7 @@ export default async function ContactPage({
 
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-8">
-      {(sp as any)?.autoAssigned === "1" ? (
+      {sp?.get("autoAssigned") === "1" ? (
         <div className="rounded-lg border border-green-800 bg-green-900/20 px-4 py-2 text-sm text-green-300">
           ✓ Action auto-assigned successfully
         </div>
@@ -482,7 +423,7 @@ export default async function ContactPage({
             </ul>
           ) : (
             <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900/20 px-3 py-2 text-sm text-neutral-400">
-              No recent activity yet.
+              {loadingPanels ? "Loading activity…" : "No recent activity yet."}
             </div>
           )}
         </div>

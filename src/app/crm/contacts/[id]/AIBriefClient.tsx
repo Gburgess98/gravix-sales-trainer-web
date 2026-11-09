@@ -2,6 +2,7 @@
 
 import { friendlyError } from '@/lib/friendly-error';
 import { useEffect, useState } from "react";
+import { proxyFetch } from '@/lib/api';
 
 function errText(e: unknown): string {
   if (!e) return "";
@@ -50,7 +51,7 @@ export default function AIBriefClient({ contactId }: { contactId: string }) {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/ai-brief`, {
+      const res = await proxyFetch(`/api/proxy/v1/crm/contacts/${encodeURIComponent(contactId)}/ai-brief`, {
         cache: "no-store",
       });
       const json = await res.json();
