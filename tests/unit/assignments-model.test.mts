@@ -68,3 +68,34 @@ test('sort: overdue first, open by soonest due, completed newest first', () => {
   ]
   assert.deepEqual(sortAssignments(list, NOW).map((a: any) => a.id), ['overdue', 'soon', 'later', 'nodate', 'done-new', 'done-old'])
 })
+
+import { classifyAssignmentsResult } from '../../src/lib/assignments-model.ts'
+
+test('load outcome: every cause is its own state — permission, session, server, network', () => {
+  assert.equal(classifyAssignmentsResult(403, { ok: false, error: 'forbidden_not_manager' }).failure?.kind, 'permission')
+  assert.equal(classifyAssignmentsResult(401, null).failure?.kind, 'unauthenticated')
+  assert.equal(classifyAssignmentsResult(500, { ok: false }).failure?.kind, 'server')
+  assert.equal(classifyAssignmentsResult(502, null).failure?.kind, 'server')
+  assert.equal(classifyAssignmentsResult(404, null).failure?.kind, 'server')
+  assert.equal(classifyAssignmentsResult(200, { ok: false, error: 'x' }).failure?.kind, 'server')
+  assert.equal(classifyAssignmentsResult(null, null).failure?.kind, 'network')
+})
+
+test('load outcome: permission is calm and not retryable; server/network are retryable; messages carry no raw error text', () => {
+  const p = classifyAssignmentsResult(403, { ok: false, error: 'forbidden_not_manager' }).failure!
+  assert.equal(p.retryable, false)
+  assert.match(p.title, /don’t have access/)
+  assert.ok(!/forbidden|403|error/i.test(p.title + p.body))
+  assert.equal(classifyAssignmentsResult(500, { error: 'pg: connection refused' }).failure!.retryable, true)
+  assert.ok(!/pg|refused/i.test(JSON.stringify(classifyAssignmentsResult(500, { error: 'pg: connection refused' }).failure)))
+  assert.equal(classifyAssignmentsResult(null, null).failure!.retryable, true)
+})
+
+test('load outcome: rows pass through (any manager tier — the web never filters by tier); empty is empty, malformed is a server fault', () => {
+  const rows = [{ id: 'a1', title: 't', status: 'assigned' }, { id: 'a2', title: 'u', status: 'completed' }]
+  assert.deepEqual(classifyAssignmentsResult(200, { ok: true, items: rows }), { items: rows, failure: null })
+  assert.deepEqual(classifyAssignmentsResult(200, { ok: true, assignments: rows }).items, rows)
+  assert.deepEqual(classifyAssignmentsResult(200, { ok: true, items: [] }), { items: [], failure: null })
+  assert.equal(classifyAssignmentsResult(200, { ok: true }).failure?.kind, 'server', 'a 200 with no list is not "no assignments"')
+  assert.equal(classifyAssignmentsResult(200, 'oops').failure?.kind, 'server')
+})

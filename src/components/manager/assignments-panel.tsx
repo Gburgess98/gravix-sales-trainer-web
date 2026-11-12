@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Badge, GlassCard, Panel, PanelHeader, Segmented, SearchInput, EmptyPanel, ErrorPanel, LoadingRows, dsButton, dsField } from '@/components/ds'
+import { Badge, GlassCard, Panel, PanelHeader, Segmented, SearchInput, EmptyPanel, LoadingRows, dsButton, dsField } from '@/components/ds'
 import {
   dueStateOf,
   evidenceOf,
@@ -14,6 +14,7 @@ import {
   type AssignmentFilters,
   type AssignmentLike,
   type AssignmentStatus,
+  type AssignmentsFailure,
 } from '@/lib/assignments-model'
 
 /* Manager Assignments (glass system). Presentational: the page owns data and the PATCH handler.
@@ -53,10 +54,29 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   )
 }
 
+/** One distinct state per cause. Permission is calm and has no retry (retrying a refusal never helps). */
+function FailurePanel({ failure, onRetry }: { failure: AssignmentsFailure; onRetry: () => void }) {
+  const tone = failure.kind === 'permission' || failure.kind === 'unauthenticated' ? 'text-[var(--ds-text)]' : 'text-red-200'
+  return (
+    <div role={failure.kind === 'permission' ? 'status' : 'alert'} data-failure={failure.kind} className="px-6 py-12 text-center">
+      <p className={`text-sm font-medium ${tone}`}>{failure.title}</p>
+      <p className="mx-auto mt-1.5 max-w-sm text-sm text-[var(--ds-text-3)]">{failure.body}</p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        {failure.retryable && <button type="button" onClick={onRetry} className={dsButton('secondary', 'sm')}>Try again</button>}
+        {failure.kind === 'unauthenticated' && <Link href="/login" className={dsButton('primary', 'sm')}>Sign in</Link>}
+        {failure.kind === 'permission' && <Link href="/assignments" className={dsButton('secondary', 'sm')}>Go to my assignments</Link>}
+      </div>
+    </div>
+  )
+}
+
 type Props = {
   items: AssignmentLike[]
   loading: boolean
-  error: string | null
+  /** Exactly one failure kind (permission / session / server / network), or null when the list loaded. */
+  failure: AssignmentsFailure | null
+  /** Partial failure: the list loaded but something around it did not (e.g. rep names). Rows still render. */
+  notice?: string | null
   onRetry: () => void
   repName: (id: string | null | undefined) => string
   onComplete: (id: string) => Promise<{ ok: boolean; text: string }>
@@ -65,7 +85,7 @@ type Props = {
   limit?: number
 }
 
-export function AssignmentsPanel({ items, loading, error, onRetry, repName, onComplete, completingId, limit = 100 }: Props) {
+export function AssignmentsPanel({ items, loading, failure, notice: partialNotice, onRetry, repName, onComplete, completingId, limit = 100 }: Props) {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<AssignmentFilters['status']>('all')
   const [rep, setRep] = useState('all')
@@ -112,10 +132,13 @@ export function AssignmentsPanel({ items, loading, error, onRetry, repName, onCo
           </div>
         </div>
         <dl className="mt-5 grid grid-cols-3 gap-x-6 border-t border-[var(--ds-border)] pt-4">
-          <Stat label="Open" value={loading || error ? '—' : counts.open} />
-          <Stat label="Overdue" value={loading || error ? '—' : counts.overdue} tone="bad" />
-          <Stat label="Completed" value={loading || error ? '—' : counts.completed} />
+          <Stat label="Open" value={loading || failure ? '—' : counts.open} />
+          <Stat label="Overdue" value={loading || failure ? '—' : counts.overdue} tone="bad" />
+          <Stat label="Completed" value={loading || failure ? '—' : counts.completed} />
         </dl>
+        {!loading && !failure && items.length >= limit && (
+          <p className="mt-3 text-xs text-[var(--ds-text-3)]">Counts cover the {limit} most recent assignments loaded, not your full history.</p>
+        )}
       </GlassCard>
 
       <GlassCard as="div" className="!p-3 sm:!p-4">
@@ -158,16 +181,20 @@ export function AssignmentsPanel({ items, loading, error, onRetry, repName, onCo
         </div>
       </GlassCard>
 
+      {partialNotice && !failure && (
+        <p role="status" className="rounded-[var(--ds-radius-control)] border border-amber-300/25 bg-amber-300/[0.06] px-4 py-2.5 text-sm text-amber-100">{partialNotice}</p>
+      )}
+
       <div role="status" aria-live="polite" className="text-sm empty:-mt-6 empty:h-0">
         {notice && <p className={notice.ok ? 'text-emerald-200' : 'text-red-200'}>{notice.text}</p>}
       </div>
 
       <Panel>
-        <PanelHeader title="All assignments" meta={loading || error ? undefined : `Showing ${visible.length} of ${items.length}`} />
+        <PanelHeader title="All assignments" meta={loading || failure ? undefined : `Showing ${visible.length} of ${items.length}`} />
         {loading ? (
           <LoadingRows rows={5} label="Loading assignments" />
-        ) : error ? (
-          <ErrorPanel title="Couldn’t load assignments" body={error} onRetry={onRetry} />
+        ) : failure ? (
+          <FailurePanel failure={failure} onRetry={onRetry} />
         ) : items.length === 0 ? (
           <EmptyPanel
             title="No assignments yet"
@@ -247,7 +274,7 @@ export function AssignmentsPanel({ items, loading, error, onRetry, repName, onCo
           </ul>
         )}
       </Panel>
-      {!loading && !error && items.length >= limit && (
+      {!loading && !failure && items.length >= limit && (
         <p className="text-xs text-[var(--ds-text-3)]">Showing the {limit} most recent assignments. Use the assignment manager for the full history.</p>
       )}
     </div>

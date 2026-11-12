@@ -10,6 +10,7 @@ import { ManagerOverviewSummary } from '@/components/manager/overview-summary'
 import { ReviewsPanel } from '@/components/manager/reviews-panel'
 import { apiRepName } from '@/lib/reviews-model'
 import { AssignmentsPanel } from '@/components/manager/assignments-panel'
+import { classifyAssignmentsResult, type AssignmentsFailure } from '@/lib/assignments-model'
 import { resolveRepName, memberLabel, NEUTRAL_MEMBER_LABEL } from '@/lib/team-identity'
 import { PageHeader } from '@/components/layout/page-header'
 import { proxyFetch } from '@/lib/api'
@@ -1041,7 +1042,8 @@ function CoachingPageInner() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('open')
-  const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  const [assignmentsFailure, setAssignmentsFailure] = useState<AssignmentsFailure | null>(null)
+  const [rosterFailed, setRosterFailed] = useState(false)
   // Rep names for the Assignments list come from the authenticated roster; ids are never shown as names.
   const [roster, setRoster] = useState<Array<{ id: string; name?: string | null; email?: string | null }>>([])
 
@@ -1237,15 +1239,20 @@ function CoachingPageInner() {
 
   const loadAssignments = useCallback(async () => {
     setAssignmentsLoading(true)
-    setAssignmentsError(null)
+    setAssignmentsFailure(null)
     try {
       // Day 93: manager-scoped list (hierarchy-filtered) instead of the
       // requester's own assignments — this tab is a manager tracking view.
+      // The status code decides what the user is told: permission, session, server and network are different states.
       const res = await proxyFetch('/v1/assignments/manager?limit=100', { cache: 'no-store' })
-      const data = await res.json()
-      if (!res.ok || data?.ok === false) setAssignmentsError('Assignments are unavailable right now. Your data has not changed.')
-      setAssignments(data.items ?? data.assignments ?? [])
-    } catch { setAssignments([]); setAssignmentsError('Assignments are unavailable right now. Your data has not changed.') } finally { setAssignmentsLoading(false) }
+      const body = await res.json().catch(() => null)
+      const result = classifyAssignmentsResult(res.status, body)
+      setAssignments((result.items as unknown as Assignment[]) ?? [])
+      setAssignmentsFailure(result.failure)
+    } catch {
+      setAssignments([])
+      setAssignmentsFailure(classifyAssignmentsResult(null, null).failure)
+    } finally { setAssignmentsLoading(false) }
   }, [])
 
   const loadRoster = useCallback(async () => {
@@ -1253,7 +1260,8 @@ function CoachingPageInner() {
       const res = await proxyFetch('/v1/team/members', { cache: 'no-store' })
       const json = res.ok ? await res.json() : null
       setRoster(Array.isArray(json?.items) ? json.items : [])
-    } catch { setRoster([]) }
+      setRosterFailed(!res.ok || !Array.isArray(json?.items))
+    } catch { setRoster([]); setRosterFailed(true) }
   }, [])
 
   const loadReplay = useCallback(async () => {
@@ -3674,7 +3682,8 @@ function CoachingPageInner() {
         <AssignmentsPanel
           items={assignments}
           loading={assignmentsLoading}
-          error={assignmentsError}
+          failure={assignmentsFailure}
+          notice={rosterFailed ? 'Rep names couldn’t be loaded, so some rows show “Team member”. The assignments themselves are complete.' : null}
           onRetry={loadAssignments}
           repName={(id) => {
             const key = String(id ?? '')

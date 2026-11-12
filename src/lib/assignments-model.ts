@@ -118,3 +118,52 @@ export function sortAssignments(list: AssignmentLike[], now: Date = new Date()):
     })
     .map((x) => x.a)
 }
+
+/* ───────────────────── load outcome (what the user is told) ───────────────────── */
+
+export type AssignmentsFailureKind = 'permission' | 'unauthenticated' | 'server' | 'network'
+export type AssignmentsFailure = { kind: AssignmentsFailureKind; title: string; body: string; retryable: boolean }
+
+const FAILURES: Record<AssignmentsFailureKind, AssignmentsFailure> = {
+  permission: {
+    kind: 'permission',
+    title: 'You don’t have access to team assignments',
+    body: 'Your role doesn’t include the manager assignments view. If you think it should, ask an admin to check your role.',
+    retryable: false,
+  },
+  unauthenticated: {
+    kind: 'unauthenticated',
+    title: 'Your session has ended',
+    body: 'Sign in again to see team assignments.',
+    retryable: false,
+  },
+  server: {
+    kind: 'server',
+    title: 'Assignments are temporarily unavailable',
+    body: 'Something went wrong on our side, not with your account. Your assignments have not changed. Try again in a moment.',
+    retryable: true,
+  },
+  network: {
+    kind: 'network',
+    title: 'Couldn’t reach Gravix',
+    body: 'Check your connection, then try again. Your assignments have not changed.',
+    retryable: true,
+  },
+}
+
+export type AssignmentsResult = { items: AssignmentLike[]; failure: AssignmentsFailure | null }
+
+/**
+ * GET /v1/assignments/manager outcome → either the rows or exactly one kind of failure.
+ * `status: null` = the request never completed. A 2xx whose body has no list is a server fault, never "no assignments".
+ */
+export function classifyAssignmentsResult(status: number | null, body: unknown): AssignmentsResult {
+  if (status === null) return { items: [], failure: FAILURES.network }
+  if (status === 401) return { items: [], failure: FAILURES.unauthenticated }
+  if (status === 403) return { items: [], failure: FAILURES.permission }
+  const b = body as { ok?: unknown; items?: unknown; assignments?: unknown } | null
+  if (status < 200 || status >= 300 || b?.ok === false) return { items: [], failure: FAILURES.server }
+  const list = Array.isArray(b?.items) ? b!.items : Array.isArray(b?.assignments) ? b!.assignments : null
+  if (!list) return { items: [], failure: FAILURES.server }
+  return { items: list as AssignmentLike[], failure: null }
+}
